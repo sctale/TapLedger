@@ -28,9 +28,12 @@ export default function MonthHeatmap({
     ...Array.from({ length: days }, (_, i) => i + 1),
   ];
   // 按周分行（每行 7 格 flex 平分，替代百分比魔数，任意屏宽不溢出）
+  // 末行不满 7 格时补空白占位，否则剩余日期格 flex:1 平分整行会异常超宽
   const weeks: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) {
-    weeks.push(cells.slice(i, i + 7));
+    const week = cells.slice(i, i + 7);
+    while (week.length < 7) week.push(null);
+    weeks.push(week);
   }
 
   // 按消费金额分 4 级（颜色由浅到深）
