@@ -222,33 +222,55 @@ export default function StatsScreen() {
           </ScrollView>
         ) : null}
 
-        {/* 总览卡片 */}
+        {/* 总览卡片（金额自适应字号，大金额不换行溢出） */}
         <View style={styles.overview}>
           <View style={styles.overviewItem}>
             <Text style={styles.overviewLabel}>总资产</Text>
-            <Text style={[styles.overviewValue, { color: COLORS.accentDark }]}>¥{formatMoney(totalAssets)}</Text>
+            <Text
+              style={[styles.overviewValue, { color: COLORS.accentDark }]}
+              adjustsFontSizeToFit
+              numberOfLines={1}
+            >
+              ¥{formatMoney(totalAssets)}
+            </Text>
           </View>
           <View style={styles.overviewDivider} />
           <View style={styles.overviewItem}>
             <Text style={styles.overviewLabel}>支出</Text>
-            <Text style={[styles.overviewValue, { color: COLORS.expense }]}>¥{formatMoney(expense)}</Text>
+            <Text
+              style={[styles.overviewValue, { color: COLORS.expense }]}
+              adjustsFontSizeToFit
+              numberOfLines={1}
+            >
+              ¥{formatMoney(expense)}
+            </Text>
           </View>
           <View style={styles.overviewDivider} />
           <View style={styles.overviewItem}>
             <Text style={styles.overviewLabel}>收入</Text>
-            <Text style={[styles.overviewValue, { color: COLORS.income }]}>¥{formatMoney(income)}</Text>
+            <Text
+              style={[styles.overviewValue, { color: COLORS.income }]}
+              adjustsFontSizeToFit
+              numberOfLines={1}
+            >
+              ¥{formatMoney(income)}
+            </Text>
           </View>
           <View style={styles.overviewDivider} />
           <View style={styles.overviewItem}>
             <Text style={styles.overviewLabel}>结余</Text>
-            <Text style={[styles.overviewValue, { color: balance >= 0 ? COLORS.text : COLORS.danger }]}>
+            <Text
+              style={[styles.overviewValue, { color: balance >= 0 ? COLORS.text : COLORS.danger }]}
+              adjustsFontSizeToFit
+              numberOfLines={1}
+            >
               ¥{formatMoney(balance)}
             </Text>
           </View>
         </View>
 
-        {/* 预算对比 */}
-        {budget > 0 ? (
+        {/* 预算对比（预算为月维度，仅本月视图显示，避免与周/年范围数据错误对比） */}
+        {budget > 0 && range === 'month' ? (
           <View style={styles.card}>
             <View style={styles.budgetHead}>
               <Text style={styles.cardTitle}>预算对比 · 本月</Text>
@@ -428,6 +450,7 @@ const styles = StyleSheet.create({
   overviewItem: {
     flex: 1,
     alignItems: 'center',
+    paddingHorizontal: 2,
   },
   overviewLabel: {
     fontSize: FONT_SIZE.xs,

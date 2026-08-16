@@ -7,9 +7,10 @@ import {
   getAccounts, getDaySummaries, getMaxDailyExpense,
   getRecordsByDate, getRecordsByRange, getTransfersByDateSafe,
 } from '../database/ledgerDB';
-import { formatMoney, getMonthRange, getToday, parseDate, addMonths, getMonthName } from '../utils/dateUtils';
+import { formatMoney, getMonthRange, getToday, parseDate, addMonths, getMonthName, getDaysInMonth } from '../utils/dateUtils';
 import { useToast } from '../hooks/useToast';
 import { confirmDeleteRecord, confirmDeleteTransfer } from '../hooks/useDeleteRecord';
+import { getCachedMembers, type MemberInfo } from '../sync/memberUtils';
 import MonthHeatmap from '../components/MonthHeatmap';
 import RecordList, { RecordRow } from '../components/RecordList';
 import Toast from '../components/Toast';
@@ -17,10 +18,43 @@ import type { AccountBalance, LedgerRecord, RecordType, Transfer } from '../type
 
 type FilterType = 'all' | RecordType;
 
-// 流水模式拍平后的列表项（虚拟化渲染）
+// 流水模式拍平后的列表项（虚拟化渲染；转账与收支按时间混排）
 type FlowItem =
   | { kind: 'header'; date: string; count: number }
-  | { kind: 'record'; record: LedgerRecord };
+  | { kind: 'record'; record: LedgerRecord }
+  | { kind: 'transfer'; transfer: Transfer };
+
+// 转账行（日历模式区块与流水模式混排共用）
+function TransferRow({ transfer, accountNames, onDelete }: {
+  transfer: Transfer;
+  accountNames: Record<number, string>;
+  onDelete: (t: Transfer) => void;
+}) {
+  const t = transfer;
+  return (
+    <View style={styles.transferRow}>
+      <View style={[styles.iconWrap, { backgroundColor: `${COLORS.transfer}22` }]}>
+        <Text style={styles.icon}>🔁</Text>
+      </View>
+      <View style={styles.info}>
+        <Text style={styles.catLabel} numberOfLines={1} ellipsizeMode="tail">
+          {accountNames[t.fromAccountId] ?? '账户'} → {accountNames[t.toAccountId] ?? '账户'}
+        </Text>
+        {t.note ? <Text style={styles.note} numberOfLines={1}>{t.note}</Text> : null}
+      </View>
+      <Text style={[styles.amount, { color: COLORS.transfer }]}>-{formatMoney(t.amount)}</Text>
+      <Pressable
+        style={styles.deleteBtn}
+        onPress={() => onDelete(t)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={`删除转账${formatMoney(t.amount)}元`}
+      >
+        <Text style={styles.deleteText}>✕</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function LedgerScreen() {
   const [mode, setMode] = useState<'calendar' | 'list'>('calendar');
@@ -35,9 +69,11 @@ export default function LedgerScreen() {
 
   // 流水模式
   const [monthRecords, setMonthRecords] = useState<LedgerRecord[]>([]);
+  const [monthTransfers, setMonthTransfers] = useState<Transfer[]>([]);
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchText, setSearchText] = useState('');
   const [accountNames, setAccountNames] = useState<Record<number, string>>({});
+  const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5 记账人标识）
 
   const { toast, showToast, hideToast } = useToast();
 
@@ -56,16 +92,18 @@ export default function LedgerScreen() {
 
   const loadMonth = useCallback(async () => {
     try {
-      const [days, max, records] = await Promise.all([
+      const [days, max, records, transfers] = await Promise.all([
         getDaySummaries(start, end),
         getMaxDailyExpense(start, end),
         getRecordsByRange(start, end),
+        getTransfersByDateSafe(start, end), // 流水模式混排转账（v0.5.1）
       ]);
       const map: Record<string, number> = {};
       for (const d of days) map[d.date] = d.expense;
       setDailyExpense(map);
       setMaxExpense(max);
       setMonthRecords(records);
+      setMonthTransfers(transfers);
     } catch {
       showToast('明细数据加载失败', 'error');
     }
@@ -102,6 +140,7 @@ export default function LedgerScreen() {
 
   useEffect(() => {
     loadAccounts();
+    getCachedMembers().then(setMembers); // 记账人标识（v0.5）
   }, [loadAccounts]);
 
   // 全局刷新
@@ -117,13 +156,31 @@ export default function LedgerScreen() {
         loadDay(selectedDate);
         loadAccounts();
       }),
+      // 登录态/同步完成 → 刷新成员缓存（v0.5）
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, () => {
+        getCachedMembers().then(setMembers);
+      }),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, () => {
+        getCachedMembers().then(setMembers);
+      }),
     ];
     return () => subs.forEach((s) => s.remove());
   }, [loadMonth, loadDay, loadAccounts, selectedDate]);
 
+  // 切月：选中日同步到目标月同日（超出月末则 clamp，与系统日历一致）
   const changeMonth = useCallback((delta: number) => {
-    setViewDate((prev) => addMonths(prev, delta));
-  }, []);
+    setViewDate((prev) => {
+      const next = addMonths(prev, delta);
+      const [y, m, d] = selectedDate.split('-').map(Number);
+      // 目标月与当前选中日同月才需要同步（跨月选中日始终在 viewDate 月内）
+      const sameMonth = y === prev.getFullYear() && m === prev.getMonth() + 1;
+      if (sameMonth) {
+        const day = Math.min(d, getDaysInMonth(next.getFullYear(), next.getMonth() + 1));
+        setSelectedDate(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+      }
+      return next;
+    });
+  }, [selectedDate]);
 
   const handleDelete = useCallback((record: LedgerRecord) => {
     confirmDeleteRecord(record.id, (msg, isError) => showToast(msg, isError ? 'error' : 'success'));
@@ -133,12 +190,13 @@ export default function LedgerScreen() {
     confirmDeleteTransfer(t.id, (msg, isError) => showToast(msg, isError ? 'error' : 'success'));
   }, [showToast]);
 
-  // 流水筛选
-  const filteredRecords = useMemo(() => {
+  // 流水筛选（records 按类型/关键词；transfers 仅在"全部"且关键词命中备注时显示）
+  const { filteredRecords, filteredTransfers } = useMemo(() => {
     let list = monthRecords;
     if (filterType !== 'all') {
       list = list.filter((r) => r.type === filterType);
     }
+    let transfers = filterType === 'all' ? monthTransfers : [];
     if (searchText.trim()) {
       const kw = searchText.trim().toLowerCase();
       list = list.filter((r) => {
@@ -149,31 +207,38 @@ export default function LedgerScreen() {
           cat.key.toLowerCase().includes(kw)
         );
       });
+      transfers = transfers.filter((t) => t.note.toLowerCase().includes(kw));
     }
-    return list;
-  }, [monthRecords, filterType, searchText]);
+    return { filteredRecords: list, filteredTransfers: transfers };
+  }, [monthRecords, monthTransfers, filterType, searchText]);
 
-  // 拍平为虚拟化列表数据（日期头 + 记录行交错）
+  // 拍平为虚拟化列表数据（日期头 + 记录/转账行按时间降序混排）
   const flowItems = useMemo<FlowItem[]>(() => {
+    type Mixed = { date: string; timestamp: number; item: FlowItem };
+    const mixed: Mixed[] = [];
+    for (const r of filteredRecords) mixed.push({ date: r.date, timestamp: r.timestamp, item: { kind: 'record', record: r } });
+    for (const t of filteredTransfers) mixed.push({ date: t.date, timestamp: t.timestamp, item: { kind: 'transfer', transfer: t } });
+    mixed.sort((a, b) => (a.date === b.date ? b.timestamp - a.timestamp : b.date < a.date ? -1 : 1));
+
     const items: FlowItem[] = [];
     let curDate = '';
     let count = 0;
     const flush = () => {
       if (curDate) items.push({ kind: 'header', date: curDate, count });
     };
-    for (const r of filteredRecords) {
-      if (r.date !== curDate) {
+    for (const m of mixed) {
+      if (m.date !== curDate) {
         flush();
-        curDate = r.date;
+        curDate = m.date;
         count = 1;
       } else {
         count += 1;
       }
-      items.push({ kind: 'record', record: r });
+      items.push(m.item);
     }
     flush();
     return items;
-  }, [filteredRecords]);
+  }, [filteredRecords, filteredTransfers]);
 
   const monthTotal = useMemo(() => {
     let exp = 0;
@@ -205,12 +270,19 @@ export default function LedgerScreen() {
         </View>
       );
     }
+    if (item.kind === 'transfer') {
+      return (
+        <View style={styles.flowRecordWrap}>
+          <TransferRow transfer={item.transfer} accountNames={accountNames} onDelete={handleDeleteTransfer} />
+        </View>
+      );
+    }
     return (
       <View style={styles.flowRecordWrap}>
-        <RecordRow record={item.record} onDelete={handleDelete} accountNames={accountNames} />
+        <RecordRow record={item.record} onDelete={handleDelete} accountNames={accountNames} members={members} />
       </View>
     );
-  }, [handleDelete, accountNames]);
+  }, [handleDelete, handleDeleteTransfer, accountNames, members]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -297,33 +369,14 @@ export default function LedgerScreen() {
             onDelete={handleDelete}
             emptyText="这一天还没有记录"
             accountNames={accountNames}
+            members={members}
           />
           {/* 当日转账 */}
           {dayTransfers.length > 0 ? (
             <View style={styles.transferBlock}>
               <Text style={styles.transferTitle}>转账</Text>
               {dayTransfers.map((t) => (
-                <View key={t.id} style={styles.transferRow}>
-                  <View style={[styles.iconWrap, { backgroundColor: `${COLORS.transfer}22` }]}>
-                    <Text style={styles.icon}>🔁</Text>
-                  </View>
-                  <View style={styles.info}>
-                    <Text style={styles.catLabel} numberOfLines={1} ellipsizeMode="tail">
-                      {accountNames[t.fromAccountId] ?? '账户'} → {accountNames[t.toAccountId] ?? '账户'}
-                    </Text>
-                    {t.note ? <Text style={styles.note} numberOfLines={1}>{t.note}</Text> : null}
-                  </View>
-                  <Text style={[styles.amount, { color: COLORS.transfer }]}>-{formatMoney(t.amount)}</Text>
-                  <Pressable
-                    style={styles.deleteBtn}
-                    onPress={() => handleDeleteTransfer(t)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`删除转账${formatMoney(t.amount)}元`}
-                  >
-                    <Text style={styles.deleteText}>✕</Text>
-                  </Pressable>
-                </View>
+                <TransferRow key={t.id} transfer={t} accountNames={accountNames} onDelete={handleDeleteTransfer} />
               ))}
             </View>
           ) : null}
@@ -334,7 +387,7 @@ export default function LedgerScreen() {
           style={styles.scroll}
           contentContainerStyle={styles.content}
           data={flowItems}
-          keyExtractor={(item) => item.kind === 'header' ? `h-${item.date}` : `r-${item.record.id}`}
+          keyExtractor={(item) => item.kind === 'header' ? `h-${item.date}` : item.kind === 'transfer' ? `t-${item.transfer.id}` : `r-${item.record.id}`}
           renderItem={renderFlowItem}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -359,6 +412,34 @@ export default function LedgerScreen() {
                   ))}
                 </View>
               </View>
+              {/* 月份切换（流水模式与日历模式共享 viewDate，v0.5.1） */}
+              <View style={styles.monthBar}>
+                <Pressable
+                  style={styles.monthBtn}
+                  onPress={() => changeMonth(-1)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="上一月"
+                >
+                  <Text style={styles.monthBtnText}>‹</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => { if (!isCurrentMonth) { setViewDate(new Date()); setSelectedDate(getToday()); } }}
+                  accessibilityRole="button"
+                  accessibilityLabel="回到本月"
+                >
+                  <Text style={styles.monthTitle}>{getMonthName(viewDate)}</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.monthBtn}
+                  onPress={() => changeMonth(1)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="下一月"
+                >
+                  <Text style={styles.monthBtnText}>›</Text>
+                </Pressable>
+              </View>
               {/* 流水筛选 */}
               <View style={styles.filterRow}>
                 <View style={styles.chips}>
@@ -377,14 +458,27 @@ export default function LedgerScreen() {
                 </View>
               </View>
               <View style={styles.searchRow}>
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="搜索备注 / 分类"
-                  placeholderTextColor={COLORS.textTertiary}
-                  value={searchText}
-                  onChangeText={setSearchText}
-                  maxLength={20}
-                />
+                <View style={styles.searchWrap}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="搜索备注 / 分类"
+                    placeholderTextColor={COLORS.textTertiary}
+                    value={searchText}
+                    onChangeText={setSearchText}
+                    maxLength={20}
+                  />
+                  {searchText.length > 0 ? (
+                    <Pressable
+                      style={styles.searchClear}
+                      onPress={() => setSearchText('')}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="清除搜索"
+                    >
+                      <Text style={styles.searchClearText}>✕</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
                 <View style={styles.monthTotal}>
                   <Text style={styles.monthTotalText}>
                     收 <Text style={{ color: COLORS.income, fontWeight: '700' }}>{formatMoney(monthTotal.inc)}</Text>
@@ -599,16 +693,36 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginBottom: SPACING.md,
   },
-  searchInput: {
+  searchWrap: {
     flex: 1,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  searchInput: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingHorizontal: SPACING.md,
+    paddingRight: 36,
     paddingVertical: 9,
     fontSize: FONT_SIZE.md,
     color: COLORS.text,
+  },
+  searchClear: {
+    position: 'absolute',
+    right: 8,
+    width: 22,
+    height: 22,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.bgAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchClearText: {
+    fontSize: FONT_SIZE.xs - 1,
+    color: COLORS.textTertiary,
+    fontWeight: '600',
   },
   monthTotal: {
     flexDirection: 'row',
@@ -625,8 +739,11 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     color: COLORS.textSecondary,
   },
-  group: {
-    marginBottom: SPACING.md,
+  monthBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
   },
   groupHeader: {
     flexDirection: 'row',
