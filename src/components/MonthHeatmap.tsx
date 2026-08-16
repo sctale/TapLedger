@@ -130,6 +130,7 @@ const styles = StyleSheet.create({
   cellSelected: {
     borderWidth: 2,
     borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentDark, // 实底强调（覆盖热力浅色），白字对比度约 5:1
   },
   cellToday: {
     borderColor: COLORS.accent,
