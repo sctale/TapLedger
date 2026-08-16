@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import authRoutes from './routes/auth';
+import authRoutes, { meRouter } from './routes/auth';
 import familyRoutes from './routes/family';
 import syncRoutes from './routes/sync';
 import healthRoutes from './routes/health';
@@ -18,6 +18,7 @@ app.use('/api/health', healthRoutes);
 // 登录限流（必须挂在 auth 路由之前）
 app.use('/api/auth/login', loginRateLimit);
 app.use('/api/auth', authRoutes);
+app.use('/api', meRouter); // /api/me（GET 查询 / PUT 改资料）
 app.use('/api/family', familyRoutes);
 app.use('/api/sync', syncRoutes);
 

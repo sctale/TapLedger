@@ -260,12 +260,22 @@ export async function runSync(): Promise<SyncResult> {
       DeviceEventEmitter.emit(LEDGER_EVENTS.ACCOUNTS_CHANGED);
     }
 
+    // 刷新家庭成员缓存（成员增减/改名后各端标识同步，v0.5）
+    try {
+      const { refreshMembersCache } = await import('./memberUtils');
+      await refreshMembersCache(config.baseUrl, config.token);
+    } catch {
+      // 成员缓存失败不影响同步主流程
+    }
+
     return { ok: true, pushed: pushCount, pulled };
   } catch (e) {
     const msg = e instanceof ApiError ? e.message : '同步失败';
     return { ok: false, pushed: 0, pulled: 0, error: msg };
   } finally {
     syncing = false;
+    // 一轮同步结束（无论成败）→ 通知 UI 刷新同步状态与成员缓存（v0.5）
+    DeviceEventEmitter.emit(LEDGER_EVENTS.SYNC_DONE);
   }
 }
 

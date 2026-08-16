@@ -22,6 +22,7 @@ import { appendKey, isValidAmount, toAmount, type PadKey } from '../utils/moneyU
 import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
 import { confirmDeleteRecord } from '../hooks/useDeleteRecord';
+import { getCachedMembers, type MemberInfo } from '../sync/memberUtils';
 import CategorySelector from '../components/CategorySelector';
 import NumberPad from '../components/NumberPad';
 import RecordList from '../components/RecordList';
@@ -53,9 +54,16 @@ export default function HomeScreen() {
   const [accountId, setAccountId] = useState(1);
   const [emptyLedger, setEmptyLedger] = useState(true);
   const [syncUserId, setSyncUserId] = useState(0); // 登录后的记账人标记（0=未登录本地）
+  const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5 记账人标识）
 
   const scrollRef = useRef<ScrollView>(null);
   const today = getToday();
+
+  // 加载家庭成员缓存（登录/同步完成后由事件触发刷新）
+  const loadMembers = useCallback(async () => {
+    const list = await getCachedMembers();
+    setMembers(list);
+  }, []);
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -115,6 +123,7 @@ export default function HomeScreen() {
         })(),
         queryData(),
         loadAccounts(),
+        loadMembers(),
       ]);
     })();
     return () => { cancelled = true; };
@@ -164,6 +173,9 @@ export default function HomeScreen() {
       DeviceEventEmitter.addListener(LEDGER_EVENTS.ACCOUNTS_CHANGED, () => {
         loadAccounts();
       }),
+      // 登录态变化 / 同步完成 → 刷新成员缓存（v0.5）
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, loadMembers),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, loadMembers),
     ];
     return () => subs.forEach((s) => s.remove());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -399,6 +411,7 @@ export default function HomeScreen() {
           records={records}
           onDelete={handleDelete}
           showTime
+          members={members}
           emptyText="今天还没有记录，记一笔吧 ✨"
         />
       </ScrollView>

@@ -102,6 +102,16 @@ export async function apiLeaveFamily(baseUrl: string, token: string) {
   return request<{ ok: boolean }>(baseUrl, '/api/family/leave', { method: 'POST', token });
 }
 
+// owner 移除成员（v0.5）
+export async function apiRemoveMember(baseUrl: string, token: string, userId: number) {
+  return request<{ ok: boolean }>(baseUrl, `/api/family/members/${userId}`, { method: 'DELETE', token });
+}
+
+// 修改自己的昵称/头像（v0.5）
+export async function apiUpdateMe(baseUrl: string, token: string, patch: { displayName?: string; avatarEmoji?: string }) {
+  return request<{ user: AuthUser }>(baseUrl, '/api/me', { method: 'PUT', body: patch, token });
+}
+
 // ===== 同步 =====
 
 export async function apiSyncPull(baseUrl: string, token: string, since: number) {

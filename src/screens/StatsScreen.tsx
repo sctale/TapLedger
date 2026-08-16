@@ -5,9 +5,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, findCategory, SETTING_KEYS,
 } from '../constants';
-import { getCategorySummary, getRangeSummary, getDaySummaries, getAccounts, getSetting } from '../database/ledgerDB';
+import {
+  getCategorySummary, getRangeSummary, getDaySummaries, getAccounts, getSetting, getMemberExpenseSummary,
+} from '../database/ledgerDB';
 import { formatMoney, getLastNDates, getMonthRange, getMonthName, getToday } from '../utils/dateUtils';
 import { useToast } from '../hooks/useToast';
+import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUtils';
 import CategoryPieChart from '../components/CategoryPieChart';
 import TrendBarChart from '../components/TrendBarChart';
 import Toast from '../components/Toast';
@@ -24,10 +27,19 @@ export default function StatsScreen() {
   const [totalAssets, setTotalAssets] = useState(0);
   const [budget, setBudget] = useState(0);
   const [tick, setTick] = useState(0);
+  const [members, setMembers] = useState<MemberInfo[]>([]);   // 家庭成员缓存（v0.5）
+  const [memberFilter, setMemberFilter] = useState(0);        // 0=全部成员
+  const [memberStats, setMemberStats] = useState<{ userId: number; total: number }[]>([]);
 
   const { toast, showToast, hideToast } = useToast();
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  // 成员缓存加载（登录态/同步完成事件触发）
+  const loadMembers = useCallback(async () => {
+    setMembers(await getCachedMembers());
+  }, []);
+  useEffect(() => { loadMembers(); }, [loadMembers]);
 
   // 当前范围
   const { rangeLabel, start, end, trendDates } = useMemo(() => {
@@ -52,17 +64,18 @@ export default function StatsScreen() {
     return { rangeLabel: '近 12 个月', start: yearStart, end: today, trendDates: dates };
   }, [range]);
 
-  // 加载数据
+  // 加载数据（memberFilter > 0 时按记账人筛选，v0.5）
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [summary, cats, days, accounts, budgetStr] = await Promise.all([
-          getRangeSummary(start, end),
-          getCategorySummary(start, end, 'expense'),
-          getDaySummaries(start, end),
+        const [summary, cats, days, accounts, budgetStr, mStats] = await Promise.all([
+          getRangeSummary(start, end, memberFilter),
+          getCategorySummary(start, end, 'expense', memberFilter),
+          getDaySummaries(start, end, memberFilter),
           getAccounts(),
           getSetting(SETTING_KEYS.MONTHLY_BUDGET),
+          getMemberExpenseSummary(start, end),
         ]);
         if (cancelled) return;
         setExpense(summary.expense);
@@ -70,6 +83,7 @@ export default function StatsScreen() {
         setCategoryData(cats);
         setTotalAssets(accounts.reduce((s, a) => s + a.balance, 0));
         setBudget(parseFloat(budgetStr ?? '0') || 0);
+        setMemberStats(mStats);
         // 趋势
         if (range === 'year') {
           // 按月聚合
@@ -96,17 +110,22 @@ export default function StatsScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [start, end, range, trendDates, tick, showToast]);
+  }, [start, end, range, trendDates, tick, memberFilter, showToast]);
 
-  // 全局刷新
+  // 全局刷新（含登录态/同步事件 → 更新成员缓存，v0.5）
   useEffect(() => {
     const subs = [
       DeviceEventEmitter.addListener(LEDGER_EVENTS.RECORDED, refresh),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.DATA_IMPORTED, refresh),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.ACCOUNTS_CHANGED, refresh),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, loadMembers),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, () => {
+        loadMembers();
+        refresh();
+      }),
     ];
     return () => subs.forEach((s) => s.remove());
-  }, [refresh]);
+  }, [refresh, loadMembers]);
 
   const balance = income - expense;
   const budgetPercent = budget > 0 ? Math.min(expense / budget, 1) : 0;
@@ -123,6 +142,27 @@ export default function StatsScreen() {
   // 排行条相对最大值归一化（第 1 名满格，其余按比例，避免占比>33% 全部顶满的误导）
   const maxCategoryTotal = topCategories.length > 0 ? topCategories[0].total : 0;
   const trendEmpty = trendValues.length > 0 && trendValues.every((v) => v <= 0);
+
+  // 成员支出排行（多成员且未筛选时显示，v0.5）
+  const multiMember = members.length > 1;
+  const memberRows = useMemo(() => {
+    if (!multiMember) return [];
+    const allExpense = memberStats.reduce((s, m) => s + m.total, 0);
+    const maxTotal = memberStats.length > 0 ? Math.max(...memberStats.map((m) => m.total)) : 0;
+    return memberStats
+      .filter((m) => m.total > 0)
+      .map((m) => {
+        const info = members.find((x) => x.id === m.userId);
+        return {
+          userId: m.userId,
+          name: info?.displayName ?? (m.userId === 0 ? '未标记' : `成员${m.userId}`),
+          emoji: info?.avatarEmoji ?? '👤',
+          total: m.total,
+          pct: allExpense > 0 ? (m.total / allExpense) * 100 : 0,
+          barPct: maxTotal > 0 ? (m.total / maxTotal) * 100 : 0,
+        };
+      });
+  }, [multiMember, memberStats, members]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -145,6 +185,42 @@ export default function StatsScreen() {
             ))}
           </View>
         </View>
+
+        {/* 成员筛选（多成员账本显示，v0.5） */}
+        {multiMember ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.memberScroll}
+            contentContainerStyle={styles.memberChips}
+          >
+            <Pressable
+              style={[styles.memberChip, memberFilter === 0 && styles.memberChipActive]}
+              onPress={() => setMemberFilter(0)}
+              accessibilityRole="tab"
+              accessibilityLabel="全部成员"
+              accessibilityState={{ selected: memberFilter === 0 }}
+            >
+              <Text style={[styles.memberChipText, memberFilter === 0 && styles.memberChipTextActive]}>
+                👨‍👩‍👧 全部
+              </Text>
+            </Pressable>
+            {members.map((m) => (
+              <Pressable
+                key={m.id}
+                style={[styles.memberChip, memberFilter === m.id && styles.memberChipActive]}
+                onPress={() => setMemberFilter(m.id)}
+                accessibilityRole="tab"
+                accessibilityLabel={`只看${m.displayName}`}
+                accessibilityState={{ selected: memberFilter === m.id }}
+              >
+                <Text style={[styles.memberChipText, memberFilter === m.id && styles.memberChipTextActive]}>
+                  {m.avatarEmoji} {m.displayName}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
 
         {/* 总览卡片 */}
         <View style={styles.overview}>
@@ -232,6 +308,39 @@ export default function StatsScreen() {
                   </View>
                 );
               })}
+            </View>
+          </>
+        ) : null}
+
+        {/* 成员支出排行（多成员且未筛选时显示，v0.5） */}
+        {multiMember && memberFilter === 0 && memberRows.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>成员支出排行 · {rangeLabel}</Text>
+            <View style={styles.card}>
+              {memberRows.map((m) => (
+                <Pressable
+                  key={m.userId}
+                  style={styles.memberRow}
+                  onPress={() => setMemberFilter(m.userId)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`查看${m.name}的支出，共${formatMoney(m.total)}元`}
+                >
+                  <View style={[styles.memberAvatar, { backgroundColor: `${memberColor(m.userId)}22` }]}>
+                    <Text style={styles.memberAvatarEmoji}>{m.emoji}</Text>
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <View style={styles.memberHead}>
+                      <Text style={[styles.memberName, { color: memberColor(m.userId) }]}>{m.name}</Text>
+                      <Text style={styles.memberAmount}>¥{formatMoney(m.total)} · {m.pct.toFixed(1)}%</Text>
+                    </View>
+                    <View style={styles.memberTrack}>
+                      <View
+                        style={[styles.memberFill, { width: `${Math.round(m.barPct)}%`, backgroundColor: memberColor(m.userId) }]}
+                      />
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
             </View>
           </>
         ) : null}
@@ -435,6 +544,80 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   rankFill: {
+    height: '100%',
+    borderRadius: 2.5,
+  },
+  // ===== 成员筛选 chips（v0.5） =====
+  memberScroll: {
+    flexGrow: 0,
+    marginBottom: SPACING.sm,
+  },
+  memberChips: {
+    gap: SPACING.sm,
+    paddingVertical: 2,
+  },
+  memberChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  memberChipActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  memberChipText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  memberChipTextActive: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
+  // ===== 成员支出排行（v0.5） =====
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs + 2,
+  },
+  memberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberAvatarEmoji: {
+    fontSize: FONT_SIZE.lg - 2,
+  },
+  memberInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  memberHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  memberName: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: '700',
+  },
+  memberAmount: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  memberTrack: {
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: COLORS.bgAlt,
+    overflow: 'hidden',
+  },
+  memberFill: {
     height: '100%',
     borderRadius: 2.5,
   },

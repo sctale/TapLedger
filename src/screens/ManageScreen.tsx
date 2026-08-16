@@ -195,13 +195,26 @@ export default function ManageScreen() {
     loadSyncState();
   }, [serverUrlDraft, showToast, loadSyncState]);
 
-  // 家庭变化（创建/加入/退出）
+  // 家庭变化（创建/加入/退出/资料修改）
   const handleFamilyChanged = useCallback(async () => {
     try {
       const url = serverUrl || serverUrlDraft.trim().replace(/\/+$/, '');
       const { family } = await apiGetFamily(url, syncToken);
       await saveSetting('sync.family_name', family?.name ?? '');
       setFamilyName(family?.name ?? '');
+      // 资料可能已修改（昵称/头像），从服务端回读并更新本地缓存（v0.5）
+      try {
+        const { apiMe } = await import('../sync/apiClient');
+        const { user } = await apiMe(url, syncToken);
+        await Promise.all([
+          saveSetting(SETTING_KEYS.SYNC_USER_DISPLAY, user.displayName),
+          saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, user.avatarEmoji),
+        ]);
+        setLoggedName(user.displayName);
+        setLoggedAvatar(user.avatarEmoji);
+      } catch {
+        // 回读失败不阻断
+      }
       if (family) {
         setSyncBusy(true);
         const res = await runSync();
@@ -249,6 +262,7 @@ export default function ManageScreen() {
             saveSetting(SETTING_KEYS.SYNC_USER_DISPLAY, ''),
             saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, ''),
             saveSetting('sync.family_name', ''),
+            saveSetting(SETTING_KEYS.SYNC_MEMBERS_JSON, ''), // 清空成员缓存（v0.5）
           ]);
           setSyncToken('');
           setLoggedName('');

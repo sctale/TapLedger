@@ -119,6 +119,33 @@ router.post('/invite/regenerate', requireAuth, (req, res) => {
   res.json({ inviteCode: code });
 });
 
+// DELETE /api/family/members/:userId（owner 移除成员；不可移除自己；成员历史记录保留在账本）
+router.delete('/members/:userId', requireAuth, (req, res) => {
+  const me = req.authUser!;
+  if (me.familyId == null || me.familyRole !== 'owner') {
+    res.status(403).json({ error: '仅家庭创建者可移除成员' });
+    return;
+  }
+  const targetId = Number(req.params.userId);
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    res.status(400).json({ error: '参数无效' });
+    return;
+  }
+  if (targetId === me.id) {
+    res.status(400).json({ error: '不能移除自己，请使用解散家庭' });
+    return;
+  }
+  const target = db.prepare('SELECT id, family_id FROM users WHERE id = ?').get(targetId) as
+    | { id: number; family_id: number | null }
+    | undefined;
+  if (!target || target.family_id !== me.familyId) {
+    res.status(404).json({ error: '该成员不存在或不属于此家庭' });
+    return;
+  }
+  db.prepare("UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?").run(targetId);
+  res.json({ ok: true });
+});
+
 // POST /api/family/leave（退出家庭；owner 需先转让或为唯一成员）
 router.post('/leave', requireAuth, (req, res) => {
   if (req.authUser!.familyId == null) {

@@ -288,12 +288,18 @@ export async function getTotalCount(): Promise<number> {
   return row?.count ?? 0;
 }
 
-// 日期区间收支汇总
-export async function getRangeSummary(start: string, end: string): Promise<{ expense: number; income: number }> {
+// 日期区间收支汇总（userId > 0 时按记账人筛选，v0.5）
+export async function getRangeSummary(
+  start: string,
+  end: string,
+  userId = 0
+): Promise<{ expense: number; income: number }> {
   const database = await getDB();
   const rows = await database.getAllAsync<{ type: RecordType; total: number }>(
-    'SELECT type, SUM(amount) as total FROM ledger_records WHERE deleted = 0 AND date >= ? AND date <= ? GROUP BY type',
-    [start, end]
+    `SELECT type, SUM(amount) as total FROM ledger_records
+     WHERE deleted = 0 AND date >= ? AND date <= ? ${userId > 0 ? 'AND user_id = ?' : ''}
+     GROUP BY type`,
+    userId > 0 ? [start, end, userId] : [start, end]
   );
   let expense = 0;
   let income = 0;
@@ -304,33 +310,48 @@ export async function getRangeSummary(start: string, end: string): Promise<{ exp
   return { expense, income };
 }
 
-// 按天汇总（热力图/趋势图用）
-export async function getDaySummaries(start: string, end: string): Promise<DaySummary[]> {
+// 按天汇总（热力图/趋势图用；userId > 0 时按记账人筛选，v0.5）
+export async function getDaySummaries(start: string, end: string, userId = 0): Promise<DaySummary[]> {
   const database = await getDB();
   return database.getAllAsync<DaySummary>(
     `SELECT date,
             COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense,
             COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income
      FROM ledger_records
-     WHERE deleted = 0 AND date >= ? AND date <= ?
+     WHERE deleted = 0 AND date >= ? AND date <= ? ${userId > 0 ? 'AND user_id = ?' : ''}
      GROUP BY date
      ORDER BY date ASC`,
-    [start, end]
+    userId > 0 ? [start, end, userId] : [start, end]
   );
 }
 
-// 按分类汇总（饼图用）
+// 按分类汇总（饼图用；userId > 0 时按记账人筛选，v0.5）
 export async function getCategorySummary(
   start: string,
   end: string,
-  type: RecordType
+  type: RecordType,
+  userId = 0
 ): Promise<{ category: string; total: number }[]> {
   const database = await getDB();
   return database.getAllAsync<{ category: string; total: number }>(
     `SELECT category, SUM(amount) as total FROM ledger_records
-     WHERE deleted = 0 AND date >= ? AND date <= ? AND type = ?
+     WHERE deleted = 0 AND date >= ? AND date <= ? AND type = ? ${userId > 0 ? 'AND user_id = ?' : ''}
      GROUP BY category ORDER BY total DESC`,
-    [start, end, type]
+    userId > 0 ? [start, end, type, userId] : [start, end, type]
+  );
+}
+
+// 按记账人汇总支出（成员排行用，v0.5）
+export async function getMemberExpenseSummary(
+  start: string,
+  end: string
+): Promise<{ userId: number; total: number }[]> {
+  const database = await getDB();
+  return database.getAllAsync<{ userId: number; total: number }>(
+    `SELECT user_id as userId, SUM(amount) as total FROM ledger_records
+     WHERE deleted = 0 AND date >= ? AND date <= ? AND type = 'expense'
+     GROUP BY user_id ORDER BY total DESC`,
+    [start, end]
   );
 }
 

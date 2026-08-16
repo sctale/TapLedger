@@ -70,6 +70,7 @@ npm run typecheck
 | GET | `/api/family` | 当前家庭信息（含邀请码） | Bearer |
 | GET | `/api/family/members` | 成员列表 | Bearer |
 | POST | `/api/family/invite/regenerate` | 重置邀请码（owner） | Bearer |
+| DELETE | `/api/family/members/:userId` | 移除成员（owner，不可移除自己） | Bearer |
 | POST | `/api/family/leave` | 退出/解散家庭 | Bearer |
 | POST | `/api/sync/pull` | 拉取增量 `{since}` → `{serverTime, changes}` | Bearer |
 | POST | `/api/sync/push` | 上传变更 `{changes}` → `{applied, rejected}` | Bearer |

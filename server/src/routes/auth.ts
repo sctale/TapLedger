@@ -84,13 +84,16 @@ router.post('/login', (req, res) => {
   res.json({ token: signToken(row.id), user: toAuthUser(safe) });
 });
 
+// /api/me 路由（独立挂载到 /api，与 /api/auth 区分）
+export const meRouter = Router();
+
 // GET /api/me
-router.get('/me', requireAuth, (req, res) => {
+meRouter.get('/me', requireAuth, (req, res) => {
   res.json({ user: req.authUser });
 });
 
 // PUT /api/me（改昵称/头像）
-router.put('/me', requireAuth, (req, res) => {
+meRouter.put('/me', requireAuth, (req, res) => {
   const parsed = updateMeSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? '参数无效' });

@@ -22,13 +22,19 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
   const [name, setName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false); // 编辑自己的昵称/头像（v0.5）
+  const [profileName, setProfileName] = useState('');
+  const [profileEmoji, setProfileEmoji] = useState('🙂');
 
   const isOwner = family != null && family.ownerId === currentUserId;
+  // 可选头像池（与登录注册一致）
+  const AVATARS = ['🙂', '😊', '😎', '🥳', '🧑', '👩', '👨', '🧕', '👴', '👵', '🐱', '🐶'];
 
   useEffect(() => {
     if (!visible) return;
     setName('');
     setInviteCode('');
+    setEditingProfile(false);
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -42,6 +48,12 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
       ]);
       setFamily(f.family);
       setMembers(m.members);
+      // 同步自己的资料到编辑态
+      const me = m.members.find((x) => x.id === currentUserId);
+      if (me) {
+        setProfileName(me.displayName);
+        setProfileEmoji(me.avatarEmoji || '🙂');
+      }
     } catch (e) {
       onError(e instanceof Error ? e.message : '加载失败');
     }
@@ -142,6 +154,56 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
     );
   };
 
+  // owner 移除成员（v0.5；不可移除自己）
+  const removeMember = (m: FamilyMember) => {
+    Alert.alert(
+      '移除成员',
+      `确定将「${m.displayName}」移出家庭？其历史记录保留在账本中。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '移除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { apiRemoveMember } = await import('../sync/apiClient');
+              await apiRemoveMember(baseUrl, token, m.id);
+              hapticLight();
+              reload();
+            } catch (e) {
+              hapticError();
+              onError(e instanceof Error ? e.message : '移除失败');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 修改自己的昵称/头像（v0.5）
+  const saveProfile = async () => {
+    const trimmed = profileName.trim();
+    if (!trimmed) {
+      hapticError();
+      onError('昵称不能为空');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { apiUpdateMe } = await import('../sync/apiClient');
+      await apiUpdateMe(baseUrl, token, { displayName: trimmed, avatarEmoji: profileEmoji });
+      hapticLight();
+      setEditingProfile(false);
+      reload();
+      onFamilyChanged();
+    } catch (e) {
+      hapticError();
+      onError(e instanceof Error ? e.message : '保存失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal visible={visible} title="家庭账本" onClose={onClose}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -176,8 +238,62 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
                   <View style={[styles.roleBadge, m.role === 'owner' && styles.roleBadgeOwner]}>
                     <Text style={styles.roleText}>{m.role === 'owner' ? '创建者' : '成员'}</Text>
                   </View>
+                  {/* owner 可移除其他成员（v0.5） */}
+                  {isOwner && m.id !== currentUserId ? (
+                    <Pressable
+                      style={styles.removeBtn}
+                      onPress={() => removeMember(m)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`移除成员${m.displayName}`}
+                    >
+                      <Text style={styles.removeText}>移除</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ))}
+
+              {/* 修改自己的资料（v0.5） */}
+              {editingProfile ? (
+                <View style={styles.profileEdit}>
+                  <Text style={styles.fieldLabel}>我的昵称</Text>
+                  <TextInput
+                    style={styles.inlineInputFull}
+                    value={profileName}
+                    onChangeText={setProfileName}
+                    maxLength={12}
+                    placeholder="昵称（最多 12 字）"
+                    placeholderTextColor={COLORS.textTertiary}
+                  />
+                  <Text style={[styles.fieldLabel, { marginTop: SPACING.sm }]}>我的头像</Text>
+                  <View style={styles.avatarGrid}>
+                    {AVATARS.map((a) => (
+                      <Pressable
+                        key={a}
+                        style={[styles.avatarCell, profileEmoji === a && styles.avatarCellActive]}
+                        onPress={() => { setProfileEmoji(a); hapticLight(); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`选择头像${a}`}
+                        accessibilityState={{ selected: profileEmoji === a }}
+                      >
+                        <Text style={styles.avatarCellEmoji}>{a}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <View style={styles.profileBtnRow}>
+                    <Pressable style={styles.cancelBtn} onPress={() => setEditingProfile(false)}>
+                      <Text style={styles.cancelText}>取消</Text>
+                    </Pressable>
+                    <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={saveProfile} disabled={busy}>
+                      <Text style={styles.inlineBtnText}>保存</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable onPress={() => setEditingProfile(true)} hitSlop={8}>
+                  <Text style={styles.linkText}>✏️ 修改我的昵称 / 头像</Text>
+                </Pressable>
+              )}
             </View>
 
             <Pressable style={[styles.leaveBtn]} onPress={leaveFamily}>
@@ -333,6 +449,73 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZE.md,
     fontWeight: '700',
+  },
+  // ===== 成员管理（v0.5） =====
+  removeBtn: {
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  removeText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.danger,
+    fontWeight: '700',
+  },
+  profileEdit: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+  },
+  inlineInputFull: {
+    backgroundColor: COLORS.bgAlt,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.text,
+  },
+  avatarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  avatarCell: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.bgAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  avatarCellActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.surface,
+  },
+  avatarCellEmoji: {
+    fontSize: FONT_SIZE.lg,
+  },
+  profileBtnRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  cancelBtn: {
+    flex: 1,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  cancelText: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
   },
   btnDisabled: {
     opacity: 0.6,
