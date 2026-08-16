@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +17,11 @@ import Toast from '../components/Toast';
 
 type RangeKey = 'week' | 'month' | 'year';
 
-export default function StatsScreen() {
+interface Props {
+  active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
+}
+
+export default function StatsScreen({ active }: Props) {
   const [range, setRange] = useState<RangeKey>('month');
   const [expense, setExpense] = useState(0);
   const [income, setIncome] = useState(0);
@@ -32,6 +36,12 @@ export default function StatsScreen() {
   const [memberStats, setMemberStats] = useState<{ userId: number; total: number }[]>([]);
 
   const { toast, showToast, hideToast } = useToast();
+
+  const scrollRef = useRef<ScrollView>(null);
+  // Tab 激活时滚回顶部（页面常驻挂载保留滚动位置，v0.5.4）
+  useEffect(() => {
+    if (active) scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [active]);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
@@ -167,7 +177,7 @@ export default function StatsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.titleRow}>
           <Text style={styles.pageTitle}>统计</Text>
           <View style={styles.rangeSwitch}>

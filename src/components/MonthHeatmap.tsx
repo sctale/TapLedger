@@ -36,14 +36,14 @@ export default function MonthHeatmap({
     weeks.push(week);
   }
 
-  // 按消费金额分 4 级（颜色由浅到深）
-  const levelColor = (amount: number): string => {
-    if (amount <= 0) return COLORS.surface;
+  // 按消费金额分 4 级（颜色由浅到深）；返回 [背景色, 是否深底(文字用白)]
+  const levelStyle = (amount: number): [string, boolean] => {
+    if (amount <= 0) return [COLORS.surface, false];
     const ratio = maxExpense > 0 ? amount / maxExpense : 0;
-    if (ratio < 0.25) return COLORS.heatmap[0];
-    if (ratio < 0.5) return COLORS.heatmap[1];
-    if (ratio < 0.75) return COLORS.heatmap[2];
-    return COLORS.heatmap[3];
+    if (ratio < 0.25) return [COLORS.heatmap[0], false];
+    if (ratio < 0.5) return [COLORS.heatmap[1], false];
+    if (ratio < 0.75) return [COLORS.heatmap[2], false];
+    return [COLORS.heatmap[3], true]; // 最深档橙底，深灰字对比不足改白字
   };
 
   return (
@@ -62,12 +62,13 @@ export default function MonthHeatmap({
               const amount = dailyExpense[dateStr] ?? 0;
               const isSelected = dateStr === selectedDate;
               const isToday = dateStr === todayStr();
+              const [bg, isDeep] = levelStyle(amount);
               return (
                 <Pressable
                   key={dateStr}
                   style={[
                     styles.cell,
-                    { backgroundColor: levelColor(amount) },
+                    { backgroundColor: bg },
                     isSelected && styles.cellSelected,
                     isToday && !isSelected && styles.cellToday,
                   ]}
@@ -75,11 +76,11 @@ export default function MonthHeatmap({
                   accessibilityRole="button"
                   accessibilityLabel={`${month}月${day}日${amount > 0 ? `支出${formatMoneyShort(amount)}元` : '无支出'}`}
                 >
-                  <Text style={[styles.dayText, amount > 0 && styles.dayTextActive, isSelected && styles.dayTextSelected, isToday && !isSelected && styles.dayTextToday]}>
+                  <Text style={[styles.dayText, amount > 0 && styles.dayTextActive, isDeep && !isSelected && styles.dayTextDeep, isSelected && styles.dayTextSelected, isToday && !isSelected && styles.dayTextToday]}>
                     {day}
                   </Text>
                   {amount > 0 ? (
-                    <Text style={[styles.amountText, isSelected && styles.dayTextSelected]} numberOfLines={1}>
+                    <Text style={[styles.amountText, isDeep && !isSelected && styles.amountTextDeep, isSelected && styles.dayTextSelected]} numberOfLines={1}>
                       {formatMoneyShort(amount)}
                     </Text>
                   ) : null}
@@ -158,10 +159,16 @@ const styles = StyleSheet.create({
   dayTextSelected: {
     color: COLORS.white,
   },
+  dayTextDeep: {
+    color: COLORS.white,
+  },
   amountText: {
     fontSize: FONT_SIZE.xs - 2.5,
     color: 'rgba(45,45,45,0.75)',
     fontWeight: '600',
     marginTop: 1,
+  },
+  amountTextDeep: {
+    color: 'rgba(255,255,255,0.9)',
   },
 });

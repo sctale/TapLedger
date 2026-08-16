@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DeviceEventEmitter, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -56,7 +56,11 @@ function TransferRow({ transfer, accountNames, onDelete }: {
   );
 }
 
-export default function LedgerScreen() {
+interface Props {
+  active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
+}
+
+export default function LedgerScreen({ active }: Props) {
   const [mode, setMode] = useState<'calendar' | 'list'>('calendar');
   const [viewDate, setViewDate] = useState(new Date());
   const [dailyExpense, setDailyExpense] = useState<Record<string, number>>({});
@@ -76,6 +80,16 @@ export default function LedgerScreen() {
   const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5 记账人标识）
 
   const { toast, showToast, hideToast } = useToast();
+
+  const calendarScrollRef = useRef<ScrollView>(null);
+  const listScrollRef = useRef<FlatList<FlowItem>>(null);
+
+  // Tab 激活时滚回顶部（按当前模式滚动对应列表，v0.5.4）
+  useEffect(() => {
+    if (!active) return;
+    if (mode === 'calendar') calendarScrollRef.current?.scrollTo({ y: 0, animated: false });
+    else listScrollRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [active, mode]);
 
   const { start, end } = useMemo(() => getMonthRange(viewDate), [viewDate]);
 
@@ -288,7 +302,7 @@ export default function LedgerScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
       {mode === 'calendar' ? (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={calendarScrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={styles.titleRow}>
             <Text style={styles.pageTitle}>明细</Text>
             <View style={styles.modeSwitch}>
@@ -384,6 +398,7 @@ export default function LedgerScreen() {
       ) : (
         /* 流水模式：FlatList 虚拟化（长月数据不卡顿） */
         <FlatList
+          ref={listScrollRef}
           style={styles.scroll}
           contentContainerStyle={styles.content}
           data={flowItems}

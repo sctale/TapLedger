@@ -87,18 +87,18 @@ export default function App() {
     <SafeAreaProvider>
       <View style={styles.container}>
         <View style={styles.screen}>
-          {/* 保持所有页面挂载，仅切换显隐，避免每次切 tab 重查库/丢滚动位置 */}
+          {/* 保持所有页面挂载，仅切换显隐，避免每次切 tab 重查库；激活时各自滚回顶部 */}
           <View style={[styles.page, tab !== 'home' && styles.pageHidden]}>
-            <HomeScreen />
+            <HomeScreen active={tab === 'home'} />
           </View>
           <View style={[styles.page, tab !== 'ledger' && styles.pageHidden]}>
-            <LedgerScreen />
+            <LedgerScreen active={tab === 'ledger'} />
           </View>
           <View style={[styles.page, tab !== 'stats' && styles.pageHidden]}>
-            <StatsScreen />
+            <StatsScreen active={tab === 'stats'} />
           </View>
           <View style={[styles.page, tab !== 'manage' && styles.pageHidden]}>
-            <ManageScreen />
+            <ManageScreen active={tab === 'manage'} />
           </View>
         </View>
         <TabBar current={tab} onChange={setTab} />

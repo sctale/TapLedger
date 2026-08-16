@@ -19,7 +19,7 @@ export const COLORS = {
   danger: '#E57373',
   white: '#FFFFFF',
   overlay: 'rgba(45,45,45,0.35)',          // 弹窗遮罩
-  heatmap: ['#E8EAF6', '#C5CAE9', '#9FA8DA', '#7986CB'], // 热力图 0-3 级
+  heatmap: ['#FFE0B2', '#FFB74D', '#FF8A65', '#F4511E'], // 热力图 0-3 级（暖橙=消费语义，与选中靛蓝区分）
   warningBg: '#FFF3E0',      // 待报销底色
   warningBorder: '#FFB74D',
   warningText: '#E65100',

@@ -30,7 +30,11 @@ import AccountPicker from '../components/AccountPicker';
 import Toast from '../components/Toast';
 import type { AccountBalance, LedgerRecord, RecordType } from '../types';
 
-export default function HomeScreen() {
+interface Props {
+  active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
+}
+
+export default function HomeScreen({ active }: Props) {
   // 数据状态
   const [records, setRecords] = useState<LedgerRecord[]>([]);
   const [todayExpense, setTodayExpense] = useState(0);
@@ -58,6 +62,12 @@ export default function HomeScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const today = getToday();
+  const [, setCatTick] = useState(0); // 自定义分类变更 → 触发重渲染刷新分类选择器
+
+  // Tab 激活时滚回顶部（页面常驻挂载保留滚动位置，v0.5.4）
+  useEffect(() => {
+    if (active) scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [active]);
 
   // 加载家庭成员缓存（登录/同步完成后由事件触发刷新）
   const loadMembers = useCallback(async () => {
@@ -176,6 +186,8 @@ export default function HomeScreen() {
       // 登录态变化 / 同步完成 → 刷新成员缓存（v0.5）
       DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, loadMembers),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, loadMembers),
+      // 自定义分类增删 → 重渲染分类选择器（常驻挂载不重渲染则新分类不可见，v0.5.4）
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.CATEGORIES_CHANGED, () => setCatTick((t) => t + 1)),
     ];
     return () => subs.forEach((s) => s.remove());
     // eslint-disable-next-line react-hooks/exhaustive-deps

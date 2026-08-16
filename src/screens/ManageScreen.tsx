@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
@@ -41,7 +41,11 @@ function formatSyncTime(ts: number): string {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function ManageScreen() {
+interface Props {
+  active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
+}
+
+export default function ManageScreen({ active }: Props) {
   const [accounts, setAccounts] = useState<AccountBalance[]>([]);
   const [rules, setRules] = useState<RecurringRule[]>([]);
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
@@ -52,6 +56,12 @@ export default function ManageScreen() {
   const [totalCount, setTotalCount] = useState(0);
 
   const { toast, showToast, hideToast } = useToast();
+
+  const scrollRef = useRef<ScrollView>(null);
+  // Tab 激活时滚回顶部（页面常驻挂载保留滚动位置，v0.5.4）
+  useEffect(() => {
+    if (active) scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [active]);
 
   // 弹窗状态
   const [accountModal, setAccountModal] = useState(false);
@@ -547,7 +557,7 @@ export default function ManageScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.pageTitle}>管理</Text>
 
         {/* ===== 账户管理 ===== */}
