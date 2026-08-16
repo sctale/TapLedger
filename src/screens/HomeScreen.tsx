@@ -52,6 +52,7 @@ export default function HomeScreen() {
   const [accounts, setAccounts] = useState<AccountBalance[]>([]);
   const [accountId, setAccountId] = useState(1);
   const [emptyLedger, setEmptyLedger] = useState(true);
+  const [syncUserId, setSyncUserId] = useState(0); // 登录后的记账人标记（0=未登录本地）
 
   const scrollRef = useRef<ScrollView>(null);
   const today = getToday();
@@ -91,15 +92,19 @@ export default function HomeScreen() {
     }
   }, [today, showToast]);
 
-  // 首次加载（额外恢复默认收支类型设置）
+  // 首次加载（额外恢复默认收支类型设置 + 同步用户标记）
   useEffect(() => {
     let cancelled = false;
     (async () => {
       await Promise.all([
         (async () => {
           try {
-            const savedType = await getSetting(SETTING_KEYS.DEFAULT_TYPE);
+            const [savedType, uidStr] = await Promise.all([
+              getSetting(SETTING_KEYS.DEFAULT_TYPE),
+              getSetting(SETTING_KEYS.SYNC_USER_ID),
+            ]);
             if (cancelled) return;
+            setSyncUserId(Number(uidStr ?? '0') || 0);
             if (savedType === 'income' || savedType === 'expense') {
               setType(savedType);
               setCategory(getCategories(savedType)[0]?.key ?? 'food');
@@ -192,7 +197,7 @@ export default function HomeScreen() {
     }
     const amount = toAmount(amountStr);
     try {
-      await addRecord(amount, category, type, today, note.trim(), accountId, reimbursable);
+      await addRecord(amount, category, type, today, note.trim(), accountId, reimbursable, { userId: syncUserId });
       setAmountStr('');
       setNote('');
       setShowNote(false);
@@ -205,7 +210,7 @@ export default function HomeScreen() {
       hapticError();
       showToast('保存失败，请重试', 'error');
     }
-  }, [amountStr, category, type, today, note, accountId, reimbursable, showToast]);
+  }, [amountStr, category, type, today, note, accountId, reimbursable, showToast, syncUserId]);
 
   // 删除记录（二次确认）
   const handleDelete = useCallback((record: LedgerRecord) => {

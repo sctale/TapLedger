@@ -1,5 +1,33 @@
 # 更新日志
 
+## [0.4.0] - 2026-08-16
+
+家庭共享账本（NAS Docker 自托管后端）🏠
+
+### 新增：后端（server/）
+
+- **Node.js + Express + better-sqlite3 + JWT**，零外部依赖，单文件数据库，Docker 一键部署到 NAS
+- **多用户**：用户名密码注册/登录（bcrypt 哈希 + JWT 7 天），登录限流（同 IP 5 次/分钟）
+- **家庭公共账本**：创建家庭生成 6 位邀请码，家人凭码加入；owner 可重置邀请码；成员列表展示
+- **增量同步 API**：`/api/sync/push`（逐条 LWW upsert）+ `/api/sync/pull`（since 光标增量拉取），zod 入参校验，家庭数据强制隔离
+- **Docker**：多阶段 alpine 构建 + tini 信号处理 + healthcheck + volume 持久化（`server/data/`）；NAS 部署指南见 `server/README.md`
+- 全链路自测脚本 `server/scripts/selftest.ps1`（注册/建家/加入/push/pull/LWW 冲突/401 全部通过）
+
+### 新增：APP 家庭同步（本地优先）
+
+- **本地 schema v0.3 迁移**：全部实体增加 uuid / user_id / updated_at / deleted（墓碑），旧数据自动回填 uuid
+- **删除改软删除**（墓碑）：删除记录/账户/转账等在全家设备上同步生效；90 天前墓碑自动清理
+- **同步引擎**（`src/sync/`）：push 本地水位后变更 → pull 服务端增量 → 本地 LWW upsert；uuid 对齐，账户 uuid ↔ 本地 id 自动映射
+- **自动同步时机**：启动、记账/导入后 5 秒 debounce、手动「立即同步」；断网静默失败下次自动重试
+- **管理页「家庭同步」区块**：服务器地址（连接探活）、登录/注册弹窗、家庭管理（创建/邀请码加入/成员列表/重置邀请码/退出）、上次同步时间
+- **可选功能**：不配置服务器则完全本地使用，与旧版无差异；登录后本地历史记录自动归属当前用户
+- 冲突策略：整条 last-write-wins（updatedAt 新者胜），家庭场景简单可靠
+
+### 变更
+
+- 备份格式升级 v3（实体含 uuid/updatedAt），**导入兼容 v2** 旧备份
+- 管理页新增「家庭同步」区块（数据备份之前）
+
 ## [0.3.0] - 2026-08-16
 
 UI 缺陷修复 + 代码质量清理 🔧

@@ -45,7 +45,8 @@ function parseJSONBackup(text: string): ParsedBackup {
     return { ...empty, error: 'JSON 结构无效' };
   }
   const obj = parsed as Record<string, unknown>;
-  if (obj.version !== EXPORT_VERSION) {
+  // 兼容 v2（无同步字段）与 v3（含 uuid/updatedAt）
+  if (obj.version !== 2 && obj.version !== EXPORT_VERSION) {
     return { ...empty, error: `不支持的备份版本: ${String(obj.version)}` };
   }
   if (!Array.isArray(obj.records)) {
@@ -110,6 +111,8 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
           accountId: r.accountId, frequency: r.frequency, dayOfWeek: r.dayOfWeek,
           dayOfMonth: r.dayOfMonth, monthOfYear: r.monthOfYear, note: r.note,
           enabled: r.enabled, lastGenerated: r.lastGenerated,
+          uuid: r.uuid || undefined, updatedAt: r.updatedAt || undefined,
+          accountUuid: r.accountUuid || undefined, userId: r.userId || undefined,
         });
       } catch {
         failed++;
@@ -118,7 +121,10 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
     // 6) 自定义分类（刷新缓存）
     for (const c of data.customCategories) {
       try {
-        await addCustomCategory({ key: c.key, label: c.label, emoji: c.emoji, color: c.color, type: c.type });
+        await addCustomCategory({
+          key: c.key, label: c.label, emoji: c.emoji, color: c.color, type: c.type,
+          uuid: c.uuid || undefined, updatedAt: c.updatedAt || undefined,
+        });
       } catch {
         failed++;
       }

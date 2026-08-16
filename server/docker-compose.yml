@@ -1,0 +1,21 @@
+services:
+  tapledger:
+    build: .
+    container_name: tapledger-server
+    restart: unless-stopped
+    ports:
+      - "8420:8420"
+    environment:
+      # 生产请改成随机长字符串（JWT 签名密钥）
+      - JWT_SECRET=please-change-me-to-a-long-random-string
+      - PORT=8420
+      - TZ=Asia/Shanghai
+    volumes:
+      # 数据库持久化（备份这个目录即可）
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8420/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

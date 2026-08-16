@@ -156,6 +156,8 @@ export const LEDGER_EVENTS = {
   DATA_IMPORTED: 'ledger:data_imported',
   ACCOUNTS_CHANGED: 'ledger:accounts_changed',
   CATEGORIES_CHANGED: 'ledger:categories_changed',
+  SYNC_DONE: 'ledger:sync_done',       // 一轮同步完成
+  AUTH_CHANGED: 'ledger:auth_changed', // 登录态变化（登录/退出/加入家庭）
 } as const;
 
 // 设置项 key
@@ -163,7 +165,21 @@ export const SETTING_KEYS = {
   MONTHLY_BUDGET: 'monthly_budget',
   DEFAULT_TYPE: 'default_type',
   DEFAULT_ACCOUNT: 'default_account',
+  // ===== 家庭同步 =====
+  SYNC_SERVER_URL: 'sync.server_url',
+  SYNC_TOKEN: 'sync.token',
+  SYNC_USER_ID: 'sync.user_id',
+  SYNC_USER_DISPLAY: 'sync.user_display',
+  SYNC_USER_AVATAR: 'sync.user_avatar',
+  SYNC_LAST_PULL_AT: 'sync.last_pull_at',   // 服务端时间光标
+  SYNC_LAST_PUSH_AT: 'sync.last_push_at',   // 本地 updated_at 水位
+  SYNC_LAST_SYNC_TIME: 'sync.last_sync_time', // 上次同步完成的人类时间戳
 } as const;
 
-// 导出格式版本
-export const EXPORT_VERSION = 2;
+// 生成同步 uuid（时间戳36进制 + 随机串，家庭场景碰撞概率可忽略）
+export function genUuid(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// 导出格式版本（v3：实体带 uuid/updatedAt 同步字段；导入兼容 v2）
+export const EXPORT_VERSION = 3;

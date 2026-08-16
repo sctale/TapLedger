@@ -78,7 +78,7 @@ function getDateStr(): string {
   return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
 }
 
-// 校验单条记录（v0.2 字段）
+// 校验单条记录（v0.3 字段；uuid 等同步字段可选）
 export function isValidRecord(input: unknown): input is LedgerRecord {
   if (!input || typeof input !== 'object') return false;
   const r = input as Record<string, unknown>;
@@ -95,9 +95,11 @@ export function isValidRecord(input: unknown): input is LedgerRecord {
   );
 }
 
-// 清洗记录，补齐新字段
+// 清洗记录，补齐同步字段（v2 备份无 uuid → 自动生成）
 export function normalizeRecord(r: LedgerRecord): Omit<LedgerRecord, 'id'> {
   return {
+    uuid: typeof r.uuid === 'string' && r.uuid ? r.uuid : '',
+    userId: Number(r.userId) > 0 ? Number(r.userId) : 0,
     amount: Math.round(r.amount * 100) / 100,
     category: r.category,
     type: r.type,
@@ -105,7 +107,10 @@ export function normalizeRecord(r: LedgerRecord): Omit<LedgerRecord, 'id'> {
     date: r.date,
     timestamp: r.timestamp,
     accountId: Number(r.accountId) > 0 ? Number(r.accountId) : 1,
+    accountUuid: typeof r.accountUuid === 'string' ? r.accountUuid : '',
     reimbursable: Boolean(r.reimbursable),
     reimbursed: Boolean(r.reimbursed),
+    updatedAt: Number(r.updatedAt) > 0 ? Number(r.updatedAt) : r.timestamp,
+    deleted: Boolean(r.deleted),
   };
 }
