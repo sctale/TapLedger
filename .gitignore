@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# native
+android/
+ios/
+
+# misc
+.DS_Store
+*.log
+gradle-build.log
+
+# 构建产物（APK 走 GitHub Release 分发）
+*.apk
+
+# vscode
+.vscode/
+.idea/

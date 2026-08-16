@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "一点账本",
+    "slug": "TapLedger",
+    "version": "0.3.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "tapledger",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tapledger.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#7986CB",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.tapledger.app",
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "./plugins/withVersionSync",
+      "expo-sqlite",
+      "expo-status-bar"
+    ]
+  }
+}
