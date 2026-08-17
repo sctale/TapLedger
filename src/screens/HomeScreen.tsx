@@ -64,11 +64,6 @@ export default function HomeScreen({ active }: Props) {
   const today = getToday();
   const [, setCatTick] = useState(0); // 自定义分类变更 → 触发重渲染刷新分类选择器
 
-  // Tab 激活时滚回顶部（页面常驻挂载保留滚动位置，v0.5.4）
-  useEffect(() => {
-    if (active) scrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, [active]);
-
   // 加载家庭成员缓存（登录/同步完成后由事件触发刷新）
   const loadMembers = useCallback(async () => {
     const list = await getCachedMembers();
@@ -109,6 +104,14 @@ export default function HomeScreen({ active }: Props) {
       showToast('数据加载失败', 'error');
     }
   }, [today, showToast]);
+
+  // Tab 激活时滚回顶部 + 重载数据（页面常驻挂载，激活刷新保证预算等设置即时生效，v0.5.6）
+  useEffect(() => {
+    if (!active) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    queryData();
+    loadAccounts();
+  }, [active, queryData, loadAccounts]);
 
   // 首次加载（额外恢复默认收支类型设置 + 同步用户标记）
   useEffect(() => {

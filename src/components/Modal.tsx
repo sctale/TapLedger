@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  Animated, Dimensions, Modal as RNModal, PanResponder, Pressable, StyleSheet, Text, View,
+  Animated, Modal as RNModal, KeyboardAvoidingView, PanResponder, Platform, Pressable,
+  StyleSheet, Text, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
@@ -13,35 +14,22 @@ interface Props {
   height?: number;
 }
 
-// 屏幕高度作为弹窗动画起始偏移（替代魔数，兼容不同屏高）
-const SCREEN_H = Dimensions.get('window').height;
-
-// 通用底部弹窗（下滑关闭 + 淡入淡出，适配底部安全区）
+// 通用底部弹窗（原生 fade 开关 + 下滑手势关闭 + 键盘避让，v0.5.6）
+// 注：不再使用自定义打开/关闭动画——native driver 动画在 Android Dialog 未完成
+// 首次布局时会静默丢失，导致弹窗停在屏幕外（v0.5.5 及之前"卡在最下面"的根因）
 export default function Modal({ visible, title, onClose, children, height }: Props) {
-  // 初始 0（正常位置）：打开动画丢失的极端情况下弹窗仍可见，不会卡在屏幕外（v0.5.5）
+  // translateY 仅在拖拽把手期间使用；每次打开前重置为 0，杜绝跨次打开的状态残留
   const translateY = useRef(new Animated.Value(0)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
-  // 打开动画：由 RNModal onShow 触发（Android Dialog 内容就绪后才启动，
-  // 避免在 useEffect 里过早启动导致 native driver 动画丢失、弹窗停在屏幕外，v0.5.5）
-  const runOpen = useCallback(() => {
-    translateY.setValue(SCREEN_H);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.timing(backdropOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, friction: 9, tension: 72 }),
-    ]).start();
-  }, [translateY, backdropOpacity]);
+  // 打开前同步重置拖拽偏移（v0.5.6）
+  useEffect(() => {
+    if (visible) translateY.setValue(0);
+  }, [visible, translateY]);
 
-  // 关闭动画
+  // 关闭：直接回调父组件 setState，视觉交给 RNModal 原生 fade out（可靠，无动画丢失风险）
   const close = useCallback(() => {
-    Animated.parallel([
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: SCREEN_H + 20, duration: 200, useNativeDriver: true }),
-    ]).start(({ finished }) => {
-      if (finished) onClose();
-    });
-  }, [onClose, translateY, backdropOpacity]);
+    onClose();
+  }, [onClose]);
 
   const springBack = useCallback(() => {
     Animated.spring(translateY, { toValue: 0, useNativeDriver: true, friction: 9, tension: 72 }).start();
@@ -57,8 +45,13 @@ export default function Modal({ visible, title, onClose, children, height }: Pro
           if (g.dy > 0) translateY.setValue(g.dy);
         },
         onPanResponderRelease: (_, g) => {
-          if (g.dy > 110 || g.vy > 0.8) close();
-          else springBack();
+          if (g.dy > 110 || g.vy > 0.8) {
+            // 松手下滑关闭：播一段跟手动画，同时立即回调（不等动画完成，防丢失卡关）
+            Animated.timing(translateY, { toValue: 600, duration: 180, useNativeDriver: true }).start();
+            close();
+          } else {
+            springBack();
+          }
         },
         onPanResponderTerminate: springBack,
       }),
@@ -66,20 +59,33 @@ export default function Modal({ visible, title, onClose, children, height }: Pro
   );
 
   return (
-    <RNModal visible={visible} transparent animationType="none" onRequestClose={close} onShow={runOpen}>
+    <RNModal
+      visible={visible}
+      transparent
+      animationType="fade"                    // 原生淡入淡出，替代自定义动画（v0.5.6）
+      statusBarTranslucent                     // edge-to-edge 下 Dialog 与 Activity 布局对齐
+      navigationBarTranslucent
+      onRequestClose={close}
+    >
       <View style={styles.overlay}>
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]}>
-          <Pressable style={styles.backdrop} onPress={close} />
-        </Animated.View>
-        <Animated.View style={[styles.sheet, height ? { height } : null, { transform: [{ translateY }] }]}>
-          <SafeAreaView edges={['bottom']} style={styles.safeArea}>
-            <View style={styles.handleArea} {...panResponder.panHandlers}>
-              <View style={styles.handle} />
-            </View>
-            <Text style={styles.title}>{title}</Text>
-            {children}
-          </SafeAreaView>
-        </Animated.View>
+        <Pressable style={styles.backdrop} onPress={close} />
+        {/* 键盘弹起时整个 sheet 上移，输入框不被遮挡（主流底部弹窗做法，v0.5.6） */}
+        <KeyboardAvoidingView
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+          style={styles.kav}
+          pointerEvents="box-none"
+        >
+          <Animated.View style={[styles.sheet, height ? { height } : null, { transform: [{ translateY }] }]}>
+            <SafeAreaView edges={['bottom']} style={styles.safeArea}>
+              <View style={styles.handleArea} {...panResponder.panHandlers}>
+                <View style={styles.handle} />
+              </View>
+              <Text style={styles.title}>{title}</Text>
+              {children}
+            </SafeAreaView>
+          </Animated.View>
+        </KeyboardAvoidingView>
       </View>
     </RNModal>
   );
@@ -91,8 +97,15 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   backdrop: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: COLORS.overlay,
+  },
+  kav: {
+    justifyContent: 'flex-end',
   },
   sheet: {
     backgroundColor: COLORS.background,

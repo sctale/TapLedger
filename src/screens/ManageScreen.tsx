@@ -57,12 +57,6 @@ export default function ManageScreen({ active }: Props) {
 
   const { toast, showToast, hideToast } = useToast();
 
-  const scrollRef = useRef<ScrollView>(null);
-  // Tab 激活时滚回顶部（页面常驻挂载保留滚动位置，v0.5.4）
-  useEffect(() => {
-    if (active) scrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, [active]);
-
   // 弹窗状态
   const [accountModal, setAccountModal] = useState(false);
   const [transferModal, setTransferModal] = useState(false);
@@ -131,6 +125,15 @@ export default function ManageScreen({ active }: Props) {
       showToast('管理页数据加载失败', 'error');
     }
   }, [showToast]);
+
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Tab 激活时滚回顶部 + 重载数据（页面常驻挂载，激活刷新保证数据即时，v0.5.6）
+  useEffect(() => {
+    if (!active) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    reload();
+  }, [active, reload]);
 
   useEffect(() => {
     reload();

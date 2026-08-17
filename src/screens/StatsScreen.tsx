@@ -38,12 +38,15 @@ export default function StatsScreen({ active }: Props) {
   const { toast, showToast, hideToast } = useToast();
 
   const scrollRef = useRef<ScrollView>(null);
-  // Tab 激活时滚回顶部（页面常驻挂载保留滚动位置，v0.5.4）
-  useEffect(() => {
-    if (active) scrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, [active]);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  // Tab 激活时滚回顶部 + 重载数据（激活刷新保证预算等设置即时生效，v0.5.6）
+  useEffect(() => {
+    if (!active) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    refresh();
+  }, [active, refresh]);
 
   // 成员缓存加载（登录态/同步完成事件触发）
   const loadMembers = useCallback(async () => {

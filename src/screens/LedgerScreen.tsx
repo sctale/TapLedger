@@ -84,13 +84,6 @@ export default function LedgerScreen({ active }: Props) {
   const calendarScrollRef = useRef<ScrollView>(null);
   const listScrollRef = useRef<FlatList<FlowItem>>(null);
 
-  // Tab 激活时滚回顶部（按当前模式滚动对应列表，v0.5.4）
-  useEffect(() => {
-    if (!active) return;
-    if (mode === 'calendar') calendarScrollRef.current?.scrollTo({ y: 0, animated: false });
-    else listScrollRef.current?.scrollToOffset({ offset: 0, animated: false });
-  }, [active, mode]);
-
   const { start, end } = useMemo(() => getMonthRange(viewDate), [viewDate]);
 
   const loadAccounts = useCallback(async () => {
@@ -156,6 +149,22 @@ export default function LedgerScreen({ active }: Props) {
     loadAccounts();
     getCachedMembers().then(setMembers); // 记账人标识（v0.5）
   }, [loadAccounts]);
+
+  // Tab 激活时滚回顶部（按当前模式滚动对应列表，v0.5.4）
+  useEffect(() => {
+    if (!active) return;
+    if (mode === 'calendar') calendarScrollRef.current?.scrollTo({ y: 0, animated: false });
+    else listScrollRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [active, mode]);
+
+  // Tab 激活时重载数据（激活刷新保证数据即时，v0.5.6）
+  useEffect(() => {
+    if (!active) return;
+    loadMonth();
+    loadDay(selectedDate);
+    loadAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   // 全局刷新
   useEffect(() => {
