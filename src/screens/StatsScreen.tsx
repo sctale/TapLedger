@@ -133,6 +133,8 @@ export default function StatsScreen({ active }: Props) {
         loadMembers();
         refresh();
       }),
+      // 设置变更（月度预算）→ 即时刷新预算卡（v0.5.5）
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SETTINGS_CHANGED, refresh),
     ];
     return () => subs.forEach((s) => s.remove());
   }, [refresh, loadMembers]);

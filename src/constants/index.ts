@@ -158,6 +158,7 @@ export const LEDGER_EVENTS = {
   CATEGORIES_CHANGED: 'ledger:categories_changed',
   SYNC_DONE: 'ledger:sync_done',       // 一轮同步完成
   AUTH_CHANGED: 'ledger:auth_changed', // 登录态变化（登录/退出/加入家庭）
+  SETTINGS_CHANGED: 'ledger:settings_changed', // 设置变更（月度预算等，跨页即时生效）
 } as const;
 
 // 设置项 key

@@ -529,6 +529,7 @@ export default function ManageScreen({ active }: Props) {
       await saveSetting(SETTING_KEYS.MONTHLY_BUDGET, '');
       hapticSuccess();
       showToast('已取消月度预算');
+      DeviceEventEmitter.emit(LEDGER_EVENTS.SETTINGS_CHANGED); // 通知首页/统计页即时刷新（v0.5.5）
       return;
     }
     if (!Number.isFinite(n) || n <= 0) {
@@ -539,6 +540,7 @@ export default function ManageScreen({ active }: Props) {
     await saveSetting(SETTING_KEYS.MONTHLY_BUDGET, String(Math.round(n * 100) / 100));
     hapticSuccess();
     showToast('月度预算已保存');
+    DeviceEventEmitter.emit(LEDGER_EVENTS.SETTINGS_CHANGED); // 通知首页/统计页即时刷新（v0.5.5）
   }, [budgetText, showToast]);
 
   const handleDefaultType = useCallback(async (value: boolean) => {

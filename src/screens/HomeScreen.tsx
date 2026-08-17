@@ -188,6 +188,8 @@ export default function HomeScreen({ active }: Props) {
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, loadMembers),
       // 自定义分类增删 → 重渲染分类选择器（常驻挂载不重渲染则新分类不可见，v0.5.4）
       DeviceEventEmitter.addListener(LEDGER_EVENTS.CATEGORIES_CHANGED, () => setCatTick((t) => t + 1)),
+      // 设置变更（月度预算）→ 即时刷新预算进度（v0.5.5）
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SETTINGS_CHANGED, queryData),
     ];
     return () => subs.forEach((s) => s.remove());
     // eslint-disable-next-line react-hooks/exhaustive-deps

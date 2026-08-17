@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   Animated, Dimensions, Modal as RNModal, PanResponder, Pressable, StyleSheet, Text, View,
 } from 'react-native';
@@ -18,20 +18,20 @@ const SCREEN_H = Dimensions.get('window').height;
 
 // 通用底部弹窗（下滑关闭 + 淡入淡出，适配底部安全区）
 export default function Modal({ visible, title, onClose, children, height }: Props) {
-  const translateY = useRef(new Animated.Value(SCREEN_H)).current;
+  // 初始 0（正常位置）：打开动画丢失的极端情况下弹窗仍可见，不会卡在屏幕外（v0.5.5）
+  const translateY = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
-  // 打开动画
-  useEffect(() => {
-    if (visible) {
-      translateY.setValue(SCREEN_H);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.timing(backdropOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, friction: 9, tension: 72 }),
-      ]).start();
-    }
-  }, [visible, translateY, backdropOpacity]);
+  // 打开动画：由 RNModal onShow 触发（Android Dialog 内容就绪后才启动，
+  // 避免在 useEffect 里过早启动导致 native driver 动画丢失、弹窗停在屏幕外，v0.5.5）
+  const runOpen = useCallback(() => {
+    translateY.setValue(SCREEN_H);
+    backdropOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, friction: 9, tension: 72 }),
+    ]).start();
+  }, [translateY, backdropOpacity]);
 
   // 关闭动画
   const close = useCallback(() => {
@@ -66,7 +66,7 @@ export default function Modal({ visible, title, onClose, children, height }: Pro
   );
 
   return (
-    <RNModal visible={visible} transparent animationType="none" onRequestClose={close}>
+    <RNModal visible={visible} transparent animationType="none" onRequestClose={close} onShow={runOpen}>
       <View style={styles.overlay}>
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]}>
           <Pressable style={styles.backdrop} onPress={close} />
