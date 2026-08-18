@@ -1267,59 +1267,65 @@ function CategoryModal({ visible, onClose, onSubmit }: {
 
   return (
     <Modal visible={visible} title="添加自定义分类" onClose={onClose}>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>名称</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="如 宠物 / 旅行"
-          placeholderTextColor={COLORS.textTertiary}
-          value={label}
-          onChangeText={setLabel}
-          maxLength={6}
-        />
-      </View>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>表情图标</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="如 🐱 ✈️ 🎁"
-          placeholderTextColor={COLORS.textTertiary}
-          value={emoji}
-          onChangeText={setEmoji}
-          maxLength={4}
-        />
-      </View>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>归属</Text>
-        <View style={styles.typeSwitch}>
-          {(['expense', 'income'] as RecordType[]).map((t) => (
-            <Pressable
-              key={t}
-              style={[styles.typeBtn, type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome)]}
-              onPress={() => setType(t)}
-            >
-              <Text style={[styles.typeText, type === t && styles.typeTextActive]}>
-                {t === 'expense' ? '支出' : '收入'}
-              </Text>
-            </Pressable>
-          ))}
+      <ScrollView
+        style={styles.modalScroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"  // 键盘弹出时仍可点击保存按钮（v0.5.8）
+      >
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>名称</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="如 宠物 / 旅行"
+            placeholderTextColor={COLORS.textTertiary}
+            value={label}
+            onChangeText={setLabel}
+            maxLength={6}
+          />
         </View>
-      </View>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>颜色</Text>
-        <View style={styles.colorRow}>
-          {CATEGORY_COLORS.map((c) => (
-            <Pressable
-              key={c}
-              style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotOn]}
-              onPress={() => setColor(c)}
-            />
-          ))}
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>表情图标</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="如 🐱 ✈️ 🎁"
+            placeholderTextColor={COLORS.textTertiary}
+            value={emoji}
+            onChangeText={setEmoji}
+            maxLength={4}
+          />
         </View>
-      </View>
-      <Pressable style={[styles.submitBtn, { backgroundColor: COLORS.accent }]} onPress={() => onSubmit(label, emoji, color, type)}>
-        <Text style={styles.submitText}>保存</Text>
-      </Pressable>
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>归属</Text>
+          <View style={styles.typeSwitch}>
+            {(['expense', 'income'] as RecordType[]).map((t) => (
+              <Pressable
+                key={t}
+                style={[styles.typeBtn, type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome)]}
+                onPress={() => setType(t)}
+              >
+                <Text style={[styles.typeText, type === t && styles.typeTextActive]}>
+                  {t === 'expense' ? '支出' : '收入'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>颜色</Text>
+          <View style={styles.colorRow}>
+            {CATEGORY_COLORS.map((c) => (
+              <Pressable
+                key={c}
+                style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotOn]}
+                onPress={() => setColor(c)}
+              />
+            ))}
+          </View>
+        </View>
+        <Pressable style={[styles.submitBtn, { backgroundColor: COLORS.accent }]} onPress={() => onSubmit(label, emoji, color, type)}>
+          <Text style={styles.submitText}>保存</Text>
+        </Pressable>
+      </ScrollView>
     </Modal>
   );
 }

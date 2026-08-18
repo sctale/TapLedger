@@ -1,5 +1,12 @@
 # 更新日志
 
+## [0.5.8] - 2026-08-18
+
+### 修复
+
+- **底部弹窗无法升起（添加分类等）**：Modal 组件彻底重构为绝对定位底部弹窗（`position:absolute; bottom:0`），不再依赖 Android Dialog 中不可靠的 `justifyContent:'flex-end'`；使用 RNModal 原生 `slide` 底部滑入动画；移除内嵌 `KeyboardAvoidingView`，避免 Dialog 布局测量冲突
+- **弹窗输入框被遮挡**：为无 ScrollView 的 `CategoryModal` 增加 `ScrollView` + `keyboardShouldPersistTaps="handled"`，键盘弹出时仍可滚动并点击保存按钮
+
 ## [0.5.7] - 2026-08-18
 
 ### 修复

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  Animated, Modal as RNModal, KeyboardAvoidingView, PanResponder, Platform, Pressable,
-  StyleSheet, Text, View,
+  Animated, Modal as RNModal, PanResponder, Pressable, StyleSheet, Text, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
@@ -14,25 +13,29 @@ interface Props {
   height?: number;
 }
 
-// 通用底部弹窗（原生 fade 开关 + 下滑手势关闭 + 键盘避让，v0.5.6）
-// 注：不再使用自定义打开/关闭动画——native driver 动画在 Android Dialog 未完成
-// 首次布局时会静默丢失，导致弹窗停在屏幕外（v0.5.5 及之前"卡在最下面"的根因）
+// 通用底部弹窗（绝对定位 + 原生 slide，v0.5.8）
+// 根因修复：不再用 flex justifyContent:'flex-end' 在 Android Dialog 中定位，
+// 改为绝对定位 bottom:0 固定 sheet；不再内嵌 KeyboardAvoidingView，避免 Dialog 布局测量冲突。
 export default function Modal({ visible, title, onClose, children, height }: Props) {
-  // translateY 仅在拖拽把手期间使用；每次打开前重置为 0，杜绝跨次打开的状态残留
+  // translateY 仅用于拖拽把手时的跟手偏移；系统 slide 动画负责打开/关闭
   const translateY = useRef(new Animated.Value(0)).current;
 
-  // 打开前同步重置拖拽偏移（v0.5.6）
+  // 每次打开前重置拖拽偏移（防止上一次拖拽残留）
   useEffect(() => {
     if (visible) translateY.setValue(0);
   }, [visible, translateY]);
 
-  // 关闭：直接回调父组件 setState，视觉交给 RNModal 原生 fade out（可靠，无动画丢失风险）
   const close = useCallback(() => {
     onClose();
   }, [onClose]);
 
   const springBack = useCallback(() => {
-    Animated.spring(translateY, { toValue: 0, useNativeDriver: true, friction: 9, tension: 72 }).start();
+    Animated.spring(translateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      friction: 9,
+      tension: 72,
+    }).start();
   }, [translateY]);
 
   // 下滑关闭手势（仅挂载在顶部把手区域，不干扰内部滚动）
@@ -46,8 +49,7 @@ export default function Modal({ visible, title, onClose, children, height }: Pro
         },
         onPanResponderRelease: (_, g) => {
           if (g.dy > 110 || g.vy > 0.8) {
-            // 松手下滑关闭：播一段跟手动画，同时立即回调（不等动画完成，防丢失卡关）
-            Animated.timing(translateY, { toValue: 600, duration: 180, useNativeDriver: true }).start();
+            // 直接回调关闭，RNModal 原生 slide out 负责下滑消失动画
             close();
           } else {
             springBack();
@@ -62,29 +64,26 @@ export default function Modal({ visible, title, onClose, children, height }: Pro
     <RNModal
       visible={visible}
       transparent
-      animationType="fade"                    // 原生淡入淡出（v0.5.6）
+      animationType="slide"   // 系统级底部滑入/滑出动画（Android Dialog 原生支持）
       onRequestClose={close}
     >
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={close} />
-        {/* 键盘弹起时整个 sheet 上移，输入框不被遮挡（v0.5.7：kav 加 flex:1 填满 overlay，
-            Android 不指定 behavior 让 Dialog 自带 adjustResize 处理，去掉 translucent 避免坐标系异常） */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={0}
-          style={styles.kav}
-          pointerEvents="box-none"
+        <Animated.View
+          style={[
+            styles.sheet,
+            height ? { height } : null,
+            { transform: [{ translateY }] },
+          ]}
         >
-          <Animated.View style={[styles.sheet, height ? { height } : null, { transform: [{ translateY }] }]}>
-            <SafeAreaView edges={['bottom']} style={styles.safeArea}>
-              <View style={styles.handleArea} {...panResponder.panHandlers}>
-                <View style={styles.handle} />
-              </View>
-              <Text style={styles.title}>{title}</Text>
-              {children}
-            </SafeAreaView>
-          </Animated.View>
-        </KeyboardAvoidingView>
+          <SafeAreaView edges={['bottom']} style={styles.safeArea}>
+            <View style={styles.handleArea} {...panResponder.panHandlers}>
+              <View style={styles.handle} />
+            </View>
+            <Text style={styles.title}>{title}</Text>
+            {children}
+          </SafeAreaView>
+        </Animated.View>
       </View>
     </RNModal>
   );
@@ -92,8 +91,7 @@ export default function Modal({ visible, title, onClose, children, height }: Pro
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
+    flex: 1, // RNModal slide 动画需要根 View 参与布局
   },
   backdrop: {
     position: 'absolute',
@@ -103,11 +101,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: COLORS.overlay,
   },
-  kav: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
   sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: COLORS.background,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
