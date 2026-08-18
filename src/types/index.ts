@@ -9,6 +9,18 @@ export interface CategoryDef {
   color: string;
 }
 
+// 分类显隐/排序配置项
+export interface CategoryConfigItem {
+  key: string;
+  visible: boolean;
+}
+
+// 分类显隐/排序配置（按支出/收入分组）
+export interface CategoryConfig {
+  expense: CategoryConfigItem[];
+  income: CategoryConfigItem[];
+}
+
 // 账户类型
 export type AccountType = 'cash' | 'bank' | 'credit' | 'alipay' | 'wechat' | 'other';
 

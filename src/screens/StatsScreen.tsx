@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -7,6 +7,7 @@ import {
 } from '../constants';
 import {
   getCategorySummary, getRangeSummary, getDaySummaries, getAccounts, getSetting, getMemberExpenseSummary,
+  getReimbursableSummary,
 } from '../database/ledgerDB';
 import { formatMoney, getLastNDates, getMonthRange, getMonthName, getToday } from '../utils/dateUtils';
 import { useToast } from '../hooks/useToast';
@@ -14,14 +15,17 @@ import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUt
 import CategoryPieChart from '../components/CategoryPieChart';
 import TrendBarChart from '../components/TrendBarChart';
 import Toast from '../components/Toast';
+import ReimburseScreen from './manage/ReimburseScreen';
 
 type RangeKey = 'week' | 'month' | 'year';
+type Page = 'main' | 'reimburse';
 
 interface Props {
   active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
 }
 
 export default function StatsScreen({ active }: Props) {
+  const [page, setPage] = useState<Page>('main');
   const [range, setRange] = useState<RangeKey>('month');
   const [expense, setExpense] = useState(0);
   const [income, setIncome] = useState(0);
@@ -34,6 +38,7 @@ export default function StatsScreen({ active }: Props) {
   const [members, setMembers] = useState<MemberInfo[]>([]);   // 家庭成员缓存（v0.5）
   const [memberFilter, setMemberFilter] = useState(0);        // 0=全部成员
   const [memberStats, setMemberStats] = useState<{ userId: number; total: number }[]>([]);
+  const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
 
   const { toast, showToast, hideToast } = useToast();
 
@@ -41,12 +46,26 @@ export default function StatsScreen({ active }: Props) {
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
-  // Tab 激活时滚回顶部 + 重载数据（激活刷新保证预算等设置即时生效，v0.5.6）
+  // 报销摘要加载（统计页入口展示用）
+  const loadReimburseSummary = useCallback(async () => {
+    try {
+      setReimburseSummary(await getReimbursableSummary());
+    } catch {
+      showToast('报销摘要加载失败', 'error');
+    }
+  }, [showToast]);
+
+  // Tab 激活时滚回顶部 + 重载数据 + 回主页（切 Tab 再回来回到 main，v0.5.9）
   useEffect(() => {
     if (!active) return;
+    setPage('main');
     scrollRef.current?.scrollTo({ y: 0, animated: false });
     refresh();
-  }, [active, refresh]);
+    loadReimburseSummary();
+  }, [active, refresh, loadReimburseSummary]);
+
+  // 挂载时预载报销摘要
+  useEffect(() => { loadReimburseSummary(); }, [loadReimburseSummary]);
 
   // 成员缓存加载（登录态/同步完成事件触发）
   const loadMembers = useCallback(async () => {
@@ -138,9 +157,25 @@ export default function StatsScreen({ active }: Props) {
       }),
       // 设置变更（月度预算）→ 即时刷新预算卡（v0.5.5）
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SETTINGS_CHANGED, refresh),
+      // 记账/导入/同步完成可能改变报销状态，独立刷新摘要
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.RECORDED, loadReimburseSummary),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.DATA_IMPORTED, loadReimburseSummary),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, loadReimburseSummary),
     ];
     return () => subs.forEach((s) => s.remove());
-  }, [refresh, loadMembers]);
+  }, [refresh, loadMembers, loadReimburseSummary]);
+
+  // Android 系统返回键：在报销子页时返回主页（主页时不消费，走默认）
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (page !== 'main') {
+        setPage('main');
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [page]);
 
   const balance = income - expense;
   const budgetPercent = budget > 0 ? Math.min(expense / budget, 1) : 0;
@@ -179,227 +214,262 @@ export default function StatsScreen({ active }: Props) {
       });
   }, [multiMember, memberStats, members]);
 
+  const reimburseStatusText = reimburseSummary.count > 0
+    ? `¥${formatMoney(reimburseSummary.total)} · ${reimburseSummary.count} 笔待核销`
+    : '暂无待核销';
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
-      <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.titleRow}>
-          <Text style={styles.pageTitle}>统计</Text>
-          <View style={styles.rangeSwitch}>
-            {([['week', '近7天'], ['month', '本月'], ['year', '年度']] as [RangeKey, string][]).map(([r, label]) => (
-              <Pressable
-                key={r}
-                style={[styles.rangeBtn, range === r && styles.rangeBtnActive]}
-                onPress={() => setRange(r)}
-                accessibilityRole="tab"
-                accessibilityLabel={label}
-                accessibilityState={{ selected: range === r }}
-              >
-                <Text style={[styles.rangeText, range === r && styles.rangeTextActive]}>{label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        {/* 成员筛选（多成员账本显示，v0.5） */}
-        {multiMember ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.memberScroll}
-            contentContainerStyle={styles.memberChips}
-          >
-            <Pressable
-              style={[styles.memberChip, memberFilter === 0 && styles.memberChipActive]}
-              onPress={() => setMemberFilter(0)}
-              accessibilityRole="tab"
-              accessibilityLabel="全部成员"
-              accessibilityState={{ selected: memberFilter === 0 }}
-            >
-              <Text style={[styles.memberChipText, memberFilter === 0 && styles.memberChipTextActive]}>
-                👨‍👩‍👧 全部
-              </Text>
-            </Pressable>
-            {members.map((m) => (
-              <Pressable
-                key={m.id}
-                style={[styles.memberChip, memberFilter === m.id && styles.memberChipActive]}
-                onPress={() => setMemberFilter(m.id)}
-                accessibilityRole="tab"
-                accessibilityLabel={`只看${m.displayName}`}
-                accessibilityState={{ selected: memberFilter === m.id }}
-              >
-                <Text style={[styles.memberChipText, memberFilter === m.id && styles.memberChipTextActive]}>
-                  {m.avatarEmoji} {m.displayName}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
-
-        {/* 总览卡片（金额自适应字号，大金额不换行溢出） */}
-        <View style={styles.overview}>
-          <View style={styles.overviewItem}>
-            <Text style={styles.overviewLabel}>总资产</Text>
-            <Text
-              style={[styles.overviewValue, { color: COLORS.accentDark }]}
-              adjustsFontSizeToFit
-              numberOfLines={1}
-            >
-              ¥{formatMoney(totalAssets)}
-            </Text>
-          </View>
-          <View style={styles.overviewDivider} />
-          <View style={styles.overviewItem}>
-            <Text style={styles.overviewLabel}>支出</Text>
-            <Text
-              style={[styles.overviewValue, { color: COLORS.expense }]}
-              adjustsFontSizeToFit
-              numberOfLines={1}
-            >
-              ¥{formatMoney(expense)}
-            </Text>
-          </View>
-          <View style={styles.overviewDivider} />
-          <View style={styles.overviewItem}>
-            <Text style={styles.overviewLabel}>收入</Text>
-            <Text
-              style={[styles.overviewValue, { color: COLORS.income }]}
-              adjustsFontSizeToFit
-              numberOfLines={1}
-            >
-              ¥{formatMoney(income)}
-            </Text>
-          </View>
-          <View style={styles.overviewDivider} />
-          <View style={styles.overviewItem}>
-            <Text style={styles.overviewLabel}>结余</Text>
-            <Text
-              style={[styles.overviewValue, { color: balance >= 0 ? COLORS.text : COLORS.danger }]}
-              adjustsFontSizeToFit
-              numberOfLines={1}
-            >
-              ¥{formatMoney(balance)}
-            </Text>
-          </View>
-        </View>
-
-        {/* 预算对比（预算为月维度，仅本月视图显示，避免与周/年范围数据错误对比） */}
-        {budget > 0 && range === 'month' ? (
-          <View style={styles.card}>
-            <View style={styles.budgetHead}>
-              <Text style={styles.cardTitle}>预算对比 · 本月</Text>
-              <Text style={[styles.budgetPct, budgetOver && { color: COLORS.danger }]}>
-                {budgetOver ? '已超支' : `${Math.round(budgetPercent * 100)}%`}
-              </Text>
-            </View>
-            <View style={styles.budgetTrack}>
-              <View
-                style={[
-                  styles.budgetFill,
-                  { width: `${Math.round(budgetPercent * 100)}%`, backgroundColor: budgetOver ? COLORS.danger : COLORS.accent },
-                ]}
-              />
-            </View>
-            <Text style={styles.budgetHint}>
-              已用 ¥{formatMoney(expense)} / 预算 ¥{formatMoney(budget)} · 剩余 ¥{formatMoney(Math.max(budget - expense, 0))}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* 支出占比 */}
-        <Text style={styles.sectionTitle}>支出占比 · {rangeLabel}</Text>
-        <View style={styles.card}>
-          {categoryData.length > 0 ? (
-            <CategoryPieChart data={categoryData} type="expense" />
-          ) : (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>这个时间段还没有支出记录</Text>
-            </View>
-          )}
-        </View>
-
-        {/* 分类排行 */}
-        {topCategories.length > 0 ? (
-          <>
-            <Text style={styles.sectionTitle}>支出分类排行</Text>
-            <View style={styles.card}>
-              {topCategories.map((c, i) => {
-                const pct = expense > 0 ? (c.total / expense) * 100 : 0;
-                const barPct = maxCategoryTotal > 0 ? (c.total / maxCategoryTotal) * 100 : 0;
-                return (
-                  <View key={c.category} style={styles.rankRow}>
-                    <Text style={styles.rankIndex}>{i + 1}</Text>
-                    <View style={[styles.rankIcon, { backgroundColor: `${c.def.color}22` }]}>
-                      <Text style={styles.rankEmoji}>{c.def.emoji}</Text>
-                    </View>
-                    <View style={styles.rankInfo}>
-                      <View style={styles.rankHead}>
-                        <Text style={styles.rankLabel}>{c.def.label}</Text>
-                        <Text style={styles.rankAmount}>¥{formatMoney(c.total)} · {pct.toFixed(1)}%</Text>
-                      </View>
-                      <View style={styles.rankTrack}>
-                        <View style={[styles.rankFill, { width: `${Math.round(barPct)}%`, backgroundColor: c.def.color }]} />
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </>
-        ) : null}
-
-        {/* 成员支出排行（多成员且未筛选时显示，v0.5） */}
-        {multiMember && memberFilter === 0 && memberRows.length > 0 ? (
-          <>
-            <Text style={styles.sectionTitle}>成员支出排行 · {rangeLabel}</Text>
-            <View style={styles.card}>
-              {memberRows.map((m) => (
+      {page === 'main' ? (
+        <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.titleRow}>
+            <Text style={styles.pageTitle}>统计</Text>
+            <View style={styles.rangeSwitch}>
+              {([['week', '近7天'], ['month', '本月'], ['year', '年度']] as [RangeKey, string][]).map(([r, label]) => (
                 <Pressable
-                  key={m.userId}
-                  style={styles.memberRow}
-                  onPress={() => setMemberFilter(m.userId)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`查看${m.name}的支出，共${formatMoney(m.total)}元`}
+                  key={r}
+                  style={[styles.rangeBtn, range === r && styles.rangeBtnActive]}
+                  onPress={() => setRange(r)}
+                  accessibilityRole="tab"
+                  accessibilityLabel={label}
+                  accessibilityState={{ selected: range === r }}
                 >
-                  <View style={[styles.memberAvatar, { backgroundColor: `${memberColor(m.userId)}22` }]}>
-                    <Text style={styles.memberAvatarEmoji}>{m.emoji}</Text>
-                  </View>
-                  <View style={styles.memberInfo}>
-                    <View style={styles.memberHead}>
-                      <Text style={[styles.memberName, { color: memberColor(m.userId) }]}>{m.name}</Text>
-                      <Text style={styles.memberAmount}>¥{formatMoney(m.total)} · {m.pct.toFixed(1)}%</Text>
-                    </View>
-                    <View style={styles.memberTrack}>
-                      <View
-                        style={[styles.memberFill, { width: `${Math.round(m.barPct)}%`, backgroundColor: memberColor(m.userId) }]}
-                      />
-                    </View>
-                  </View>
+                  <Text style={[styles.rangeText, range === r && styles.rangeTextActive]}>{label}</Text>
                 </Pressable>
               ))}
             </View>
-          </>
-        ) : null}
+          </View>
 
-        {/* 支出趋势 */}
-        <Text style={styles.sectionTitle}>
-          支出趋势 · {range === 'week' ? '近 7 天' : range === 'month' ? `近 30 天 · ${getMonthName(new Date())}` : '近 12 个月'}
-        </Text>
-        <View style={styles.card}>
-          {trendEmpty ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>这个时间段还没有支出记录</Text>
+          {/* 成员筛选（多成员账本显示，v0.5） */}
+          {multiMember ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.memberScroll}
+              contentContainerStyle={styles.memberChips}
+            >
+              <Pressable
+                style={[styles.memberChip, memberFilter === 0 && styles.memberChipActive]}
+                onPress={() => setMemberFilter(0)}
+                accessibilityRole="tab"
+                accessibilityLabel="全部成员"
+                accessibilityState={{ selected: memberFilter === 0 }}
+              >
+                <Text style={[styles.memberChipText, memberFilter === 0 && styles.memberChipTextActive]}>
+                  👨‍👩‍👧 全部
+                </Text>
+              </Pressable>
+              {members.map((m) => (
+                <Pressable
+                  key={m.id}
+                  style={[styles.memberChip, memberFilter === m.id && styles.memberChipActive]}
+                  onPress={() => setMemberFilter(m.id)}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`只看${m.displayName}`}
+                  accessibilityState={{ selected: memberFilter === m.id }}
+                >
+                  <Text style={[styles.memberChipText, memberFilter === m.id && styles.memberChipTextActive]}>
+                    {m.avatarEmoji} {m.displayName}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+
+          {/* 总览卡片（金额自适应字号，大金额不换行溢出） */}
+          <View style={styles.overview}>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>总资产</Text>
+              <Text
+                style={[styles.overviewValue, { color: COLORS.accentDark }]}
+                adjustsFontSizeToFit
+                numberOfLines={1}
+              >
+                ¥{formatMoney(totalAssets)}
+              </Text>
             </View>
-          ) : (
-            <TrendBarChart
-              values={trendValues}
-              labels={trendLabels}
-              color={COLORS.expense}
-            />
-          )}
+            <View style={styles.overviewDivider} />
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>支出</Text>
+              <Text
+                style={[styles.overviewValue, { color: COLORS.expense }]}
+                adjustsFontSizeToFit
+                numberOfLines={1}
+              >
+                ¥{formatMoney(expense)}
+              </Text>
+            </View>
+            <View style={styles.overviewDivider} />
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>收入</Text>
+              <Text
+                style={[styles.overviewValue, { color: COLORS.income }]}
+                adjustsFontSizeToFit
+                numberOfLines={1}
+              >
+                ¥{formatMoney(income)}
+              </Text>
+            </View>
+            <View style={styles.overviewDivider} />
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>结余</Text>
+              <Text
+                style={[styles.overviewValue, { color: balance >= 0 ? COLORS.text : COLORS.danger }]}
+                adjustsFontSizeToFit
+                numberOfLines={1}
+              >
+                ¥{formatMoney(balance)}
+              </Text>
+            </View>
+          </View>
+
+          {/* 预算对比（预算为月维度，仅本月视图显示，避免与周/年范围数据错误对比） */}
+          {budget > 0 && range === 'month' ? (
+            <View style={styles.card}>
+              <View style={styles.budgetHead}>
+                <Text style={styles.cardTitle}>预算对比 · 本月</Text>
+                <Text style={[styles.budgetPct, budgetOver && { color: COLORS.danger }]}>
+                  {budgetOver ? '已超支' : `${Math.round(budgetPercent * 100)}%`}
+                </Text>
+              </View>
+              <View style={styles.budgetTrack}>
+                <View
+                  style={[
+                    styles.budgetFill,
+                    { width: `${Math.round(budgetPercent * 100)}%`, backgroundColor: budgetOver ? COLORS.danger : COLORS.accent },
+                  ]}
+                />
+              </View>
+              <Text style={styles.budgetHint}>
+                已用 ¥{formatMoney(expense)} / 预算 ¥{formatMoney(budget)} · 剩余 ¥{formatMoney(Math.max(budget - expense, 0))}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* 报销入口（紧跟预算对比之后，v0.5.9） */}
+          <Pressable
+            style={styles.card}
+            onPress={() => setPage('reimburse')}
+            accessibilityRole="button"
+            accessibilityLabel={`待报销，${reimburseStatusText}`}
+          >
+            <View style={styles.reimburseRow}>
+              <View style={[styles.reimburseIcon, { backgroundColor: `${COLORS.warningText ?? COLORS.accent}15` }]}>
+                <Text style={styles.reimburseEmoji}>🧾</Text>
+              </View>
+              <View style={styles.reimburseInfo}>
+                <Text style={styles.reimburseTitle}>待报销</Text>
+                <Text style={styles.reimburseStatus} numberOfLines={1}>{reimburseStatusText}</Text>
+              </View>
+              <Text style={styles.reimburseArrow}>›</Text>
+            </View>
+          </Pressable>
+
+          {/* 支出占比 */}
+          <Text style={styles.sectionTitle}>支出占比 · {rangeLabel}</Text>
+          <View style={styles.card}>
+            {categoryData.length > 0 ? (
+              <CategoryPieChart data={categoryData} type="expense" />
+            ) : (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>这个时间段还没有支出记录</Text>
+              </View>
+            )}
+          </View>
+
+          {/* 分类排行 */}
+          {topCategories.length > 0 ? (
+            <>
+              <Text style={styles.sectionTitle}>支出分类排行</Text>
+              <View style={styles.card}>
+                {topCategories.map((c, i) => {
+                  const pct = expense > 0 ? (c.total / expense) * 100 : 0;
+                  const barPct = maxCategoryTotal > 0 ? (c.total / maxCategoryTotal) * 100 : 0;
+                  return (
+                    <View key={c.category} style={styles.rankRow}>
+                      <Text style={styles.rankIndex}>{i + 1}</Text>
+                      <View style={[styles.rankIcon, { backgroundColor: `${c.def.color}22` }]}>
+                        <Text style={styles.rankEmoji}>{c.def.emoji}</Text>
+                      </View>
+                      <View style={styles.rankInfo}>
+                        <View style={styles.rankHead}>
+                          <Text style={styles.rankLabel}>{c.def.label}</Text>
+                          <Text style={styles.rankAmount}>¥{formatMoney(c.total)} · {pct.toFixed(1)}%</Text>
+                        </View>
+                        <View style={styles.rankTrack}>
+                          <View style={[styles.rankFill, { width: `${Math.round(barPct)}%`, backgroundColor: c.def.color }]} />
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
+          {/* 成员支出排行（多成员且未筛选时显示，v0.5） */}
+          {multiMember && memberFilter === 0 && memberRows.length > 0 ? (
+            <>
+              <Text style={styles.sectionTitle}>成员支出排行 · {rangeLabel}</Text>
+              <View style={styles.card}>
+                {memberRows.map((m) => (
+                  <Pressable
+                    key={m.userId}
+                    style={styles.memberRow}
+                    onPress={() => setMemberFilter(m.userId)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`查看${m.name}的支出，共${formatMoney(m.total)}元`}
+                  >
+                    <View style={[styles.memberAvatar, { backgroundColor: `${memberColor(m.userId)}22` }]}>
+                      <Text style={styles.memberAvatarEmoji}>{m.emoji}</Text>
+                    </View>
+                    <View style={styles.memberInfo}>
+                      <View style={styles.memberHead}>
+                        <Text style={[styles.memberName, { color: memberColor(m.userId) }]}>{m.name}</Text>
+                        <Text style={styles.memberAmount}>¥{formatMoney(m.total)} · {m.pct.toFixed(1)}%</Text>
+                      </View>
+                      <View style={styles.memberTrack}>
+                        <View
+                          style={[styles.memberFill, { width: `${Math.round(m.barPct)}%`, backgroundColor: memberColor(m.userId) }]}
+                        />
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {/* 支出趋势 */}
+          <Text style={styles.sectionTitle}>
+            支出趋势 · {range === 'week' ? '近 7 天' : range === 'month' ? `近 30 天 · ${getMonthName(new Date())}` : '近 12 个月'}
+          </Text>
+          <View style={styles.card}>
+            {trendEmpty ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>这个时间段还没有支出记录</Text>
+              </View>
+            ) : (
+              <TrendBarChart
+                values={trendValues}
+                labels={trendLabels}
+                color={COLORS.expense}
+              />
+            )}
+          </View>
+        </ScrollView>
+      ) : (
+        <View style={styles.subPage}>
+          <View style={styles.navBar}>
+            <Pressable hitSlop={8} onPress={() => setPage('main')}>
+              <Text style={styles.navBack}>‹ 返回</Text>
+            </Pressable>
+            <Text style={styles.navTitle}>报销管理</Text>
+          </View>
+          <ReimburseScreen />
         </View>
-      </ScrollView>
+      )}
       <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
   );
@@ -658,5 +728,60 @@ const styles = StyleSheet.create({
   memberFill: {
     height: '100%',
     borderRadius: 2.5,
+  },
+  // ===== 报销入口卡片（v0.5.9） =====
+  reimburseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  reimburseIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reimburseEmoji: {
+    fontSize: FONT_SIZE.lg - 1,
+  },
+  reimburseInfo: {
+    flex: 1,
+  },
+  reimburseTitle: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  reimburseStatus: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
+    marginTop: 1,
+  },
+  reimburseArrow: {
+    fontSize: FONT_SIZE.xl + 4,
+    color: COLORS.textTertiary,
+    fontWeight: '600',
+  },
+  // ===== 子页面顶栏 =====
+  subPage: {
+    flex: 1,
+  },
+  navBar: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  navBack: {
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.accent,
+    fontWeight: '700',
+  },
+  navTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginLeft: SPACING.sm,
   },
 });

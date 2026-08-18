@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DeviceEventEmitter, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { COLORS, LEDGER_EVENTS } from './src/constants';
-import { initDatabase, setCustomCategoriesCache, getSetting } from './src/database/ledgerDB';
+import { COLORS, LEDGER_EVENTS, setCategoryConfig } from './src/constants';
+import { initDatabase, setCustomCategoriesCache, getSetting, getCategoryConfig } from './src/database/ledgerDB';
 import { runRecurringCheck } from './src/utils/recurring';
 import { getSyncConfig } from './src/sync/apiClient';
 import { runSync, purgeOldTombstones } from './src/sync/syncEngine';
@@ -25,6 +25,8 @@ export default function App() {
       try {
         await initDatabase();
         await setCustomCategoriesCache();
+        const cfg = await getCategoryConfig();
+        setCategoryConfig(cfg);
       } catch {
         // 初始化失败也放行，页面会自行兜底
       }

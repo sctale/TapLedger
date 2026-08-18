@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import type {
-  Account, AccountBalance, CustomCategory, DaySummary, LedgerRecord, RecurringRule,
+  Account, AccountBalance, CategoryConfig, CustomCategory, DaySummary, LedgerRecord, RecurringRule,
   RecordType, Transfer,
 } from '../types';
 import { genUuid } from '../constants';
@@ -361,7 +361,7 @@ export async function getMaxDailyExpense(start: string, end: string): Promise<nu
   const row = await database.getFirstAsync<{ max: number }>(
     `SELECT MAX(daily) as max FROM (
        SELECT SUM(amount) as daily FROM ledger_records
-       WHERE deleted = 0 AND date >= ? AND date <= ? AND type = 'expense'
+       WHERE deleted = 0 AND date >= ? AND date <= ? AND type = 'expense' AND reimbursable = 0
        GROUP BY date
      )`,
     [start, end]
@@ -686,11 +686,44 @@ export async function deleteCustomCategory(key: string): Promise<void> {
   await database.runAsync('UPDATE custom_categories SET deleted = 1, updated_at = ? WHERE key = ?', [Date.now(), key]);
 }
 
+export async function updateCustomCategory(
+  cat: { key: string; label: string; emoji: string; color: string; type: RecordType; uuid?: string; updatedAt?: number }
+): Promise<void> {
+  const database = await getDB();
+  const updatedAt = cat.updatedAt ?? Date.now();
+  await database.runAsync(
+    `UPDATE custom_categories
+     SET label = ?, emoji = ?, color = ?, type = ?, updated_at = ?
+     WHERE key = ?`,
+    [cat.label, cat.emoji, cat.color, cat.type, updatedAt, cat.key]
+  );
+}
+
 // 从 DB 加载自定义分类到内存缓存（App 启动 / 分类变更后调用）
 export async function setCustomCategoriesCache(): Promise<void> {
   const { setCustomCategories } = await import('../constants');
   const list = await getCustomCategories();
   setCustomCategories(list);
+}
+
+// ===== 分类显隐/排序配置 =====
+
+const CATEGORY_CONFIG_KEY = 'category_config_v1';
+
+export async function getCategoryConfig(): Promise<CategoryConfig | null> {
+  const raw = await getSetting(CATEGORY_CONFIG_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as CategoryConfig;
+    if (!Array.isArray(parsed.expense) || !Array.isArray(parsed.income)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveCategoryConfig(config: CategoryConfig): Promise<void> {
+  await saveSetting(CATEGORY_CONFIG_KEY, JSON.stringify(config));
 }
 
 // ===== 报销 =====

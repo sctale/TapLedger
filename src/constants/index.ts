@@ -1,4 +1,4 @@
-import type { AccountType, CategoryDef, CustomCategory, RecordType, RecurringFrequency } from '../types';
+import type { AccountType, CategoryConfig, CategoryConfigItem, CategoryDef, CustomCategory, RecordType, RecurringFrequency } from '../types';
 
 // ===== 主题色（延续 TapMood 治愈暖色风格）=====
 export const COLORS = {
@@ -113,7 +113,106 @@ export function getCustomCategories(): CustomCategory[] {
   return customCategories;
 }
 
-// 按类型取分类（内置 + 自定义）
+// ===== 分类显隐/排序配置缓存（启动时从 DB 加载）=====
+let categoryConfig: CategoryConfig | null = null;
+
+export function setCategoryConfig(config: CategoryConfig | null): void {
+  categoryConfig = config;
+}
+
+export function getCategoryConfig(): CategoryConfig | null {
+  return categoryConfig;
+}
+
+// 确保配置覆盖当前所有内置 + 自定义分类（新增分类默认可见并追加到末尾）
+export function ensureFullCategoryConfig(
+  custom: CustomCategory[],
+  config: CategoryConfig | null
+): CategoryConfig {
+  const build = (type: RecordType): CategoryConfigItem[] => {
+    const builtin = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+    const typeCustom = custom.filter((c) => c.type === type);
+    const result: CategoryConfigItem[] = [];
+    const added = new Set<string>();
+
+    // 保留配置中仍然有效的分类（保持用户自定义顺序）
+    for (const item of config?.[type] ?? []) {
+      if (builtin.some((c) => c.key === item.key) || typeCustom.some((c) => c.key === item.key)) {
+        result.push(item);
+        added.add(item.key);
+      }
+    }
+
+    // 新增内置分类：默认可见，按默认顺序追加
+    for (const c of builtin) {
+      if (!added.has(c.key)) {
+        result.push({ key: c.key, visible: true });
+        added.add(c.key);
+      }
+    }
+
+    // 新增自定义分类：默认可见，追加到末尾
+    for (const c of typeCustom) {
+      if (!added.has(c.key)) {
+        result.push({ key: c.key, visible: true });
+        added.add(c.key);
+      }
+    }
+
+    return result;
+  };
+
+  return { expense: build('expense'), income: build('income') };
+}
+
+function buildVisibleCategoryList(
+  type: RecordType,
+  builtin: CategoryDef[],
+  custom: CategoryDef[],
+  config: CategoryConfig | null
+): CategoryDef[] {
+  if (!config) {
+    return [...builtin, ...custom];
+  }
+
+  const items = type === 'expense' ? config.expense : config.income;
+  const configMap = new Map(items.map((i) => [i.key, i.visible]));
+  const builtinMap = new Map(builtin.map((c) => [c.key, c]));
+  const customMap = new Map(custom.map((c) => [c.key, c]));
+  const result: CategoryDef[] = [];
+  const added = new Set<string>();
+
+  // 按配置顺序添加可见分类
+  for (const item of items) {
+    if (added.has(item.key)) continue;
+    if (configMap.get(item.key) === false) continue;
+    const def = builtinMap.get(item.key) ?? customMap.get(item.key);
+    if (def) {
+      result.push(def);
+      added.add(item.key);
+    }
+  }
+
+  // 配置中未出现的自定义分类：默认可见，追加末尾
+  for (const c of custom) {
+    if (!added.has(c.key)) {
+      result.push(c);
+      added.add(c.key);
+    }
+  }
+
+  // 配置中未出现的内置分类：默认可见，追加末尾（按默认顺序）
+  for (const c of builtin) {
+    if (!added.has(c.key)) {
+      result.push(c);
+      added.add(c.key);
+    }
+  }
+
+  return result;
+}
+
+// 按类型取分类（内置 + 自定义；应用显隐/排序配置）
 export function getCategories(type: RecordType): CategoryDef[] {
   const builtin = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   const custom = customCategories.filter((c) => c.type === type).map((c) => ({
@@ -122,13 +221,17 @@ export function getCategories(type: RecordType): CategoryDef[] {
     emoji: c.emoji,
     color: c.color,
   }));
-  return [...builtin, ...custom];
+  return buildVisibleCategoryList(type, builtin, custom, categoryConfig);
 }
 
-// 根据 key 查找分类定义（跨类型兜底 + 自定义）
+// 根据 key 查找分类定义（跨类型兜底 + 自定义；忽略显隐，用于展示已有记录）
 export function findCategory(key: string, type: RecordType): CategoryDef {
+  const builtin = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const custom = customCategories
+    .filter((c) => c.type === type)
+    .map((c) => ({ key: c.key, label: c.label, emoji: c.emoji, color: c.color }));
   return (
-    getCategories(type).find((c) => c.key === key) ??
+    [...builtin, ...custom].find((c) => c.key === key) ??
     [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES].find((c) => c.key === key) ?? {
       key,
       label: key,

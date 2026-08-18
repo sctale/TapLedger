@@ -3,9 +3,9 @@ import { DeviceEventEmitter } from 'react-native';
 import { File } from 'expo-file-system';
 import {
   bulkInsertRecords, replaceAllRecords, saveSetting, addAccount, addCustomCategory,
-  addRecurringRule, addTransfer, setCustomCategoriesCache,
+  addRecurringRule, addTransfer, setCustomCategoriesCache, getCategoryConfig,
 } from '../database/ledgerDB';
-import { LEDGER_EVENTS, EXPORT_VERSION, setCustomCategories } from '../constants';
+import { LEDGER_EVENTS, EXPORT_VERSION, setCategoryConfig, setCustomCategories } from '../constants';
 import { isValidRecord, normalizeRecord } from './exportData';
 import type { Account, CustomCategory, LedgerRecord, RecurringRule, Transfer } from '../types';
 
@@ -130,6 +130,8 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
       }
     }
     await setCustomCategoriesCache();
+    const cfg = await getCategoryConfig();
+    setCategoryConfig(cfg);
     DeviceEventEmitter.emit(LEDGER_EVENTS.DATA_IMPORTED);
     return { success: true, strategy, imported: data.records.length, skipped: data.skipped, failed };
   } catch (e) {

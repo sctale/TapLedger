@@ -91,6 +91,7 @@ export default function RuleModal({ visible, accounts, initialRule = null, onClo
             value={name}
             onChangeText={setName}
             maxLength={12}
+            returnKeyType="done"
           />
         </View>
         <View style={styles.formGroup}>
@@ -99,7 +100,8 @@ export default function RuleModal({ visible, accounts, initialRule = null, onClo
             style={styles.input}
             placeholder="0.00"
             placeholderTextColor={COLORS.textTertiary}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            returnKeyType="done"
             value={amount}
             onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
             maxLength={9}
@@ -222,6 +224,7 @@ export default function RuleModal({ visible, accounts, initialRule = null, onClo
             value={note}
             onChangeText={setNote}
             maxLength={20}
+            returnKeyType="done"
           />
         </View>
         <Pressable style={[styles.submitBtn, { backgroundColor: COLORS.accent }]} onPress={submit}>

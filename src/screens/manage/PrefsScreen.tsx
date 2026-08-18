@@ -94,7 +94,8 @@ export default function PrefsScreen() {
               style={styles.input}
               placeholder="如 3000"
               placeholderTextColor={COLORS.textTertiary}
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
+              returnKeyType="done"
               value={budgetText}
               onChangeText={(t) => setBudgetText(t.replace(/[^0-9.]/g, ''))}
               maxLength={8}

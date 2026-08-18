@@ -212,10 +212,10 @@ export default function ManageScreen({ active }: Props) {
   const entries: { icon: string; title: string; subtitle: string; target: Exclude<Page, 'main'> }[] = [
     { icon: '🔁', title: '周期记账', subtitle: `${ruleCount} 条规则`, target: 'recurring' },
     { icon: '🧾', title: '报销管理', subtitle: reimburseCount > 0 ? `${reimburseCount} 笔待核销` : '暂无待核销', target: 'reimburse' },
-    { icon: '🏷️', title: '自定义分类', subtitle: `${catCount} 个`, target: 'categories' },
+    { icon: '🏷️', title: '分类管理', subtitle: `${catCount} 个`, target: 'categories' },
     { icon: '👨‍👩‍👧', title: '家庭同步', subtitle: syncSummary, target: 'sync' },
-    { icon: '💾', title: '数据备份', subtitle: `${totalCount} 条记录`, target: 'backup' },
     { icon: '⚙️', title: '偏好设置', subtitle: budgetStr ? `月度预算 ¥${budgetStr}` : '未设置', target: 'prefs' },
+    { icon: '💾', title: '数据备份', subtitle: `${totalCount} 条记录`, target: 'backup' },
   ];
 
   return (
@@ -394,6 +394,7 @@ function AccountModal({ visible, onClose, onSubmit }: {
             value={name}
             onChangeText={setName}
             maxLength={12}
+            returnKeyType="done"
           />
         </View>
         <View style={styles.formGroup}>
@@ -402,7 +403,8 @@ function AccountModal({ visible, onClose, onSubmit }: {
             style={styles.input}
             placeholder="0"
             placeholderTextColor={COLORS.textTertiary}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            returnKeyType="done"
             value={initial}
             onChangeText={(t) => setInitial(t.replace(/[^0-9.]/g, ''))}
             maxLength={9}
@@ -479,7 +481,8 @@ function TransferModal({ visible, accounts, onClose, onSubmit }: {
             style={styles.input}
             placeholder="0.00"
             placeholderTextColor={COLORS.textTertiary}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            returnKeyType="done"
             value={amount}
             onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
             maxLength={9}
@@ -494,6 +497,7 @@ function TransferModal({ visible, accounts, onClose, onSubmit }: {
             value={note}
             onChangeText={setNote}
             maxLength={20}
+            returnKeyType="done"
           />
         </View>
         <Pressable
