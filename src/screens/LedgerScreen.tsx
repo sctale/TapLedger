@@ -127,8 +127,8 @@ export default function LedgerScreen({ active }: Props) {
       let exp = 0;
       let inc = 0;
       for (const r of records) {
-        if (r.type === 'expense') exp += r.amount;
-        else inc += r.amount;
+        if (r.type === 'expense' && !r.reimbursable) exp += r.amount;
+        else if (r.type === 'income') inc += r.amount;
       }
       setDayExpense(exp);
       setDayIncome(inc);

@@ -23,7 +23,7 @@ import RecurringScreen from './manage/RecurringScreen';
 import ReimburseScreen from './manage/ReimburseScreen';
 import CategoriesScreen from './manage/CategoriesScreen';
 import SyncScreen from './manage/SyncScreen';
-import BackupScreen from './manage/BackupScreen';
+import DataManageScreen from './manage/DataManageScreen';
 import PrefsScreen from './manage/PrefsScreen';
 
 // 版本号单一来源：app.json expo.version
@@ -38,7 +38,7 @@ const PAGE_TITLES: Record<Exclude<Page, 'main'>, string> = {
   reimburse: '报销管理',
   categories: '自定义分类',
   sync: '家庭同步',
-  backup: '数据备份',
+  backup: '数据管理',
   prefs: '偏好设置',
 };
 
@@ -215,7 +215,7 @@ export default function ManageScreen({ active }: Props) {
     { icon: '🏷️', title: '分类管理', subtitle: `${catCount} 个`, target: 'categories' },
     { icon: '👨‍👩‍👧', title: '家庭同步', subtitle: syncSummary, target: 'sync' },
     { icon: '⚙️', title: '偏好设置', subtitle: budgetStr ? `月度预算 ¥${budgetStr}` : '未设置', target: 'prefs' },
-    { icon: '💾', title: '数据备份', subtitle: `${totalCount} 条记录`, target: 'backup' },
+    { icon: '💾', title: '数据管理', subtitle: '导出/导入/重置', target: 'backup' },
   ];
 
   return (
@@ -318,7 +318,7 @@ export default function ManageScreen({ active }: Props) {
           ) : page === 'sync' ? (
             <SyncScreen />
           ) : page === 'backup' ? (
-            <BackupScreen />
+            <DataManageScreen />
           ) : (
             <PrefsScreen />
           )}

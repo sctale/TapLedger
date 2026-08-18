@@ -295,19 +295,15 @@ export async function getRangeSummary(
   userId = 0
 ): Promise<{ expense: number; income: number }> {
   const database = await getDB();
-  const rows = await database.getAllAsync<{ type: RecordType; total: number }>(
-    `SELECT type, SUM(amount) as total FROM ledger_records
-     WHERE deleted = 0 AND date >= ? AND date <= ? ${userId > 0 ? 'AND user_id = ?' : ''}
-     GROUP BY type`,
+  const row = await database.getFirstAsync<{ expense: number; income: number }>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN type = 'expense' AND reimbursable = 0 THEN amount ELSE 0 END), 0) as expense,
+       COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income
+     FROM ledger_records
+     WHERE deleted = 0 AND date >= ? AND date <= ? ${userId > 0 ? 'AND user_id = ?' : ''}`,
     userId > 0 ? [start, end, userId] : [start, end]
   );
-  let expense = 0;
-  let income = 0;
-  for (const r of rows) {
-    if (r.type === 'expense') expense = r.total;
-    else income = r.total;
-  }
-  return { expense, income };
+  return { expense: row?.expense ?? 0, income: row?.income ?? 0 };
 }
 
 // 按天汇总（热力图/趋势图用；userId > 0 时按记账人筛选，v0.5）
@@ -315,7 +311,7 @@ export async function getDaySummaries(start: string, end: string, userId = 0): P
   const database = await getDB();
   return database.getAllAsync<DaySummary>(
     `SELECT date,
-            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense,
+            COALESCE(SUM(CASE WHEN type = 'expense' AND reimbursable = 0 THEN amount ELSE 0 END), 0) as expense,
             COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income
      FROM ledger_records
      WHERE deleted = 0 AND date >= ? AND date <= ? ${userId > 0 ? 'AND user_id = ?' : ''}
@@ -335,7 +331,7 @@ export async function getCategorySummary(
   const database = await getDB();
   return database.getAllAsync<{ category: string; total: number }>(
     `SELECT category, SUM(amount) as total FROM ledger_records
-     WHERE deleted = 0 AND date >= ? AND date <= ? AND type = ? ${userId > 0 ? 'AND user_id = ?' : ''}
+     WHERE deleted = 0 AND date >= ? AND date <= ? AND type = ? ${type === 'expense' ? 'AND reimbursable = 0' : ''} ${userId > 0 ? 'AND user_id = ?' : ''}
      GROUP BY category ORDER BY total DESC`,
     userId > 0 ? [start, end, type, userId] : [start, end, type]
   );
@@ -349,7 +345,7 @@ export async function getMemberExpenseSummary(
   const database = await getDB();
   return database.getAllAsync<{ userId: number; total: number }>(
     `SELECT user_id as userId, SUM(amount) as total FROM ledger_records
-     WHERE deleted = 0 AND date >= ? AND date <= ? AND type = 'expense'
+     WHERE deleted = 0 AND date >= ? AND date <= ? AND type = 'expense' AND reimbursable = 0
      GROUP BY user_id ORDER BY total DESC`,
     [start, end]
   );
@@ -380,7 +376,7 @@ export async function getAccounts(): Promise<AccountBalance[]> {
   const balances = await database.getAllAsync<Record<string, unknown>>(
     `SELECT account_id as aid,
             COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) as flow
-     FROM ledger_records WHERE deleted = 0 GROUP BY account_id`
+     FROM ledger_records WHERE deleted = 0 AND reimbursable = 0 GROUP BY account_id`
   );
   const transfers = await database.getAllAsync<Record<string, unknown>>(
     `SELECT from_account_id as fid, to_account_id as tid,
@@ -824,4 +820,17 @@ export async function replaceAllRecords(records: Omit<LedgerRecord, 'id'>[]): Pr
 export async function clearAllRecords(): Promise<void> {
   const database = await getDB();
   await database.runAsync('DELETE FROM ledger_records');
+}
+
+// ===== 重置个人账本 =====
+// schema 中无外键约束，按子表优先顺序硬删即可；app_settings 表保留（服务器地址、登录态、预算等）
+export async function resetPersonalLedger(): Promise<void> {
+  const database = await getDB();
+  await database.withTransactionAsync(async () => {
+    await database.runAsync('DELETE FROM ledger_records');
+    await database.runAsync('DELETE FROM transfers');
+    await database.runAsync('DELETE FROM recurring_rules');
+    await database.runAsync('DELETE FROM custom_categories');
+    await database.runAsync('DELETE FROM accounts');
+  });
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
   DeviceEventEmitter,
@@ -14,33 +14,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING, getCategories,
 } from '../constants';
-import {
-  addRecord, getAccounts, getRecordsByDate, getRangeSummary, getSetting, getTotalCount, saveSetting,
-} from '../database/ledgerDB';
-import { formatMoney, getMonthRange, getToday, parseDate } from '../utils/dateUtils';
+import { addRecord, getAccounts, getSetting, saveSetting } from '../database/ledgerDB';
+import { formatMoney, getToday } from '../utils/dateUtils';
 import { appendKey, isValidAmount, toAmount, type PadKey } from '../utils/moneyUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
-import { confirmDeleteRecord } from '../hooks/useDeleteRecord';
 import { getCachedMembers, type MemberInfo } from '../sync/memberUtils';
 import CategorySelector from '../components/CategorySelector';
 import NumberPad from '../components/NumberPad';
-import RecordList from '../components/RecordList';
 import AccountPicker from '../components/AccountPicker';
 import Toast from '../components/Toast';
-import type { AccountBalance, LedgerRecord, RecordType } from '../types';
+import type { AccountBalance, RecordType } from '../types';
 
 interface Props {
   active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
 }
 
 export default function HomeScreen({ active }: Props) {
-  // 数据状态
-  const [records, setRecords] = useState<LedgerRecord[]>([]);
-  const [todayExpense, setTodayExpense] = useState(0);
-  const [todayIncome, setTodayIncome] = useState(0);
-  const [monthExpense, setMonthExpense] = useState(0);
-  const [budget, setBudget] = useState(0);
   const [accountCountZero, setAccountCountZero] = useState(true);
 
   const { toast, showToast, hideToast } = useToast();
@@ -49,6 +39,10 @@ export default function HomeScreen({ active }: Props) {
   const [type, setType] = useState<RecordType>('expense');
   const [amountStr, setAmountStr] = useState('');
   const [category, setCategory] = useState('food');
+  const typeRef = useRef<RecordType>(type);
+  const categoryRef = useRef<string>(category);
+  useEffect(() => { typeRef.current = type; }, [type]);
+  useEffect(() => { categoryRef.current = category; }, [category]);
   const [note, setNote] = useState('');
   const [showNote, setShowNote] = useState(false);
   const [reimbursable, setReimbursable] = useState(false);
@@ -56,7 +50,6 @@ export default function HomeScreen({ active }: Props) {
   // 账户状态
   const [accounts, setAccounts] = useState<AccountBalance[]>([]);
   const [accountId, setAccountId] = useState(1);
-  const [emptyLedger, setEmptyLedger] = useState(true);
   const [syncUserId, setSyncUserId] = useState(0); // 登录后的记账人标记（0=未登录本地）
   const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5 记账人标识）
 
@@ -83,35 +76,12 @@ export default function HomeScreen({ active }: Props) {
     }
   }, []);
 
-  // 纯数据查询（刷新时使用，不触碰输入状态，避免重置用户输入）
-  const queryData = useCallback(async () => {
-    try {
-      const monthRange = getMonthRange(new Date());
-      const [dayRecords, summary, monthSummary, totalCount, budgetStr] = await Promise.all([
-        getRecordsByDate(today),
-        getRangeSummary(today, today),
-        getRangeSummary(monthRange.start, monthRange.end),
-        getTotalCount(),
-        getSetting(SETTING_KEYS.MONTHLY_BUDGET),
-      ]);
-      setRecords(dayRecords);
-      setTodayExpense(summary.expense);
-      setTodayIncome(summary.income);
-      setMonthExpense(monthSummary.expense);
-      setBudget(parseFloat(budgetStr ?? '0') || 0);
-      setEmptyLedger(totalCount === 0);
-    } catch {
-      showToast('数据加载失败', 'error');
-    }
-  }, [today, showToast]);
-
-  // Tab 激活时滚回顶部 + 重载数据（页面常驻挂载，激活刷新保证预算等设置即时生效，v0.5.6）
+  // Tab 激活时滚回顶部 + 重载账户
   useEffect(() => {
     if (!active) return;
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-    queryData();
     loadAccounts();
-  }, [active, queryData, loadAccounts]);
+  }, [active, loadAccounts]);
 
   // 首次加载（额外恢复默认收支类型设置 + 同步用户标记）
   useEffect(() => {
@@ -134,7 +104,6 @@ export default function HomeScreen({ active }: Props) {
             // 静默
           }
         })(),
-        queryData(),
         loadAccounts(),
         loadMembers(),
       ]);
@@ -164,7 +133,6 @@ export default function HomeScreen({ active }: Props) {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') {
-        queryData();
         loadAccounts();
       }
     });
@@ -172,15 +140,13 @@ export default function HomeScreen({ active }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 全局事件刷新（RECORDED 事件已包含本页写入，统一走此通道，避免双重刷新）
+  // 全局事件刷新
   useEffect(() => {
     const subs = [
       DeviceEventEmitter.addListener(LEDGER_EVENTS.RECORDED, () => {
-        queryData();
         loadAccounts();
       }),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.DATA_IMPORTED, () => {
-        queryData();
         loadAccounts();
       }),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.ACCOUNTS_CHANGED, () => {
@@ -189,10 +155,15 @@ export default function HomeScreen({ active }: Props) {
       // 登录态变化 / 同步完成 → 刷新成员缓存（v0.5）
       DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, loadMembers),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, loadMembers),
-      // 自定义分类增删 → 重渲染分类选择器（常驻挂载不重渲染则新分类不可见，v0.5.4）
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.CATEGORIES_CHANGED, () => setCatTick((t) => t + 1)),
-      // 设置变更（月度预算）→ 即时刷新预算进度（v0.5.5）
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.SETTINGS_CHANGED, queryData),
+      // 自定义分类增删/显隐变更 → 重渲染分类选择器并修正当前选中分类（v0.5.4）
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.CATEGORIES_CHANGED, () => {
+        setCatTick((t) => t + 1);
+        // 如果当前选中的分类被隐藏，自动切换到第一个可见分类
+        const visible = getCategories(typeRef.current);
+        if (!visible.some((c) => c.key === categoryRef.current)) {
+          setCategory(visible[0]?.key ?? (typeRef.current === 'expense' ? 'food' : 'salary'));
+        }
+      }),
     ];
     return () => subs.forEach((s) => s.remove());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -241,11 +212,6 @@ export default function HomeScreen({ active }: Props) {
     }
   }, [amountStr, category, type, today, note, accountId, reimbursable, showToast, syncUserId]);
 
-  // 删除记录（二次确认）
-  const handleDelete = useCallback((record: LedgerRecord) => {
-    confirmDeleteRecord(record.id, (msg, isError) => showToast(msg, isError ? 'error' : 'success'));
-  }, [showToast]);
-
   // 选择账户时记住偏好
   const handleSelectAccount = useCallback((id: number) => {
     setAccountId(id);
@@ -254,10 +220,6 @@ export default function HomeScreen({ active }: Props) {
       showToast('默认账户保存失败', 'error');
     });
   }, [showToast]);
-
-  const budgetPercent = budget > 0 ? Math.min(monthExpense / budget, 1) : 0;
-  const budgetOver = budget > 0 && monthExpense > budget;
-  const totalAssets = useMemo(() => accounts.reduce((s, a) => s + a.balance, 0), [accounts]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -368,80 +330,11 @@ export default function HomeScreen({ active }: Props) {
             </Pressable>
           </View>
         </View>
-
-        {/* ===== 今日总览（精简） ===== */}
-        <View style={styles.overviewCard}>
-          <View style={styles.overviewTop}>
-            <Text style={styles.overviewDate}>{todayLabel(today)}</Text>
-            {emptyLedger ? <Text style={styles.overviewHint}>👋 记下第一笔吧</Text> : null}
-          </View>
-          <View style={styles.overviewMain}>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>今日支出</Text>
-              <Text style={[styles.overviewValue, { color: COLORS.expense }]}>{formatMoney(todayExpense)}</Text>
-            </View>
-            <View style={styles.overviewDivider} />
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>今日收入</Text>
-              <Text style={[styles.overviewValue, { color: COLORS.income }]}>{formatMoney(todayIncome)}</Text>
-            </View>
-            <View style={styles.overviewDivider} />
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>本月支出</Text>
-              <Text style={styles.overviewValue}>{formatMoney(monthExpense)}</Text>
-            </View>
-            <View style={styles.overviewDivider} />
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>总资产</Text>
-              <Text style={[styles.overviewValue, { color: COLORS.accentDark }]}>{formatMoney(totalAssets)}</Text>
-            </View>
-          </View>
-          {budget > 0 ? (
-            <View style={styles.budgetBlock}>
-              <View style={styles.budgetRow}>
-                <Text style={styles.budgetLabel}>
-                  本月预算 {formatMoney(budget)} · 已用 {formatMoney(monthExpense)}
-                  {budgetOver ? ' · 已超支!' : ''}
-                </Text>
-                <Text style={[styles.budgetPct, budgetOver && { color: COLORS.danger }]}>
-                  {Math.round(budgetPercent * 100)}%
-                </Text>
-              </View>
-              <View style={styles.budgetTrack}>
-                <View
-                  style={[
-                    styles.budgetFill,
-                    { width: `${Math.round(budgetPercent * 100)}%`, backgroundColor: budgetOver ? COLORS.danger : COLORS.accent },
-                  ]}
-                />
-              </View>
-            </View>
-          ) : null}
-        </View>
-
-        {/* ===== 今日明细（单个列表，行内含时间） ===== */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>今日明细</Text>
-          <Text style={styles.sectionCount}>{records.length} 笔</Text>
-        </View>
-        <RecordList
-          records={records}
-          onDelete={handleDelete}
-          showTime
-          members={members}
-          emptyText="今天还没有记录，记一笔吧 ✨"
-        />
       </ScrollView>
 
       <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
   );
-}
-
-function todayLabel(dateStr: string): string {
-  const d = parseDate(dateStr);
-  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]}`;
 }
 
 const styles = StyleSheet.create({
@@ -453,8 +346,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xxl,
+    padding: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
   // ===== 记账卡片 =====
   card: {
@@ -462,8 +355,8 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: SPACING.md,
-    gap: SPACING.md,
+    padding: SPACING.sm,
+    gap: SPACING.sm,
   },
   typeSwitch: {
     flexDirection: 'row',
@@ -496,7 +389,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.xs,
+    paddingVertical: 0,
   },
   amountSymbol: {
     fontSize: FONT_SIZE.xl,
@@ -513,7 +406,7 @@ const styles = StyleSheet.create({
     color: COLORS.borderSubtle,
   },
   accountSection: {
-    gap: 6,
+    gap: 4,
   },
   optionRow: {
     flexDirection: 'row',
@@ -556,10 +449,10 @@ const styles = StyleSheet.create({
     color: COLORS.warningText,
   },
   inputArea: {
-    gap: SPACING.sm,
+    gap: 6,
   },
   saveBtn: {
-    height: 52,
+    height: 48,
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -569,98 +462,5 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.lg,
     fontWeight: '700',
     letterSpacing: 4,
-  },
-  // ===== 今日总览 =====
-  overviewCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
-    marginTop: SPACING.md,
-    gap: SPACING.sm,
-  },
-  overviewTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  overviewDate: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textTertiary,
-  },
-  overviewHint: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.accentDark,
-    fontWeight: '600',
-  },
-  overviewMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  overviewItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  overviewLabel: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textTertiary,
-    marginBottom: 2,
-  },
-  overviewValue: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  overviewDivider: {
-    width: 1,
-    height: 26,
-    backgroundColor: COLORS.border,
-  },
-  budgetBlock: {
-    marginTop: SPACING.xs,
-  },
-  budgetRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  budgetLabel: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textSecondary,
-    flexShrink: 1,
-  },
-  budgetPct: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.accentDark,
-    fontWeight: '700',
-  },
-  budgetTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.bgAlt,
-    overflow: 'hidden',
-  },
-  budgetFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  // ===== 今日明细 =====
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZE.lg,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  sectionCount: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textTertiary,
   },
 });
