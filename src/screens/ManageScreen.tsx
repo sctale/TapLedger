@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  Alert, DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
@@ -562,7 +562,15 @@ export default function ManageScreen({ active }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
-      <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {/* 键盘避让：键盘弹出时内容上移，预算保存按钮不被遮挡（v0.5.7） */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.kavContainer}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"  /* 键盘弹出时点击保存按钮不被吞掉（v0.5.7） */
+      >
         <Text style={styles.pageTitle}>管理</Text>
 
         {/* ===== 账户管理 ===== */}
@@ -827,6 +835,7 @@ export default function ManageScreen({ active }: Props) {
           <Text style={styles.hint}>极简记账 · 3 秒记一笔 · 数据完全保存在本地，不上传任何服务器</Text>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* ===== 弹窗：添加账户 ===== */}
       <AccountModal
@@ -1319,6 +1328,9 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  kavContainer: {
+    flex: 1,
   },
   scroll: {
     flex: 1,

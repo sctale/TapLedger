@@ -1,5 +1,13 @@
 # 更新日志
 
+## [0.5.7] - 2026-08-18
+
+### 修复
+
+- **底部弹窗卡在屏幕外（添加分类等）**：Modal 的 KeyboardAvoidingView 缺少 `flex: 1` 导致高度塌陷；`statusBarTranslucent`/`navigationBarTranslucent` 在 edge-to-edge 下导致 Dialog 窗口坐标系异常。去掉 translucent 属性、KAV 加 `flex: 1`、Android 不指定 behavior（让 Dialog 自带 adjustResize 处理），弹窗正确显示在底部
+- **键盘遮挡输入框**：弹窗内 KAV 配置修正后键盘弹出时 sheet 自动上移；管理页主 ScrollView 增加 `keyboardShouldPersistTaps="handled"` 并用 KeyboardAvoidingView 包裹，预算保存按钮不再被键盘遮挡
+- **预算保存不生效**：根因是键盘弹出后遮挡保存按钮导致用户无法点击；修复键盘避让后保存按钮始终可见可点
+
 ## [0.5.6] - 2026-08-17
 
 ### 修复

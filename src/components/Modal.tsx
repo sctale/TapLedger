@@ -62,17 +62,16 @@ export default function Modal({ visible, title, onClose, children, height }: Pro
     <RNModal
       visible={visible}
       transparent
-      animationType="fade"                    // 原生淡入淡出，替代自定义动画（v0.5.6）
-      statusBarTranslucent                     // edge-to-edge 下 Dialog 与 Activity 布局对齐
-      navigationBarTranslucent
+      animationType="fade"                    // 原生淡入淡出（v0.5.6）
       onRequestClose={close}
     >
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={close} />
-        {/* 键盘弹起时整个 sheet 上移，输入框不被遮挡（主流底部弹窗做法，v0.5.6） */}
+        {/* 键盘弹起时整个 sheet 上移，输入框不被遮挡（v0.5.7：kav 加 flex:1 填满 overlay，
+            Android 不指定 behavior 让 Dialog 自带 adjustResize 处理，去掉 translucent 避免坐标系异常） */}
         <KeyboardAvoidingView
-          behavior="padding"
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={0}
           style={styles.kav}
           pointerEvents="box-none"
         >
@@ -105,6 +104,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.overlay,
   },
   kav: {
+    flex: 1,
     justifyContent: 'flex-end',
   },
   sheet: {
