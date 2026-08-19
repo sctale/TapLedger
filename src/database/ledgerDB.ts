@@ -442,6 +442,23 @@ export async function addAccount(
   };
 }
 
+// 更新账户：名称/类型/图标/颜色/初始余额（同步刷新 updated_at 以便多端同步）
+export async function updateAccount(
+  id: number,
+  name: string,
+  type: Account['type'],
+  emoji: string,
+  color: string,
+  initialBalance: number,
+): Promise<void> {
+  const database = await getDB();
+  await database.runAsync(
+    `UPDATE accounts SET name = ?, type = ?, emoji = ?, color = ?, initial_balance = ?, updated_at = ?
+     WHERE id = ?`,
+    [name, type, emoji, color, initialBalance, Date.now(), id]
+  );
+}
+
 export async function deleteAccount(id: number): Promise<void> {
   if (id === 1) throw new Error('默认账户不可删除');
   const database = await getDB();

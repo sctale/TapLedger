@@ -177,7 +177,6 @@ export default function StatsScreen({ active }: Props) {
     return () => sub.remove();
   }, [page]);
 
-  const balance = income - expense;
   const budgetPercent = budget > 0 ? Math.min(expense / budget, 1) : 0;
   const budgetOver = budget > 0 && expense > budget;
 
@@ -309,17 +308,6 @@ export default function StatsScreen({ active }: Props) {
                 numberOfLines={1}
               >
                 ¥{formatMoney(income)}
-              </Text>
-            </View>
-            <View style={styles.overviewDivider} />
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>结余</Text>
-              <Text
-                style={[styles.overviewValue, { color: balance >= 0 ? COLORS.text : COLORS.danger }]}
-                adjustsFontSizeToFit
-                numberOfLines={1}
-              >
-                ¥{formatMoney(balance)}
               </Text>
             </View>
           </View>

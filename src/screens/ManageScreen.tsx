@@ -10,7 +10,7 @@ import {
 } from '../constants';
 import {
   addAccount, addTransfer, deleteAccount, getAccounts, getCustomCategories, getRecurringRules,
-  getReimbursableSummary, getSetting, getTotalCount,
+  getSetting, getTotalCount, updateAccount,
 } from '../database/ledgerDB';
 import { formatMoney, getToday } from '../utils/dateUtils';
 import { hapticError, hapticSuccess } from '../utils/haptics';
@@ -20,7 +20,6 @@ import Toast from '../components/Toast';
 import { getSyncConfig } from '../sync/apiClient';
 import type { AccountBalance } from '../types';
 import RecurringScreen from './manage/RecurringScreen';
-import ReimburseScreen from './manage/ReimburseScreen';
 import CategoriesScreen from './manage/CategoriesScreen';
 import SyncScreen from './manage/SyncScreen';
 import DataManageScreen from './manage/DataManageScreen';
@@ -30,12 +29,11 @@ import PrefsScreen from './manage/PrefsScreen';
 const APP_VERSION = Constants.expoConfig?.version ?? '';
 
 // 二级页面路由：main 为主页，其余为子页面（v0.5.9 入口列表+二级页重构）
-type Page = 'main' | 'recurring' | 'reimburse' | 'categories' | 'sync' | 'backup' | 'prefs';
+type Page = 'main' | 'recurring' | 'categories' | 'sync' | 'backup' | 'prefs';
 
 // 子页面顶栏标题映射
 const PAGE_TITLES: Record<Exclude<Page, 'main'>, string> = {
   recurring: '周期记账',
-  reimburse: '报销管理',
   categories: '自定义分类',
   sync: '家庭同步',
   backup: '数据管理',
@@ -53,7 +51,6 @@ export default function ManageScreen({ active }: Props) {
   // ===== 主页数据：账户列表 + 各板块摘要 =====
   const [accounts, setAccounts] = useState<AccountBalance[]>([]);
   const [ruleCount, setRuleCount] = useState(0);          // 周期记账规则数
-  const [reimburseCount, setReimburseCount] = useState(0); // 待核销笔数
   const [catCount, setCatCount] = useState(0);             // 自定义分类数
   const [totalCount, setTotalCount] = useState(0);         // 本地记录总数
   const [budgetStr, setBudgetStr] = useState('');          // 月度预算（原始字符串）
@@ -64,14 +61,14 @@ export default function ManageScreen({ active }: Props) {
   // 弹窗状态
   const [accountModal, setAccountModal] = useState(false);
   const [transferModal, setTransferModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<AccountBalance | null>(null); // 非空=编辑模式
 
   // 主页摘要加载：账户 + 各板块计数 + 同步状态（一次并行读齐）
   const loadSummary = useCallback(async () => {
     try {
-      const [accs, rules, rsSum, cats, count, budget, cfg, name, family, serverUrl] = await Promise.all([
+      const [accs, rules, cats, count, budget, cfg, name, family, serverUrl] = await Promise.all([
         getAccounts(),
         getRecurringRules(),
-        getReimbursableSummary(),
         getCustomCategories(),
         getTotalCount(),
         getSetting(SETTING_KEYS.MONTHLY_BUDGET),
@@ -82,7 +79,6 @@ export default function ManageScreen({ active }: Props) {
       ]);
       setAccounts(accs);
       setRuleCount(rules.length);
-      setReimburseCount(rsSum.count);
       setCatCount(cats.length);
       setTotalCount(count);
       setBudgetStr(budget ?? '');
@@ -137,25 +133,30 @@ export default function ManageScreen({ active }: Props) {
     return () => sub.remove();
   }, [page]);
 
-  // ===== 账户 =====
-  const handleAddAccount = useCallback(async (name: string, type: AccountBalance['type'], emoji: string, color: string, initial: number) => {
+  // ===== 账户：新增 + 编辑 =====
+  const handleSaveAccount = useCallback(async (name: string, type: AccountBalance['type'], emoji: string, color: string, initial: number) => {
     if (!name.trim()) {
       hapticError();
       showToast('请输入账户名称', 'error');
       return;
     }
     try {
-      await addAccount(name.trim(), type, emoji, color, initial);
+      if (editingAccount) {
+        await updateAccount(editingAccount.id, name.trim(), type, emoji, color, initial);
+      } else {
+        await addAccount(name.trim(), type, emoji, color, initial);
+      }
       hapticSuccess();
-      showToast('账户已添加');
+      showToast(editingAccount ? '账户已更新' : '账户已添加');
       setAccountModal(false);
+      setEditingAccount(null);
       await loadSummary();
       DeviceEventEmitter.emit(LEDGER_EVENTS.ACCOUNTS_CHANGED);
     } catch {
       hapticError();
-      showToast('添加失败', 'error');
+      showToast(editingAccount ? '更新失败' : '添加失败', 'error');
     }
-  }, [loadSummary, showToast]);
+  }, [editingAccount, loadSummary, showToast]);
 
   const handleDeleteAccount = useCallback((acc: AccountBalance) => {
     if (acc.id === 1) {
@@ -211,7 +212,6 @@ export default function ManageScreen({ active }: Props) {
   // 功能入口列表（iOS 设置风格：图标 + 标题 + 状态摘要副标题）
   const entries: { icon: string; title: string; subtitle: string; target: Exclude<Page, 'main'> }[] = [
     { icon: '🔁', title: '周期记账', subtitle: `${ruleCount} 条规则`, target: 'recurring' },
-    { icon: '🧾', title: '报销管理', subtitle: reimburseCount > 0 ? `${reimburseCount} 笔待核销` : '暂无待核销', target: 'reimburse' },
     { icon: '🏷️', title: '分类管理', subtitle: `${catCount} 个`, target: 'categories' },
     { icon: '👨‍👩‍👧', title: '家庭同步', subtitle: syncSummary, target: 'sync' },
     { icon: '⚙️', title: '偏好设置', subtitle: budgetStr ? `月度预算 ¥${budgetStr}` : '未设置', target: 'prefs' },
@@ -250,16 +250,30 @@ export default function ManageScreen({ active }: Props) {
                     <Text style={[styles.accBalance, { color: acc.balance >= 0 ? COLORS.text : COLORS.danger }]}>
                       {formatMoney(acc.balance)}
                     </Text>
-                    {acc.id !== 1 ? (
-                      <Pressable onPress={() => handleDeleteAccount(acc)} hitSlop={8} style={styles.accDelete}>
-                        <Text style={styles.accDeleteText}>✕</Text>
+                    <View style={styles.accActions}>
+                      <Pressable
+                        onPress={() => { setEditingAccount(acc); setAccountModal(true); }}
+                        hitSlop={8}
+                        style={styles.accDelete}
+                        accessibilityRole="button"
+                        accessibilityLabel={`编辑${acc.name}`}
+                      >
+                        <Text style={styles.accDeleteText}>✎</Text>
                       </Pressable>
-                    ) : null}
+                      {acc.id !== 1 ? (
+                        <Pressable onPress={() => handleDeleteAccount(acc)} hitSlop={8} style={styles.accDelete}>
+                          <Text style={styles.accDeleteText}>✕</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   </View>
                 );
               })}
               <View style={styles.btnRow}>
-                <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={() => setAccountModal(true)}>
+                <Pressable
+                  style={[styles.actionBtn, { backgroundColor: COLORS.accent }]}
+                  onPress={() => { setEditingAccount(null); setAccountModal(true); }}
+                >
                   <Text style={styles.actionBtnText}>＋ 添加账户</Text>
                 </Pressable>
                 <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.transfer }]} onPress={() => setTransferModal(true)}>
@@ -311,8 +325,6 @@ export default function ManageScreen({ active }: Props) {
           </View>
           {page === 'recurring' ? (
             <RecurringScreen />
-          ) : page === 'reimburse' ? (
-            <ReimburseScreen />
           ) : page === 'categories' ? (
             <CategoriesScreen />
           ) : page === 'sync' ? (
@@ -325,11 +337,12 @@ export default function ManageScreen({ active }: Props) {
         </View>
       )}
 
-      {/* ===== 弹窗：添加账户 ===== */}
+      {/* ===== 弹窗：添加/编辑账户 ===== */}
       <AccountModal
         visible={accountModal}
-        onClose={() => setAccountModal(false)}
-        onSubmit={handleAddAccount}
+        editing={editingAccount}
+        onClose={() => { setAccountModal(false); setEditingAccount(null); }}
+        onSubmit={handleSaveAccount}
       />
       {/* ===== 弹窗：转账 ===== */}
       <TransferModal
@@ -344,9 +357,10 @@ export default function ManageScreen({ active }: Props) {
   );
 }
 
-// ===== 账户添加弹窗 =====
-function AccountModal({ visible, onClose, onSubmit }: {
+// ===== 账户添加/编辑弹窗（新增与编辑复用；editing 非空时预填为编辑模式） =====
+function AccountModal({ visible, editing, onClose, onSubmit }: {
   visible: boolean;
+  editing: AccountBalance | null;
   onClose: () => void;
   onSubmit: (name: string, type: AccountBalance['type'], emoji: string, color: string, initial: number) => void;
 }) {
@@ -357,20 +371,29 @@ function AccountModal({ visible, onClose, onSubmit }: {
   const [initial, setInitial] = useState('');
 
   useEffect(() => {
-    if (visible) {
+    if (!visible) return;
+    if (editing) {
+      // 编辑模式：预填当前账户信息
+      setName(editing.name);
+      setType(editing.type);
+      setEmoji(editing.emoji);
+      setColor(editing.color);
+      setInitial(editing.initialBalance ? String(editing.initialBalance) : '');
+    } else {
+      // 新增模式：重置默认值
       setName('');
       setType('cash');
-      setInitial('');
       const def = ACCOUNT_TYPES[0];
       setEmoji(def?.emoji ?? '💵');
       setColor(CATEGORY_COLORS[0]);
+      setInitial('');
     }
-  }, [visible]);
+  }, [visible, editing]);
 
   const submit = () => onSubmit(name, type, emoji, color, parseFloat(initial) || 0);
 
   return (
-    <Modal visible={visible} title="添加账户" fullscreen saveLabel="保存" onClose={onClose} onSave={submit}>
+    <Modal visible={visible} title={editing ? '编辑账户' : '添加账户'} fullscreen saveLabel="保存" onClose={onClose} onSave={submit}>
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>账户类型</Text>
         <View style={styles.typeGrid}>
@@ -575,6 +598,11 @@ const styles = StyleSheet.create({
   accBalance: {
     fontSize: FONT_SIZE.md,
     fontWeight: '700',
+  },
+  accActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   accDelete: {
     width: 26,
