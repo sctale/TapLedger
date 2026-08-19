@@ -72,8 +72,15 @@ npm run typecheck
 | POST | `/api/family/invite/regenerate` | 重置邀请码（owner） | Bearer |
 | DELETE | `/api/family/members/:userId` | 移除成员（owner，不可移除自己） | Bearer |
 | POST | `/api/family/leave` | 退出/解散家庭 | Bearer |
-| POST | `/api/sync/pull` | 拉取增量 `{since}` → `{serverTime, changes}` | Bearer |
-| POST | `/api/sync/push` | 上传变更 `{changes}` → `{applied, rejected}` | Bearer |
+| GET | `/api/ledgers` | 列出当前用户可访问的账本（个人 + 家庭） | Bearer |
+| POST | `/api/sync/pull` | 拉取增量 `{since, ledgerId}` → `{serverTime, changes}` | Bearer |
+| POST | `/api/sync/push` | 上传变更 `{ledgerId, changes}` → `{applied, rejected}` | Bearer |
+
+### 个人账本 / 家庭账本
+
+- 注册时自动为用户创建独立「个人账本」（老用户惰性补建），仅本人可读写，与家庭账本数据隔离
+- `GET /api/ledgers` 返回该用户可访问的全部账本（`type: personal | family`），客户端据此提供账本切换
+- `sync/pull`、`sync/push` 均需携带 `ledgerId`，服务端校验用户对该账本的读写权限；不存在或无权访问返回 403
 
 ### 同步协议（本地优先 + LWW）
 

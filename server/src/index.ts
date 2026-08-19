@@ -3,6 +3,7 @@ import cors from 'cors';
 import authRoutes, { meRouter } from './routes/auth';
 import familyRoutes from './routes/family';
 import syncRoutes from './routes/sync';
+import ledgerRoutes from './routes/ledgers';
 import healthRoutes from './routes/health';
 import { loginRateLimit } from './auth';
 
@@ -20,6 +21,7 @@ app.use('/api/auth/login', loginRateLimit);
 app.use('/api/auth', authRoutes);
 app.use('/api', meRouter); // /api/me（GET 查询 / PUT 改资料）
 app.use('/api/family', familyRoutes);
+app.use('/api/ledgers', ledgerRoutes);
 app.use('/api/sync', syncRoutes);
 
 // 404

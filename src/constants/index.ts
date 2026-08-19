@@ -279,6 +279,8 @@ export const SETTING_KEYS = {
   SYNC_LAST_PUSH_AT: 'sync.last_push_at',   // 本地 updated_at 水位
   SYNC_LAST_SYNC_TIME: 'sync.last_sync_time', // 上次同步完成的人类时间戳
   SYNC_MEMBERS_JSON: 'sync.members_json',   // 家庭成员缓存（v0.5 记账人标识）
+  SYNC_ACTIVE_LEDGER_ID: 'sync.active_ledger_id',   // 当前账本 id（个人/家庭）
+  SYNC_ACTIVE_LEDGER_NAME: 'sync.active_ledger_name', // 当前账本名
 } as const;
 
 // 生成同步 uuid（时间戳36进制 + 随机串，家庭场景碰撞概率可忽略）

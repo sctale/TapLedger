@@ -10,7 +10,8 @@ import Toast from '../../components/Toast';
 import LoginModal from '../../components/LoginModal';
 import FamilyModal from '../../components/FamilyModal';
 import { runSync, claimLocalRecordsAsUser, isSyncing } from '../../sync/syncEngine';
-import { apiHealth, apiGetFamily } from '../../sync/apiClient';
+import { apiHealth, apiGetFamily, apiGetLedgers } from '../../sync/apiClient';
+import type { LedgerInfo } from '../../sync/serverTypes';
 import { manageStyles } from './sharedStyles';
 
 // 同步时间的友好显示（从 ManageScreen 迁移）
@@ -59,6 +60,34 @@ const extraStyles = StyleSheet.create({
     color: COLORS.textTertiary,
     marginTop: 1,
   },
+  ledgerRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  ledgerChip: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+  },
+  ledgerChipActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  ledgerChipText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  ledgerChipTextActive: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
   logoutRow: {
     alignItems: 'center',
     paddingVertical: SPACING.sm,
@@ -92,11 +121,15 @@ export default function SyncScreen() {
   const [lastSyncTime, setLastSyncTime] = useState(0);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncUid, setSyncUid] = useState(0);
+  const [ledgers, setLedgers] = useState<LedgerInfo[]>([]);      // 可用账本（个人+家庭）
+  const [activeLedgerId, setActiveLedgerId] = useState(0);
+  const [activeLedgerName, setActiveLedgerName] = useState('');
+  const [ledgerSwitchBusy, setLedgerSwitchBusy] = useState(false);
 
   // 读取同步配置（reload 时一并刷新）
   const loadSyncState = useCallback(async () => {
     try {
-      const [url, token, name, avatar, family, lastSync, uid] = await Promise.all([
+      const [url, token, name, avatar, family, lastSync, uid, actId, actName] = await Promise.all([
         getSetting(SETTING_KEYS.SYNC_SERVER_URL),
         getSetting(SETTING_KEYS.SYNC_TOKEN),
         getSetting(SETTING_KEYS.SYNC_USER_DISPLAY),
@@ -104,6 +137,8 @@ export default function SyncScreen() {
         getSetting('sync.family_name'),
         getSetting(SETTING_KEYS.SYNC_LAST_SYNC_TIME),
         getSetting(SETTING_KEYS.SYNC_USER_ID),
+        getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID),
+        getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME),
       ]);
       setServerUrl(url ?? '');
       setServerUrlDraft(url ?? '');
@@ -113,6 +148,27 @@ export default function SyncScreen() {
       setFamilyName(family ?? '');
       setLastSyncTime(Number(lastSync ?? '0') || 0);
       setSyncUid(Number(uid ?? '0') || 0);
+      const actIdNum = Number(actId ?? '0') || 0;
+      setActiveLedgerId(actIdNum);
+      setActiveLedgerName(actName ?? '');
+      // 登录后拉取账本列表
+      if (url && token) {
+        try {
+          const { ledgers: list } = await apiGetLedgers(url, token);
+          setLedgers(list);
+          // 未显式选中 → 自动选中个人账本
+          const personal = list.find((l) => l.type === 'personal');
+          const target = list.find((l) => l.id === actIdNum) || personal;
+          if (target && target.id !== actIdNum) {
+            setActiveLedgerId(target.id);
+            setActiveLedgerName(target.name);
+            saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(target.id));
+            saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, target.name);
+          }
+        } catch {
+          // 账本列表拉取失败不阻断
+        }
+      }
     } catch {
       // 同步配置读取失败保持现状
     }
@@ -244,6 +300,33 @@ export default function SyncScreen() {
     loadSyncState();
   }, [serverUrl, syncToken, syncBusy, showToast, loadSyncState]);
 
+  // 切换当前账本（个人/家庭）
+  const handleSwitchLedger = useCallback(async (target: LedgerInfo) => {
+    if (!serverUrl || !syncToken || target.id === activeLedgerId) return;
+    if (ledgerSwitchBusy || syncBusy) return;
+    setLedgerSwitchBusy(true);
+    try {
+      await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(target.id));
+      await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, target.name);
+      setActiveLedgerId(target.id);
+      setActiveLedgerName(target.name);
+      // 切账本后拉取该账本数据到本地展示
+      const res = await runSync();
+      if (res.ok) {
+        hapticSuccess();
+        showToast(`已切换到「${target.name}」${res.pushed + res.pulled > 0 ? `，上传 ${res.pushed} / 下载 ${res.pulled}` : ''}`);
+      } else {
+        showToast(res.error ?? '同步失败', 'error');
+      }
+    } catch (e) {
+      hapticError();
+      showToast(e instanceof Error ? e.message : '切换失败', 'error');
+    } finally {
+      setLedgerSwitchBusy(false);
+      loadSyncState();
+    }
+  }, [serverUrl, syncToken, activeLedgerId, ledgerSwitchBusy, syncBusy, showToast, loadSyncState]);
+
   // 退出登录（保留服务器地址）
   const handleLogout = useCallback(async () => {
     Alert.alert('退出登录', '退出后停止同步（本地数据保留）。确定？', [
@@ -259,11 +342,16 @@ export default function SyncScreen() {
             saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, ''),
             saveSetting('sync.family_name', ''),
             saveSetting(SETTING_KEYS.SYNC_MEMBERS_JSON, ''), // 清空成员缓存（v0.5）
+            saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, '0'),
+            saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, ''),
           ]);
           setSyncToken('');
           setLoggedName('');
           setLoggedAvatar('');
           setFamilyName('');
+          setLedgers([]);
+          setActiveLedgerId(0);
+          setActiveLedgerName('');
           hapticLight();
           showToast('已退出登录');
           DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
@@ -316,16 +404,43 @@ export default function SyncScreen() {
                   </Text>
                 </View>
               </View>
+              {/* 账本选择（个人/家庭） */}
+              {ledgers.length > 0 ? (
+                <>
+                  <Text style={styles.label}>账本</Text>
+                  <View style={styles.ledgerRow}>
+                    {ledgers.map((l) => {
+                      const active = l.id === activeLedgerId;
+                      return (
+                        <Pressable
+                          key={l.id}
+                          style={[styles.ledgerChip, active && styles.ledgerChipActive]}
+                          onPress={() => handleSwitchLedger(l)}
+                          disabled={ledgerSwitchBusy || syncBusy}
+                          accessibilityRole="tab"
+                          accessibilityLabel={`${l.type === 'personal' ? '个人账本' : '家庭账本'}`}
+                          accessibilityState={{ selected: active }}
+                        >
+                          <Text style={[styles.ledgerChipText, active && styles.ledgerChipTextActive]}>
+                            {l.type === 'personal' ? '👤 个人账本' : '👨‍👩‍👧 家庭账本'}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {ledgerSwitchBusy ? (
+                    <Text style={styles.hint}>正在切换账本并拉取数据…</Text>
+                  ) : null}
+                </>
+              ) : null}
               <View style={styles.btnRow}>
-                {familyName ? (
-                  <Pressable
-                    style={[styles.actionBtn, { backgroundColor: COLORS.accent, opacity: syncBusy ? 0.6 : 1 }]}
-                    onPress={handleSyncNow}
-                    disabled={syncBusy}
-                  >
-                    <Text style={styles.actionBtnText}>{syncBusy ? '同步中…' : '🔄 立即同步'}</Text>
-                  </Pressable>
-                ) : null}
+                <Pressable
+                  style={[styles.actionBtn, { backgroundColor: COLORS.accent, opacity: syncBusy ? 0.6 : 1 }]}
+                  onPress={handleSyncNow}
+                  disabled={syncBusy}
+                >
+                  <Text style={styles.actionBtnText}>{syncBusy ? '同步中…' : '🔄 立即同步'}</Text>
+                </Pressable>
                 <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.transfer }]} onPress={() => setFamilyModal(true)}>
                   <Text style={styles.actionBtnText}>👨‍👩‍👧 家庭管理</Text>
                 </Pressable>

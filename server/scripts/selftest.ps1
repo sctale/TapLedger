@@ -1,4 +1,4 @@
-﻿# TapLedger server 全链路自测脚本
+# TapLedger server 全链路自测脚本
 $BASE = 'http://localhost:8420'
 $ErrorActionPreference = 'Stop'
 $fail = 0
@@ -19,6 +19,7 @@ Step '3. dad 创建家庭'
 $hdrDad = @{ Authorization = "Bearer $($dad.token)" }
 $family = Invoke-RestMethod "$BASE/api/family" -Method Post -Headers $hdrDad -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes('{"name":"我们家"}'))
 $code = $family.family.inviteCode
+$fid = $family.family.id
 Write-Host "family=$($family.family.name) inviteCode=$code"
 if (-not $code) { throw '建家失败' }
 
@@ -34,6 +35,7 @@ Write-Host ($members.members | ForEach-Object { "$($_.avatarEmoji)$($_.displayNa
 Step '6. dad push 一条记录 + 一个账户'
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $pushBody = @{
+  ledgerId = $fid
   records = @(@{ uuid = 'test-rec-0001'; amount = 25.5; category = 'food'; type = 'expense'; note = '午饭'; date = '2026-08-16'; timestamp = $now; accountUuid = 'test-acc-0001'; reimbursable = 0; reimbursed = 0; updatedAt = $now; deleted = 0 })
   accounts = @(@{ uuid = 'test-acc-0001'; name = '现金'; type = 'cash'; emoji = '💵'; color = '#FFB74D'; initialBalance = 1000; sort = 0; updatedAt = $now; deleted = 0 })
 } | ConvertTo-Json -Depth 5
@@ -42,7 +44,7 @@ Write-Host "applied=$($push.applied) rejected=$($push.rejected)"
 if ($push.applied -ne 2) { throw 'push 失败' }
 
 Step '7. mom pull 看到 dad 的记录'
-$pull = Invoke-RestMethod "$BASE/api/sync/pull" -Method Post -Headers $hdrMom -ContentType 'application/json' -Body '{"since":0}'
+$pull = Invoke-RestMethod "$BASE/api/sync/pull" -Method Post -Headers $hdrMom -ContentType 'application/json' -Body "{`"since`":0,`"ledgerId`":$fid}"
 Write-Host "records=$($pull.changes.records.Count) accounts=$($pull.changes.accounts.Count) note=$($pull.changes.records[0].note)"
 if ($pull.changes.records.Count -lt 1) { throw 'pull 失败' }
 $serverTime = $pull.serverTime

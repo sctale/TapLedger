@@ -107,6 +107,7 @@ export default function ReimburseScreen() {
           <RecordList
             records={reimburseRecords}
             accountNames={accountNames}
+            showDate
           />
         ) : (
           <Text style={styles.emptyText}>暂无报销记录</Text>

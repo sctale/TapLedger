@@ -1,7 +1,7 @@
 // 后端 API 客户端：fetch 封装 + token 注入 + 超时 + 错误语义化
 import { SETTING_KEYS } from '../constants';
 import { getSetting } from '../database/ledgerDB';
-import type { AuthUser, FamilyInfo, FamilyMember, SyncChanges } from './serverTypes';
+import type { AuthUser, FamilyInfo, FamilyMember, LedgerInfo, SyncChanges } from './serverTypes';
 
 export class ApiError extends Error {
   status: number;
@@ -112,17 +112,22 @@ export async function apiUpdateMe(baseUrl: string, token: string, patch: { displ
   return request<{ user: AuthUser }>(baseUrl, '/api/me', { method: 'PUT', body: patch, token });
 }
 
+// 当前用户的账本列表（个人账本 + 家庭账本）
+export async function apiGetLedgers(baseUrl: string, token: string) {
+  return request<{ ledgers: LedgerInfo[] }>(baseUrl, '/api/ledgers', { method: 'GET', token });
+}
+
 // ===== 同步 =====
 
-export async function apiSyncPull(baseUrl: string, token: string, since: number) {
+export async function apiSyncPull(baseUrl: string, token: string, since: number, ledgerId: number) {
   return request<{ serverTime: number; changes: SyncChanges }>(baseUrl, '/api/sync/pull', {
-    method: 'POST', body: { since }, token,
+    method: 'POST', body: { since, ledgerId }, token,
   });
 }
 
-export async function apiSyncPush(baseUrl: string, token: string, changes: Partial<SyncChanges>) {
+export async function apiSyncPush(baseUrl: string, token: string, changes: Partial<SyncChanges>, ledgerId: number) {
   return request<{ serverTime: number; applied: number; rejected: number }>(baseUrl, '/api/sync/push', {
-    method: 'POST', body: changes, token,
+    method: 'POST', body: { ...changes, ledgerId }, token,
   });
 }
 

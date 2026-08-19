@@ -47,14 +47,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
   const user = db.prepare(
-    `SELECT id, username, display_name, avatar_emoji, family_id, family_role FROM users WHERE id = ?`
+    `SELECT id, username, display_name, avatar_emoji, family_id, family_role, personal_family_id FROM users WHERE id = ?`
   ).get(payload.uid) as
-    | { id: number; username: string; display_name: string; avatar_emoji: string; family_id: number | null; family_role: 'owner' | 'member' | null }
+    | { id: number; username: string; display_name: string; avatar_emoji: string; family_id: number | null; family_role: 'owner' | 'member' | null; personal_family_id: number | null }
     | undefined;
   if (!user) {
     res.status(401).json({ error: '用户不存在' });
     return;
   }
+  // 老用户/新用户统一确保存在个人账本
+  const personalFid = user.personal_family_id ?? ensurePersonalLedger(user.id, user.display_name);
   req.authUser = {
     id: user.id,
     username: user.username,
@@ -62,8 +64,34 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     avatarEmoji: user.avatar_emoji,
     familyId: user.family_id,
     familyRole: user.family_role,
+    personalLedgerId: personalFid,
+    personalLedgerName: user.display_name,
   };
   next();
+}
+
+// 确保用户存在个人账本（注册时建；老用户惰性补建），返回个人账本 id
+export function ensurePersonalLedger(userId: number, displayName: string): number {
+  const existing = db.prepare('SELECT personal_family_id FROM users WHERE id = ?').get(userId) as
+    | { personal_family_id: number | null }
+    | undefined;
+  if (existing && existing.personal_family_id != null) {
+    return existing.personal_family_id;
+  }
+  const tx = db.transaction(() => {
+    const code = `P${userId}${String(Date.now()).slice(-6)}`;
+    const info = db.prepare(
+      "INSERT INTO families (name, invite_code, owner_id, type, created_at) VALUES (?, ?, ?, 'personal', ?)"
+    ).run(displayName || '个人账本', code, userId, Date.now());
+    db.prepare('UPDATE users SET personal_family_id = ? WHERE id = ?').run(info.lastInsertRowid, userId);
+    return info.lastInsertRowid as number;
+  });
+  return tx();
+}
+
+// 校验用户对某账本（家庭/个人）是否有读写权限
+export function canAccessLedger(user: AuthUser, ledgerId: number): boolean {
+  return ledgerId === user.personalLedgerId || ledgerId === user.familyId;
 }
 
 // 要求已加入家庭（同步接口前置）

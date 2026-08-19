@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { requireAuth, requireFamily } from '../auth';
+import { requireAuth, canAccessLedger } from '../auth';
 import type { SyncChanges } from '../types';
 
 const router = Router();
-router.use(requireAuth, requireFamily);
+router.use(requireAuth);
 
 // ===== 校验 schema =====
 const uuidSchema = z.string().min(8).max(64);
@@ -82,6 +82,7 @@ const customCategorySchema = z.object({
 
 const pullSchema = z.object({
   since: z.number().int().nonnegative().default(0),
+  ledgerId: z.number().int().positive(),
 });
 
 // ===== 通用 LWW upsert（仅当传入 updated_at 更新时覆盖）=====
@@ -140,34 +141,49 @@ const UPSERTS = {
 // POST /api/sync/pull —— 拉取 since 之后的全部变更（含墓碑）
 router.post('/pull', (req, res) => {
   const parsed = pullSchema.safeParse(req.body ?? {});
-  const since = parsed.success ? parsed.data.since : 0;
-  const familyId = req.authUser!.familyId!;
+  if (!parsed.success) {
+    res.status(400).json({ error: '缺少账本参数 ledgerId' });
+    return;
+  }
+  const { since, ledgerId } = parsed.data;
+  if (!canAccessLedger(req.authUser!, ledgerId)) {
+    res.status(403).json({ error: '无权访问该账本' });
+    return;
+  }
 
   const changes: SyncChanges = {
     records: db.prepare(
       'SELECT uuid, family_id as familyId, user_id as userId, amount, category, type, note, date, timestamp, account_uuid as accountUuid, reimbursable, reimbursed, updated_at as updatedAt, deleted FROM records WHERE family_id = ? AND updated_at > ?'
-    ).all(familyId, since) as never,
+    ).all(ledgerId, since) as never,
     accounts: db.prepare(
       'SELECT uuid, family_id as familyId, name, type, emoji, color, initial_balance as initialBalance, sort, updated_at as updatedAt, deleted FROM accounts WHERE family_id = ? AND updated_at > ?'
-    ).all(familyId, since) as never,
+    ).all(ledgerId, since) as never,
     transfers: db.prepare(
       'SELECT uuid, family_id as familyId, from_account_uuid as fromAccountUuid, to_account_uuid as toAccountUuid, amount, date, note, timestamp, updated_at as updatedAt, deleted FROM transfers WHERE family_id = ? AND updated_at > ?'
-    ).all(familyId, since) as never,
+    ).all(ledgerId, since) as never,
     recurring: db.prepare(
       'SELECT uuid, family_id as familyId, user_id as userId, name, amount, type, category, account_uuid as accountUuid, frequency, day_of_week as dayOfWeek, day_of_month as dayOfMonth, month_of_year as monthOfYear, note, enabled, last_generated as lastGenerated, updated_at as updatedAt, deleted FROM recurring WHERE family_id = ? AND updated_at > ?'
-    ).all(familyId, since) as never,
+    ).all(ledgerId, since) as never,
     customCategories: db.prepare(
       'SELECT uuid, family_id as familyId, key, label, emoji, color, type, updated_at as updatedAt, deleted FROM custom_categories WHERE family_id = ? AND updated_at > ?'
-    ).all(familyId, since) as never,
+    ).all(ledgerId, since) as never,
   };
   res.json({ serverTime: Date.now(), changes });
 });
 
 // POST /api/sync/push —— 上传本地变更（逐条 LWW upsert，冲突旧版本被拒绝）
 router.post('/push', (req, res) => {
-  const familyId = req.authUser!.familyId!;
-  const userId = req.authUser!.id;
   const body = req.body ?? {};
+  const ledgerId = Number(body.ledgerId);
+  if (!Number.isInteger(ledgerId) || ledgerId <= 0) {
+    res.status(400).json({ error: '缺少账本参数 ledgerId' });
+    return;
+  }
+  if (!canAccessLedger(req.authUser!, ledgerId)) {
+    res.status(403).json({ error: '无权访问该账本' });
+    return;
+  }
+  const userId = req.authUser!.id;
 
   let applied = 0;
   let rejected = 0;
@@ -180,31 +196,31 @@ router.post('/push', (req, res) => {
     for (const raw of Array.isArray(body.records) ? body.records : []) {
       const p = recordSchema.safeParse(raw);
       if (!p.success) { rejected++; continue; }
-      const info = UPSERTS.records.run({ ...p.data, familyId, userId });
+      const info = UPSERTS.records.run({ ...p.data, familyId: ledgerId, userId });
       count(info.changes > 0);
     }
     for (const raw of Array.isArray(body.accounts) ? body.accounts : []) {
       const p = accountSchema.safeParse(raw);
       if (!p.success) { rejected++; continue; }
-      const info = UPSERTS.accounts.run({ ...p.data, familyId });
+      const info = UPSERTS.accounts.run({ ...p.data, familyId: ledgerId });
       count(info.changes > 0);
     }
     for (const raw of Array.isArray(body.transfers) ? body.transfers : []) {
       const p = transferSchema.safeParse(raw);
       if (!p.success) { rejected++; continue; }
-      const info = UPSERTS.transfers.run({ ...p.data, familyId });
+      const info = UPSERTS.transfers.run({ ...p.data, familyId: ledgerId });
       count(info.changes > 0);
     }
     for (const raw of Array.isArray(body.recurring) ? body.recurring : []) {
       const p = recurringSchema.safeParse(raw);
       if (!p.success) { rejected++; continue; }
-      const info = UPSERTS.recurring.run({ ...p.data, familyId, userId });
+      const info = UPSERTS.recurring.run({ ...p.data, familyId: ledgerId, userId });
       count(info.changes > 0);
     }
     for (const raw of Array.isArray(body.customCategories) ? body.customCategories : []) {
       const p = customCategorySchema.safeParse(raw);
       if (!p.success) { rejected++; continue; }
-      const info = UPSERTS.custom_categories.run({ ...p.data, familyId });
+      const info = UPSERTS.custom_categories.run({ ...p.data, familyId: ledgerId });
       count(info.changes > 0);
     }
   });

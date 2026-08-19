@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { db } from '../db';
-import { requireAuth, signToken } from '../auth';
+import { requireAuth, signToken, ensurePersonalLedger } from '../auth';
 import type { AuthUser } from '../types';
 
 const router = Router();
@@ -28,7 +28,8 @@ const updateMeSchema = z.object({
 function toAuthUser(row: {
   id: number; username: string; display_name: string; avatar_emoji: string;
   family_id: number | null; family_role: 'owner' | 'member' | null;
-}): AuthUser {
+}) {
+  const personalFid = ensurePersonalLedger(row.id, row.display_name);
   return {
     id: row.id,
     username: row.username,
@@ -36,7 +37,9 @@ function toAuthUser(row: {
     avatarEmoji: row.avatar_emoji,
     familyId: row.family_id,
     familyRole: row.family_role,
-  };
+    personalLedgerId: personalFid,
+    personalLedgerName: row.display_name,
+  } satisfies AuthUser;
 }
 
 // POST /api/auth/register

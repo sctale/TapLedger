@@ -22,14 +22,18 @@ db.exec(`
     avatar_emoji TEXT NOT NULL DEFAULT '🙂',
     family_id INTEGER,
     family_role TEXT CHECK(family_role IN ('owner', 'member') OR family_role IS NULL),
+    personal_family_id INTEGER,
     created_at INTEGER NOT NULL
   );
 
+  -- 账本统一表：family 语义泛化为 ledger。type='personal' 个人账本（注册自动创建，仅本人读写）；
+  -- type='family' 家庭账本（原家庭，多人共享）。
   CREATE TABLE IF NOT EXISTS families (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     invite_code TEXT NOT NULL UNIQUE,
     owner_id INTEGER NOT NULL,
+    type TEXT NOT NULL DEFAULT 'family' CHECK(type IN ('personal', 'family')),
     created_at INTEGER NOT NULL
   );
 
@@ -114,6 +118,21 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_custom_cats_family_updated ON custom_categories(family_id, updated_at);
 `);
+
+// ===== 存量库迁移（新列）=====
+// 若列不存在则 ALTER TABLE 补充，保证老库升级后字段一致
+function hasColumn(table: string, column: string): boolean {
+  const cols = db.pragma(`table_info(${table})`) as { name: string }[];
+  return cols.some((c) => c.name === column);
+}
+if (hasColumn('families', 'type')) {
+  // 已存在则跳过
+} else {
+  db.exec("ALTER TABLE families ADD COLUMN type TEXT NOT NULL DEFAULT 'family' CHECK(type IN ('personal', 'family'))");
+}
+if (!hasColumn('users', 'personal_family_id')) {
+  db.exec('ALTER TABLE users ADD COLUMN personal_family_id INTEGER');
+}
 
 // 生成 6 位大写字母数字邀请码（避开易混淆字符）
 export function genInviteCode(): string {

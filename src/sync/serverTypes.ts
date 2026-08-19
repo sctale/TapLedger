@@ -84,6 +84,18 @@ export interface AuthUser {
   avatarEmoji: string;
   familyId: number | null;
   familyRole: 'owner' | 'member' | null;
+  personalLedgerId: number | null;  // 个人账本 id（注册自动创建）
+  personalLedgerName: string;       // 个人账本名
+}
+
+export type LedgerType = 'personal' | 'family';
+
+// 用户可访问的账本（个人账本 + 家庭账本）
+export interface LedgerInfo {
+  id: number;
+  name: string;
+  type: LedgerType;
+  role: 'owner' | 'member';
 }
 
 export interface FamilyInfo {

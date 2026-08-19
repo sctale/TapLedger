@@ -3,7 +3,7 @@
 import { DeviceEventEmitter } from 'react-native';
 import { LEDGER_EVENTS, SETTING_KEYS } from '../constants';
 import { getDB, saveSetting, getSetting } from '../database/ledgerDB';
-import { apiSyncPull, apiSyncPush, getSyncConfig, ApiError } from './apiClient';
+import { apiSyncPull, apiSyncPush, apiGetLedgers, getSyncConfig, ApiError } from './apiClient';
 import type {
   SyncAccountDTO, SyncChanges, SyncCustomCategoryDTO, SyncRecordDTO,
   SyncRecurringDTO, SyncTransferDTO,
@@ -20,6 +20,25 @@ let syncing = false;
 
 export function isSyncing(): boolean {
   return syncing;
+}
+
+// 解析当前同步账本 id（未显式选择 → 取个人账本兜底）
+async function resolveActiveLedgerId(baseUrl: string, token: string): Promise<number> {
+  const saved = await getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID);
+  const savedId = Number(saved ?? '0') || 0;
+  if (savedId > 0) return savedId;
+  const { ledgers } = await apiGetLedgers(baseUrl, token)
+    .catch(() => ({ ledgers: [] as { type: string; id: number }[] }));
+  const personal = ledgers.find((l) => l.type === 'personal');
+  if (personal) {
+    await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(personal.id));
+  }
+  return personal?.id ?? 0;
+}
+
+// 每本账本独立水位 key（避免个人/家庭切换后互相污染）
+function watermarkKey(base: string, ledgerId: number): string {
+  return `${base}.${ledgerId}`;
 }
 
 // ===== push：收集本地 updated_at > 水位 的变更 =====
@@ -232,24 +251,31 @@ export async function runSync(): Promise<SyncResult> {
   }
   syncing = true;
   try {
+    // --- 确定当前账本 ---
+    const ledgerId = await resolveActiveLedgerId(config.baseUrl, config.token);
+    if (!ledgerId) {
+      return { ok: false, pushed: 0, pulled: 0, error: '未选择账本，请在同步页选择个人/家庭账本' };
+    }
+
     // --- push ---
-    const lastPushStr = await getSetting(SETTING_KEYS.SYNC_LAST_PUSH_AT);
+    const lastPushStr = await getSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PUSH_AT, ledgerId));
     const lastPushAt = Number(lastPushStr ?? '0') || 0;
     const { changes, maxLocalTs } = await collectPushChanges(lastPushAt);
     const pushCount = Object.values(changes).reduce((s, arr) => s + (arr?.length ?? 0), 0);
     if (pushCount > 0) {
-      const pushRes = await apiSyncPush(config.baseUrl, config.token, changes);
-      await saveSetting(SETTING_KEYS.SYNC_LAST_PUSH_AT, String(maxLocalTs));
+      const pushRes = await apiSyncPush(config.baseUrl, config.token, changes, ledgerId);
+      await saveSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PUSH_AT, ledgerId), String(maxLocalTs));
+      // 首次登录/老用户：同步即视为已确认归属，后续无需重复 claim
     } else {
       // 无变更也推进水位（本地无新数据时水位无意义，保持）
     }
 
     // --- pull ---
-    const lastPullStr = await getSetting(SETTING_KEYS.SYNC_LAST_PULL_AT);
+    const lastPullStr = await getSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PULL_AT, ledgerId));
     const lastPullAt = Number(lastPullStr ?? '0') || 0;
-    const pullRes = await apiSyncPull(config.baseUrl, config.token, lastPullAt);
+    const pullRes = await apiSyncPull(config.baseUrl, config.token, lastPullAt, ledgerId);
     const pulled = await applyPullChanges(pullRes.changes);
-    await saveSetting(SETTING_KEYS.SYNC_LAST_PULL_AT, String(pullRes.serverTime));
+    await saveSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PULL_AT, ledgerId), String(pullRes.serverTime));
     await saveSetting(SETTING_KEYS.SYNC_LAST_SYNC_TIME, String(Date.now()));
 
     // 有数据落库 → 通知页面刷新
