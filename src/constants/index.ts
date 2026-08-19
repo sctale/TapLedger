@@ -263,7 +263,6 @@ export function getFrequencyLabel(f: RecurringFrequency): string {
 export const LEDGER_EVENTS = {
   RECORDED: 'ledger:recorded',
   DATA_IMPORTED: 'ledger:data_imported',
-  ACCOUNTS_CHANGED: 'ledger:accounts_changed',
   CATEGORIES_CHANGED: 'ledger:categories_changed',
   SYNC_DONE: 'ledger:sync_done',       // 一轮同步完成
   AUTH_CHANGED: 'ledger:auth_changed', // 登录态变化（登录/退出/加入家庭）

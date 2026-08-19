@@ -1,5 +1,6 @@
 import type { LedgerRecord, RecurringRule } from '../types';
-import { addRecord, getRecurringRules, setRecurringLastGenerated } from '../database/ledgerDB';
+import { addRecord, getRecurringRules, setRecurringLastGenerated, getSetting } from '../database/ledgerDB';
+import { SETTING_KEYS } from '../constants';
 import { formatDate } from './dateUtils';
 
 // 计算某规则在 date 这天是否应该生成
@@ -45,6 +46,9 @@ export async function runRecurringCheck(): Promise<number> {
   const rules = await getRecurringRules();
   const today = new Date();
   let generated = 0;
+  // 周期记录归属当前登录用户（未登录时为 0，家庭账本中能正确显示记账人）
+  const uidStr = await getSetting(SETTING_KEYS.SYNC_USER_ID);
+  const syncUserId = Number(uidStr ?? '0') || 0;
 
   for (const rule of rules) {
     if (!rule.enabled) continue;
@@ -60,7 +64,9 @@ export async function runRecurringCheck(): Promise<number> {
       rule.category,
       rule.type,
       dueStr,
-      rule.note || rule.name
+      rule.note || rule.name,
+      false,
+      { userId: syncUserId }
     );
     await setRecurringLastGenerated(rule.id, dueStr);
     generated++;

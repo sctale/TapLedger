@@ -95,7 +95,6 @@ export default function DataManageScreen() {
       await resetPersonalLedger();
       showToast('个人账本已重置');
       DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
-      DeviceEventEmitter.emit(LEDGER_EVENTS.ACCOUNTS_CHANGED);
       DeviceEventEmitter.emit(LEDGER_EVENTS.CATEGORIES_CHANGED);
       DeviceEventEmitter.emit(LEDGER_EVENTS.SETTINGS_CHANGED);
       await reload();

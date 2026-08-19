@@ -85,83 +85,85 @@ async function collectPushChanges(sinceTs: number): Promise<{ changes: Partial<S
 async function applyPullChanges(changes: SyncChanges): Promise<number> {
   const db = await getDB();
   let applied = 0;
-
-  // 1) 记录
-  for (const r of changes.records) {
-    const local = await db.getFirstAsync<{ id: number; updated_at: number }>(
-      'SELECT id, updated_at FROM ledger_records WHERE uuid = ?', [r.uuid]
-    );
-    if (local) {
-      if (r.updatedAt > local.updated_at) {
+  // 整体包事务：任一条失败即整体回滚，避免半程写入导致下次漏拉（水位不一致）
+  await db.withTransactionAsync(async () => {
+    // 1) 记录
+    for (const r of changes.records) {
+      const local = await db.getFirstAsync<{ id: number; updated_at: number }>(
+        'SELECT id, updated_at FROM ledger_records WHERE uuid = ?', [r.uuid]
+      );
+      if (local) {
+        if (r.updatedAt > local.updated_at) {
+          await db.runAsync(
+            `UPDATE ledger_records SET amount = ?, category = ?, type = ?, note = ?, date = ?, timestamp = ?,
+             reimbursable = ?, reimbursed = ?, user_id = ?, updated_at = ?, deleted = ?
+             WHERE id = ?`,
+            [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
+             r.reimbursable, r.reimbursed, r.userId, r.updatedAt, r.deleted, local.id]
+          );
+          applied++;
+        }
+      } else {
         await db.runAsync(
-          `UPDATE ledger_records SET amount = ?, category = ?, type = ?, note = ?, date = ?, timestamp = ?,
-           reimbursable = ?, reimbursed = ?, user_id = ?, updated_at = ?, deleted = ?
-           WHERE id = ?`,
+          `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, account_id, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, account_uuid)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
-           r.reimbursable, r.reimbursed, r.userId, r.updatedAt, r.deleted, local.id]
+           1, r.reimbursable, r.reimbursed, r.uuid, r.userId, r.updatedAt, r.deleted, '']
         );
         applied++;
       }
-    } else {
-      await db.runAsync(
-        `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, account_id, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, account_uuid)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
-         1, r.reimbursable, r.reimbursed, r.uuid, r.userId, r.updatedAt, r.deleted, '']
-      );
-      applied++;
     }
-  }
 
-  // 2) 周期规则
-  for (const r of changes.recurring) {
-    const local = await db.getFirstAsync<{ id: number; updated_at: number }>(
-      'SELECT id, updated_at FROM recurring_rules WHERE uuid = ?', [r.uuid]
-    );
-    if (local) {
-      if (r.updatedAt > local.updated_at) {
+    // 2) 周期规则
+    for (const r of changes.recurring) {
+      const local = await db.getFirstAsync<{ id: number; updated_at: number }>(
+        'SELECT id, updated_at FROM recurring_rules WHERE uuid = ?', [r.uuid]
+      );
+      if (local) {
+        if (r.updatedAt > local.updated_at) {
+          await db.runAsync(
+            `UPDATE recurring_rules SET name = ?, amount = ?, type = ?, category = ?, account_id = 1, account_uuid = '',
+             frequency = ?, day_of_week = ?, day_of_month = ?, month_of_year = ?, note = ?, enabled = ?,
+             last_generated = ?, user_id = ?, updated_at = ?, deleted = ? WHERE id = ?`,
+            [r.name, r.amount, r.type, r.category, r.frequency,
+             r.dayOfWeek, r.dayOfMonth, r.monthOfYear, r.note, r.enabled, r.lastGenerated, r.userId, r.updatedAt, r.deleted, local.id]
+          );
+          applied++;
+        }
+      } else {
         await db.runAsync(
-          `UPDATE recurring_rules SET name = ?, amount = ?, type = ?, category = ?, account_id = 1, account_uuid = '',
-           frequency = ?, day_of_week = ?, day_of_month = ?, month_of_year = ?, note = ?, enabled = ?,
-           last_generated = ?, user_id = ?, updated_at = ?, deleted = ? WHERE id = ?`,
-          [r.name, r.amount, r.type, r.category, r.frequency,
-           r.dayOfWeek, r.dayOfMonth, r.monthOfYear, r.note, r.enabled, r.lastGenerated, r.userId, r.updatedAt, r.deleted, local.id]
+          `INSERT INTO recurring_rules (name, amount, type, category, account_id, frequency, day_of_week, day_of_month, month_of_year, note, enabled, last_generated, created_at, uuid, user_id, updated_at, deleted, account_uuid)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [r.name, r.amount, r.type, r.category, 1, r.frequency, r.dayOfWeek, r.dayOfMonth,
+           r.monthOfYear, r.note, r.enabled, r.lastGenerated, Date.now(), r.uuid, r.userId, r.updatedAt, r.deleted, '']
         );
         applied++;
       }
-    } else {
-      await db.runAsync(
-        `INSERT INTO recurring_rules (name, amount, type, category, account_id, frequency, day_of_week, day_of_month, month_of_year, note, enabled, last_generated, created_at, uuid, user_id, updated_at, deleted, account_uuid)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [r.name, r.amount, r.type, r.category, 1, r.frequency, r.dayOfWeek, r.dayOfMonth,
-         r.monthOfYear, r.note, r.enabled, r.lastGenerated, Date.now(), r.uuid, r.userId, r.updatedAt, r.deleted, '']
-      );
-      applied++;
     }
-  }
 
-  // 3) 自定义分类
-  for (const c of changes.customCategories) {
-    const local = await db.getFirstAsync<{ key: string; updated_at: number }>(
-      'SELECT key, updated_at FROM custom_categories WHERE uuid = ?', [c.uuid]
-    );
-    if (local) {
-      if (c.updatedAt > local.updated_at) {
+    // 3) 自定义分类
+    for (const c of changes.customCategories) {
+      const local = await db.getFirstAsync<{ key: string; updated_at: number }>(
+        'SELECT key, updated_at FROM custom_categories WHERE uuid = ?', [c.uuid]
+      );
+      if (local) {
+        if (c.updatedAt > local.updated_at) {
+          await db.runAsync(
+            `UPDATE custom_categories SET key = ?, label = ?, emoji = ?, color = ?, type = ?, updated_at = ?, deleted = ? WHERE key = ?`,
+            [c.key, c.label, c.emoji, c.color, c.type, c.updatedAt, c.deleted, local.key]
+          );
+          applied++;
+        }
+      } else {
         await db.runAsync(
-          `UPDATE custom_categories SET key = ?, label = ?, emoji = ?, color = ?, type = ?, updated_at = ?, deleted = ? WHERE key = ?`,
-          [c.key, c.label, c.emoji, c.color, c.type, c.updatedAt, c.deleted, local.key]
+          `INSERT INTO custom_categories (key, label, emoji, color, type, created_at, uuid, updated_at, deleted)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [c.key, c.label, c.emoji, c.color, c.type, Date.now(), c.uuid, c.updatedAt, c.deleted]
         );
         applied++;
       }
-    } else {
-      await db.runAsync(
-        `INSERT INTO custom_categories (key, label, emoji, color, type, created_at, uuid, updated_at, deleted)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [c.key, c.label, c.emoji, c.color, c.type, Date.now(), c.uuid, c.updatedAt, c.deleted]
-      );
-      applied++;
     }
-  }
+  });
 
   return applied;
 }
@@ -210,7 +212,6 @@ export async function runSync(): Promise<SyncResult> {
       const { setCustomCategoriesCache } = await import('../database/ledgerDB');
       await setCustomCategoriesCache();
       DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
-      DeviceEventEmitter.emit(LEDGER_EVENTS.ACCOUNTS_CHANGED);
     }
 
     // 刷新家庭成员缓存（成员增减/改名后各端标识同步，v0.5）
