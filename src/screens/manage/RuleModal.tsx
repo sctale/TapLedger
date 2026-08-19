@@ -1,6 +1,6 @@
 // 周期记账弹窗（从 ManageScreen 迁移，v0.5.10 起支持新增/编辑两种模式）
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { COLORS, RECURRING_FREQUENCIES, getCategories } from '../../constants';
 import type { RecurringRuleInput } from '../../database/ledgerDB';
 import type { AccountBalance, RecurringRule, RecordType } from '../../types';
@@ -80,8 +80,7 @@ export default function RuleModal({ visible, accounts, initialRule = null, onClo
   };
 
   return (
-    <Modal visible={visible} title={isEditing ? '编辑周期记账' : '添加周期记账'} onClose={onClose} height={560}>
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll} keyboardShouldPersistTaps="handled">
+    <Modal visible={visible} title={isEditing ? '编辑周期记账' : '添加周期记账'} fullscreen saveLabel={isEditing ? '保存修改' : '保存'} onClose={onClose} onSave={submit}>
         <View style={styles.formGroup}>
           <Text style={styles.fieldLabel}>名称</Text>
           <TextInput
@@ -227,10 +226,6 @@ export default function RuleModal({ visible, accounts, initialRule = null, onClo
             returnKeyType="done"
           />
         </View>
-        <Pressable style={[styles.submitBtn, { backgroundColor: COLORS.accent }]} onPress={submit}>
-          <Text style={styles.submitText}>{isEditing ? '保存修改' : '保存'}</Text>
-        </Pressable>
-      </ScrollView>
     </Modal>
   );
 }

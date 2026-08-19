@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
 import Modal from './Modal';
 import { hapticError, hapticLight } from '../utils/haptics';
@@ -66,8 +66,7 @@ export default function LoginModal({ visible, baseUrl, onClose, onAuthed, onErro
   };
 
   return (
-    <Modal visible={visible} title={mode === 'login' ? '登录' : '注册'} onClose={onClose}>
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <Modal visible={visible} title={mode === 'login' ? '登录' : '注册'} fullscreen saveLabel={mode === 'login' ? '登录' : '注册并登录'} onSave={submit} saveDisabled={busy} onClose={onClose}>
         <View style={styles.formGroup}>
           <Text style={styles.fieldLabel}>用户名（中英文/数字/下划线）</Text>
           <TextInput
@@ -119,15 +118,11 @@ export default function LoginModal({ visible, baseUrl, onClose, onAuthed, onErro
             />
           </View>
         ) : null}
-        <Pressable style={[styles.submitBtn, busy && styles.submitBtnDisabled]} onPress={submit} disabled={busy}>
-          <Text style={styles.submitText}>{busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并登录'}</Text>
-        </Pressable>
         <Pressable style={styles.switchRow} onPress={() => setMode(mode === 'login' ? 'register' : 'login')}>
           <Text style={styles.switchText}>
             {mode === 'login' ? '没有账号？注册一个' : '已有账号？直接登录'}
           </Text>
         </Pressable>
-      </ScrollView>
     </Modal>
   );
 }

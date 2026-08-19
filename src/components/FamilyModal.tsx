@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
 import Modal from './Modal';
 import { hapticError, hapticLight } from '../utils/haptics';
@@ -205,8 +205,7 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
   };
 
   return (
-    <Modal visible={visible} title="家庭账本" onClose={onClose}>
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <Modal visible={visible} title="家庭账本" fullscreen onClose={onClose}>
         {family ? (
           <>
             {/* 家庭信息 */}
@@ -340,7 +339,6 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
             </View>
           </>
         )}
-      </ScrollView>
     </Modal>
   );
 }

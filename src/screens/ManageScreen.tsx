@@ -367,67 +367,62 @@ function AccountModal({ visible, onClose, onSubmit }: {
     }
   }, [visible]);
 
+  const submit = () => onSubmit(name, type, emoji, color, parseFloat(initial) || 0);
+
   return (
-    <Modal visible={visible} title="添加账户" onClose={onClose} height={480}>
-      <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>账户类型</Text>
-          <View style={styles.typeGrid}>
-            {ACCOUNT_TYPES.map((t) => (
-              <Pressable
-                key={t.key}
-                style={[styles.typeCell, type === t.key && { backgroundColor: COLORS.accent, borderColor: COLORS.accent }]}
-                onPress={() => { setType(t.key); setEmoji(t.emoji); }}
-              >
-                <Text style={styles.typeCellEmoji}>{t.emoji}</Text>
-                <Text style={[styles.typeCellLabel, type === t.key && styles.typeCellLabelOn]}>{t.label}</Text>
-              </Pressable>
-            ))}
-          </View>
+    <Modal visible={visible} title="添加账户" fullscreen saveLabel="保存" onClose={onClose} onSave={submit}>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>账户类型</Text>
+        <View style={styles.typeGrid}>
+          {ACCOUNT_TYPES.map((t) => (
+            <Pressable
+              key={t.key}
+              style={[styles.typeCell, type === t.key && { backgroundColor: COLORS.accent, borderColor: COLORS.accent }]}
+              onPress={() => { setType(t.key); setEmoji(t.emoji); }}
+            >
+              <Text style={styles.typeCellEmoji}>{t.emoji}</Text>
+              <Text style={[styles.typeCellLabel, type === t.key && styles.typeCellLabelOn]}>{t.label}</Text>
+            </Pressable>
+          ))}
         </View>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>名称</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="如 工资卡 / 招商银行"
-            placeholderTextColor={COLORS.textTertiary}
-            value={name}
-            onChangeText={setName}
-            maxLength={12}
-            returnKeyType="done"
-          />
+      </View>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>名称</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="如 工资卡 / 招商银行"
+          placeholderTextColor={COLORS.textTertiary}
+          value={name}
+          onChangeText={setName}
+          maxLength={12}
+          returnKeyType="done"
+        />
+      </View>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>初始余额（元，可选）</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="0"
+          placeholderTextColor={COLORS.textTertiary}
+          keyboardType="decimal-pad"
+          returnKeyType="done"
+          value={initial}
+          onChangeText={(t) => setInitial(t.replace(/[^0-9.]/g, ''))}
+          maxLength={9}
+        />
+      </View>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>颜色</Text>
+        <View style={styles.colorRow}>
+          {CATEGORY_COLORS.map((c) => (
+            <Pressable
+              key={c}
+              style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotOn]}
+              onPress={() => setColor(c)}
+            />
+          ))}
         </View>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>初始余额（元，可选）</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="0"
-            placeholderTextColor={COLORS.textTertiary}
-            keyboardType="decimal-pad"
-            returnKeyType="done"
-            value={initial}
-            onChangeText={(t) => setInitial(t.replace(/[^0-9.]/g, ''))}
-            maxLength={9}
-          />
-        </View>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>颜色</Text>
-          <View style={styles.colorRow}>
-            {CATEGORY_COLORS.map((c) => (
-              <Pressable
-                key={c}
-                style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotOn]}
-                onPress={() => setColor(c)}
-              />
-            ))}
-          </View>
-        </View>
-        <Pressable style={[styles.submitBtn, { backgroundColor: COLORS.accent }]} onPress={() => {
-          onSubmit(name, type, emoji, color, parseFloat(initial) || 0);
-        }}>
-          <Text style={styles.submitText}>保存</Text>
-        </Pressable>
-      </ScrollView>
+      </View>
     </Modal>
   );
 }
@@ -468,45 +463,39 @@ function TransferModal({ visible, accounts, onClose, onSubmit }: {
     </View>
   );
 
+  const submit = () => onSubmit(fromId, toId, parseFloat(amount) || 0, note);
+
   return (
-    <Modal visible={visible} title="账户转账" onClose={onClose} height={480}>
-      <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Text style={styles.fieldLabel}>从账户转出</Text>
-        {pick(accounts, fromId, setFromId)}
-        <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>转入账户</Text>
-        {pick(accounts, toId, setToId)}
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>金额（元）</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="0.00"
-            placeholderTextColor={COLORS.textTertiary}
-            keyboardType="decimal-pad"
-            returnKeyType="done"
-            value={amount}
-            onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
-            maxLength={9}
-          />
-        </View>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>备注（可选）</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="如 还信用卡"
-            placeholderTextColor={COLORS.textTertiary}
-            value={note}
-            onChangeText={setNote}
-            maxLength={20}
-            returnKeyType="done"
-          />
-        </View>
-        <Pressable
-          style={[styles.submitBtn, { backgroundColor: COLORS.transfer }]}
-          onPress={() => onSubmit(fromId, toId, parseFloat(amount) || 0, note)}
-        >
-          <Text style={styles.submitText}>确认转账</Text>
-        </Pressable>
-      </ScrollView>
+    <Modal visible={visible} title="账户转账" fullscreen saveLabel="确认转账" onClose={onClose} onSave={submit}>
+      <Text style={styles.fieldLabel}>从账户转出</Text>
+      {pick(accounts, fromId, setFromId)}
+      <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>转入账户</Text>
+      {pick(accounts, toId, setToId)}
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>金额（元）</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="0.00"
+          placeholderTextColor={COLORS.textTertiary}
+          keyboardType="decimal-pad"
+          returnKeyType="done"
+          value={amount}
+          onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
+          maxLength={9}
+        />
+      </View>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>备注（可选）</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="如 还信用卡"
+          placeholderTextColor={COLORS.textTertiary}
+          value={note}
+          onChangeText={setNote}
+          maxLength={20}
+          returnKeyType="done"
+        />
+      </View>
     </Modal>
   );
 }

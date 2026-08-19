@@ -181,23 +181,26 @@ export default function DataManageScreen() {
       <Toast toast={toast} onHide={hideToast} />
 
       {/* ===== Android 二次确认弹窗 ===== */}
-      <Modal visible={resetModalVisible} title="请确认" onClose={() => setResetModalVisible(false)} height={260}>
+      <Modal
+        visible={resetModalVisible}
+        title="确认重置"
+        fullscreen
+        saveLabel="确认重置"
+        onClose={() => setResetModalVisible(false)}
+        onSave={handleResetModalConfirm}
+      >
         <Text style={styles.hint}>请输入「重置」二字以确认操作</Text>
+        <Text style={[styles.hint, { marginTop: SPACING.xs }]}>清空所有记账记录、账户、周期规则、自定义分类，数据不可恢复。</Text>
         <TextInput
-          style={[styles.input, { marginTop: SPACING.md }]}
+          style={[styles.input, { marginTop: SPACING.md, fontSize: 18, paddingVertical: 14 }]}
           placeholder="重置"
           placeholderTextColor={COLORS.textTertiary}
           value={resetInput}
           onChangeText={setResetInput}
           autoFocus
           returnKeyType="done"
+          onSubmitEditing={handleResetModalConfirm}
         />
-        <Pressable
-          style={[styles.submitBtn, { backgroundColor: COLORS.danger, marginTop: SPACING.md }]}
-          onPress={handleResetModalConfirm}
-        >
-          <Text style={styles.submitText}>确认重置</Text>
-        </Pressable>
       </Modal>
     </ScrollView>
   );

@@ -182,14 +182,14 @@ function buildVisibleCategoryList(
   const result: CategoryDef[] = [];
   const added = new Set<string>();
 
-  // 按配置顺序添加可见分类
+  // 按配置顺序添加分类：隐藏项也要标记已处理，避免被下方兜底循环重新加入（v0.7.1 修复）
   for (const item of items) {
     if (added.has(item.key)) continue;
+    added.add(item.key);
     if (configMap.get(item.key) === false) continue;
     const def = builtinMap.get(item.key) ?? customMap.get(item.key);
     if (def) {
       result.push(def);
-      added.add(item.key);
     }
   }
 
