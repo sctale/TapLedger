@@ -6,7 +6,7 @@ import {
   COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, findCategory, SETTING_KEYS,
 } from '../constants';
 import {
-  getCategorySummary, getRangeSummary, getDaySummaries, getAccounts, getSetting, getMemberExpenseSummary,
+  getCategorySummary, getRangeSummary, getDaySummaries, getSetting, getMemberExpenseSummary,
   getReimbursableSummary,
 } from '../database/ledgerDB';
 import { formatMoney, getLastNDates, getMonthRange, getMonthName, getToday } from '../utils/dateUtils';
@@ -32,7 +32,6 @@ export default function StatsScreen({ active }: Props) {
   const [categoryData, setCategoryData] = useState<{ category: string; total: number }[]>([]);
   const [trendValues, setTrendValues] = useState<number[]>([]);
   const [trendLabels, setTrendLabels] = useState<string[]>([]);
-  const [totalAssets, setTotalAssets] = useState(0);
   const [budget, setBudget] = useState(0);
   const [tick, setTick] = useState(0);
   const [members, setMembers] = useState<MemberInfo[]>([]);   // 家庭成员缓存（v0.5）
@@ -101,11 +100,10 @@ export default function StatsScreen({ active }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const [summary, cats, days, accounts, budgetStr, mStats] = await Promise.all([
+        const [summary, cats, days, budgetStr, mStats] = await Promise.all([
           getRangeSummary(start, end, memberFilter),
           getCategorySummary(start, end, 'expense', memberFilter),
           getDaySummaries(start, end, memberFilter),
-          getAccounts(),
           getSetting(SETTING_KEYS.MONTHLY_BUDGET),
           getMemberExpenseSummary(start, end),
         ]);
@@ -113,7 +111,6 @@ export default function StatsScreen({ active }: Props) {
         setExpense(summary.expense);
         setIncome(summary.income);
         setCategoryData(cats);
-        setTotalAssets(accounts.reduce((s, a) => s + a.balance, 0));
         setBudget(parseFloat(budgetStr ?? '0') || 0);
         setMemberStats(mStats);
         // 趋势
@@ -149,7 +146,6 @@ export default function StatsScreen({ active }: Props) {
     const subs = [
       DeviceEventEmitter.addListener(LEDGER_EVENTS.RECORDED, refresh),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.DATA_IMPORTED, refresh),
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.ACCOUNTS_CHANGED, refresh),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, loadMembers),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, () => {
         loadMembers();
@@ -278,17 +274,6 @@ export default function StatsScreen({ active }: Props) {
 
           {/* 总览卡片（金额自适应字号，大金额不换行溢出） */}
           <View style={styles.overview}>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>总资产</Text>
-              <Text
-                style={[styles.overviewValue, { color: COLORS.accentDark }]}
-                adjustsFontSizeToFit
-                numberOfLines={1}
-              >
-                ¥{formatMoney(totalAssets)}
-              </Text>
-            </View>
-            <View style={styles.overviewDivider} />
             <View style={styles.overviewItem}>
               <Text style={styles.overviewLabel}>支出</Text>
               <Text

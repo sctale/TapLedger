@@ -1,6 +1,6 @@
 {
   "name": "tapledger",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "main": "index.ts",
   "dependencies": {
     "expo": "~56.0.12",

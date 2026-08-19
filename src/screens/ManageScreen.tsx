@@ -1,24 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, BackHandler, DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  BackHandler, DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  ACCOUNT_TYPES, CATEGORY_COLORS, COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING, getAccountTypeDef,
+  COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING,
 } from '../constants';
 import {
-  addAccount, addTransfer, deleteAccount, getAccounts, getCustomCategories, getRecurringRules,
-  getSetting, getTotalCount, updateAccount,
+  getCustomCategories, getRecurringRules,
+  getSetting, getTotalCount,
 } from '../database/ledgerDB';
-import { formatMoney, getToday } from '../utils/dateUtils';
-import { hapticError, hapticSuccess } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
-import Modal from '../components/Modal';
 import Toast from '../components/Toast';
 import { getSyncConfig } from '../sync/apiClient';
-import type { AccountBalance } from '../types';
 import RecurringScreen from './manage/RecurringScreen';
 import CategoriesScreen from './manage/CategoriesScreen';
 import SyncScreen from './manage/SyncScreen';
@@ -48,8 +44,7 @@ export default function ManageScreen({ active }: Props) {
   // ===== 路由状态 =====
   const [page, setPage] = useState<Page>('main');
 
-  // ===== 主页数据：账户列表 + 各板块摘要 =====
-  const [accounts, setAccounts] = useState<AccountBalance[]>([]);
+  // ===== 主页数据：各板块摘要 =====
   const [ruleCount, setRuleCount] = useState(0);          // 周期记账规则数
   const [catCount, setCatCount] = useState(0);             // 自定义分类数
   const [totalCount, setTotalCount] = useState(0);         // 本地记录总数
@@ -58,16 +53,10 @@ export default function ManageScreen({ active }: Props) {
 
   const { toast, showToast, hideToast } = useToast();
 
-  // 弹窗状态
-  const [accountModal, setAccountModal] = useState(false);
-  const [transferModal, setTransferModal] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<AccountBalance | null>(null); // 非空=编辑模式
-
-  // 主页摘要加载：账户 + 各板块计数 + 同步状态（一次并行读齐）
+  // 主页摘要加载：各板块计数 + 同步状态（一次并行读齐）
   const loadSummary = useCallback(async () => {
     try {
-      const [accs, rules, cats, count, budget, cfg, name, family, serverUrl] = await Promise.all([
-        getAccounts(),
+      const [rules, cats, count, budget, cfg, name, family, serverUrl] = await Promise.all([
         getRecurringRules(),
         getCustomCategories(),
         getTotalCount(),
@@ -77,7 +66,6 @@ export default function ManageScreen({ active }: Props) {
         getSetting('sync.family_name'),                   // 家庭名（摘要显示用）
         getSetting(SETTING_KEYS.SYNC_SERVER_URL),         // 区分「已连接未登录」与「未配置」
       ]);
-      setAccounts(accs);
       setRuleCount(rules.length);
       setCatCount(cats.length);
       setTotalCount(count);
@@ -133,82 +121,6 @@ export default function ManageScreen({ active }: Props) {
     return () => sub.remove();
   }, [page]);
 
-  // ===== 账户：新增 + 编辑 =====
-  const handleSaveAccount = useCallback(async (name: string, type: AccountBalance['type'], emoji: string, color: string, initial: number) => {
-    if (!name.trim()) {
-      hapticError();
-      showToast('请输入账户名称', 'error');
-      return;
-    }
-    try {
-      if (editingAccount) {
-        await updateAccount(editingAccount.id, name.trim(), type, emoji, color, initial);
-      } else {
-        await addAccount(name.trim(), type, emoji, color, initial);
-      }
-      hapticSuccess();
-      showToast(editingAccount ? '账户已更新' : '账户已添加');
-      setAccountModal(false);
-      setEditingAccount(null);
-      await loadSummary();
-      DeviceEventEmitter.emit(LEDGER_EVENTS.ACCOUNTS_CHANGED);
-    } catch {
-      hapticError();
-      showToast(editingAccount ? '更新失败' : '添加失败', 'error');
-    }
-  }, [editingAccount, loadSummary, showToast]);
-
-  const handleDeleteAccount = useCallback((acc: AccountBalance) => {
-    if (acc.id === 1) {
-      showToast('默认账户不可删除', 'error');
-      return;
-    }
-    Alert.alert('删除账户', `删除「${acc.name}」？该账户的收支记录将归入默认账户，转账记录将删除。`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteAccount(acc.id);
-            hapticSuccess();
-            showToast('账户已删除');
-            await loadSummary();
-            DeviceEventEmitter.emit(LEDGER_EVENTS.ACCOUNTS_CHANGED);
-          } catch {
-            hapticError();
-            showToast('删除失败', 'error');
-          }
-        },
-      },
-    ]);
-  }, [loadSummary, showToast]);
-
-  // ===== 转账 =====
-  const handleTransfer = useCallback(async (fromId: number, toId: number, amount: number, note: string) => {
-    if (fromId === toId) {
-      hapticError();
-      showToast('转出和转入账户不能相同', 'error');
-      return;
-    }
-    if (!(amount > 0)) {
-      hapticError();
-      showToast('请输入有效金额', 'error');
-      return;
-    }
-    try {
-      await addTransfer(fromId, toId, amount, getToday(), note.trim());
-      hapticSuccess();
-      showToast('转账成功');
-      setTransferModal(false);
-      await loadSummary();
-      DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
-    } catch {
-      hapticError();
-      showToast('转账失败', 'error');
-    }
-  }, [loadSummary, showToast]);
-
   // 功能入口列表（iOS 设置风格：图标 + 标题 + 状态摘要副标题）
   const entries: { icon: string; title: string; subtitle: string; target: Exclude<Page, 'main'> }[] = [
     { icon: '🔁', title: '周期记账', subtitle: `${ruleCount} 条规则`, target: 'recurring' },
@@ -232,55 +144,6 @@ export default function ManageScreen({ active }: Props) {
             keyboardShouldPersistTaps="handled"  /* 键盘弹出时点击弹窗内按钮不被吞掉 */
           >
             <Text style={styles.pageTitle}>管理</Text>
-
-            {/* ===== 账户管理 ===== */}
-            <Text style={styles.sectionTitle}>账户管理</Text>
-            <View style={styles.card}>
-              {accounts.map((acc) => {
-                const def = getAccountTypeDef(acc.type);
-                return (
-                  <View key={acc.id} style={styles.accountRow}>
-                    <View style={[styles.accIcon, { backgroundColor: `${acc.color}22` }]}>
-                      <Text style={styles.accEmoji}>{acc.emoji}</Text>
-                    </View>
-                    <View style={styles.accInfo}>
-                      <Text style={styles.accName}>{acc.name}</Text>
-                      <Text style={styles.accType}>{def.label}</Text>
-                    </View>
-                    <Text style={[styles.accBalance, { color: acc.balance >= 0 ? COLORS.text : COLORS.danger }]}>
-                      {formatMoney(acc.balance)}
-                    </Text>
-                    <View style={styles.accActions}>
-                      <Pressable
-                        onPress={() => { setEditingAccount(acc); setAccountModal(true); }}
-                        hitSlop={8}
-                        style={styles.accDelete}
-                        accessibilityRole="button"
-                        accessibilityLabel={`编辑${acc.name}`}
-                      >
-                        <Text style={styles.accDeleteText}>✎</Text>
-                      </Pressable>
-                      {acc.id !== 1 ? (
-                        <Pressable onPress={() => handleDeleteAccount(acc)} hitSlop={8} style={styles.accDelete}>
-                          <Text style={styles.accDeleteText}>✕</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  </View>
-                );
-              })}
-              <View style={styles.btnRow}>
-                <Pressable
-                  style={[styles.actionBtn, { backgroundColor: COLORS.accent }]}
-                  onPress={() => { setEditingAccount(null); setAccountModal(true); }}
-                >
-                  <Text style={styles.actionBtnText}>＋ 添加账户</Text>
-                </Pressable>
-                <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.transfer }]} onPress={() => setTransferModal(true)}>
-                  <Text style={styles.actionBtnText}>🔁 转账</Text>
-                </Pressable>
-              </View>
-            </View>
 
             {/* ===== 功能入口列表 ===== */}
             <Text style={styles.sectionTitle}>功能</Text>
@@ -337,189 +200,8 @@ export default function ManageScreen({ active }: Props) {
         </View>
       )}
 
-      {/* ===== 弹窗：添加/编辑账户 ===== */}
-      <AccountModal
-        visible={accountModal}
-        editing={editingAccount}
-        onClose={() => { setAccountModal(false); setEditingAccount(null); }}
-        onSubmit={handleSaveAccount}
-      />
-      {/* ===== 弹窗：转账 ===== */}
-      <TransferModal
-        visible={transferModal}
-        accounts={accounts}
-        onClose={() => setTransferModal(false)}
-        onSubmit={handleTransfer}
-      />
-
       <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
-  );
-}
-
-// ===== 账户添加/编辑弹窗（新增与编辑复用；editing 非空时预填为编辑模式） =====
-function AccountModal({ visible, editing, onClose, onSubmit }: {
-  visible: boolean;
-  editing: AccountBalance | null;
-  onClose: () => void;
-  onSubmit: (name: string, type: AccountBalance['type'], emoji: string, color: string, initial: number) => void;
-}) {
-  const [name, setName] = useState('');
-  const [type, setType] = useState<AccountBalance['type']>('cash');
-  const [emoji, setEmoji] = useState('💵');
-  const [color, setColor] = useState<string>(CATEGORY_COLORS[0]);
-  const [initial, setInitial] = useState('');
-
-  useEffect(() => {
-    if (!visible) return;
-    if (editing) {
-      // 编辑模式：预填当前账户信息
-      setName(editing.name);
-      setType(editing.type);
-      setEmoji(editing.emoji);
-      setColor(editing.color);
-      setInitial(editing.initialBalance ? String(editing.initialBalance) : '');
-    } else {
-      // 新增模式：重置默认值
-      setName('');
-      setType('cash');
-      const def = ACCOUNT_TYPES[0];
-      setEmoji(def?.emoji ?? '💵');
-      setColor(CATEGORY_COLORS[0]);
-      setInitial('');
-    }
-  }, [visible, editing]);
-
-  const submit = () => onSubmit(name, type, emoji, color, parseFloat(initial) || 0);
-
-  return (
-    <Modal visible={visible} title={editing ? '编辑账户' : '添加账户'} fullscreen saveLabel="保存" onClose={onClose} onSave={submit}>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>账户类型</Text>
-        <View style={styles.typeGrid}>
-          {ACCOUNT_TYPES.map((t) => (
-            <Pressable
-              key={t.key}
-              style={[styles.typeCell, type === t.key && { backgroundColor: COLORS.accent, borderColor: COLORS.accent }]}
-              onPress={() => { setType(t.key); setEmoji(t.emoji); }}
-            >
-              <Text style={styles.typeCellEmoji}>{t.emoji}</Text>
-              <Text style={[styles.typeCellLabel, type === t.key && styles.typeCellLabelOn]}>{t.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>名称</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="如 工资卡 / 招商银行"
-          placeholderTextColor={COLORS.textTertiary}
-          value={name}
-          onChangeText={setName}
-          maxLength={12}
-          returnKeyType="done"
-        />
-      </View>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>初始余额（元，可选）</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="0"
-          placeholderTextColor={COLORS.textTertiary}
-          keyboardType="decimal-pad"
-          returnKeyType="done"
-          value={initial}
-          onChangeText={(t) => setInitial(t.replace(/[^0-9.]/g, ''))}
-          maxLength={9}
-        />
-      </View>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>颜色</Text>
-        <View style={styles.colorRow}>
-          {CATEGORY_COLORS.map((c) => (
-            <Pressable
-              key={c}
-              style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotOn]}
-              onPress={() => setColor(c)}
-            />
-          ))}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-// ===== 转账弹窗 =====
-function TransferModal({ visible, accounts, onClose, onSubmit }: {
-  visible: boolean;
-  accounts: AccountBalance[];
-  onClose: () => void;
-  onSubmit: (fromId: number, toId: number, amount: number, note: string) => void;
-}) {
-  const [fromId, setFromId] = useState(1);
-  const [toId, setToId] = useState(2);
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-
-  useEffect(() => {
-    if (visible) {
-      setFromId(accounts[0]?.id ?? 1);
-      setToId(accounts[1]?.id ?? accounts[0]?.id ?? 1);
-      setAmount('');
-      setNote('');
-    }
-  }, [visible, accounts]);
-
-  const pick = (list: AccountBalance[], current: number, onChange: (id: number) => void) => (
-    <View style={styles.pickRow}>
-      {list.map((a) => (
-        <Pressable
-          key={a.id}
-          style={[styles.pickChip, current === a.id && { backgroundColor: a.color, borderColor: a.color }]}
-          onPress={() => onChange(a.id)}
-        >
-          <Text style={styles.pickEmoji}>{a.emoji}</Text>
-          <Text style={[styles.pickName, current === a.id && styles.pickNameOn]}>{a.name}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-
-  const submit = () => onSubmit(fromId, toId, parseFloat(amount) || 0, note);
-
-  return (
-    <Modal visible={visible} title="账户转账" fullscreen saveLabel="确认转账" onClose={onClose} onSave={submit}>
-      <Text style={styles.fieldLabel}>从账户转出</Text>
-      {pick(accounts, fromId, setFromId)}
-      <Text style={[styles.fieldLabel, { marginTop: SPACING.md }]}>转入账户</Text>
-      {pick(accounts, toId, setToId)}
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>金额（元）</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="0.00"
-          placeholderTextColor={COLORS.textTertiary}
-          keyboardType="decimal-pad"
-          returnKeyType="done"
-          value={amount}
-          onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
-          maxLength={9}
-        />
-      </View>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>备注（可选）</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="如 还信用卡"
-          placeholderTextColor={COLORS.textTertiary}
-          value={note}
-          onChangeText={setNote}
-          maxLength={20}
-          returnKeyType="done"
-        />
-      </View>
-    </Modal>
   );
 }
 
@@ -566,12 +248,7 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     lineHeight: 17,
   },
-  // ===== 账户行 =====
-  accountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
+  // ===== 通用行样式（功能入口列表共用） =====
   accIcon: {
     width: 36,
     height: 36,
@@ -594,46 +271,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     color: COLORS.textTertiary,
     marginTop: 1,
-  },
-  accBalance: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: '700',
-  },
-  accActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  accDelete: {
-    width: 26,
-    height: 26,
-    borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.bgAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  accDeleteText: {
-    fontSize: FONT_SIZE.xs + 1,
-    color: COLORS.textTertiary,
-    fontWeight: '600',
-    padding: 4,
-  },
-  // ===== 按钮行 =====
-  btnRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-  },
-  actionBtnText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZE.sm,
-    fontWeight: '700',
   },
   // ===== 功能入口列表（iOS 设置风格） =====
   entryCard: {
@@ -695,106 +332,5 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.text,
     marginLeft: SPACING.sm,
-  },
-  // ===== 弹窗表单样式（AccountModal / TransferModal） =====
-  formGroup: {
-    marginBottom: SPACING.md,
-  },
-  modalScroll: {
-    flex: 1,
-  },
-  fieldLabel: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textTertiary,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: COLORS.bgAlt,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.text,
-  },
-  typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  typeCell: {
-    width: '30%',
-    paddingVertical: 10,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    gap: 2,
-  },
-  typeCellEmoji: {
-    fontSize: FONT_SIZE.xxl - 8,
-  },
-  typeCellLabel: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-  },
-  typeCellLabelOn: {
-    color: COLORS.white,
-  },
-  colorRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  colorDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
-  colorDotOn: {
-    borderWidth: 3,
-    borderColor: COLORS.text,
-  },
-  submitBtn: {
-    borderRadius: RADIUS.lg,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: SPACING.xs,
-  },
-  submitText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZE.md,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  pickRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  pickChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: 7,
-    borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  pickEmoji: {
-    fontSize: FONT_SIZE.sm,
-  },
-  pickName: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.text,
-    fontWeight: '600',
-  },
-  pickNameOn: {
-    color: COLORS.white,
   },
 });

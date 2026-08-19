@@ -60,8 +60,7 @@ export async function runRecurringCheck(): Promise<number> {
       rule.category,
       rule.type,
       dueStr,
-      rule.note || rule.name,
-      rule.accountId
+      rule.note || rule.name
     );
     await setRecurringLastGenerated(rule.id, dueStr);
     generated++;

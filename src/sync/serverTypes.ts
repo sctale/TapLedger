@@ -8,33 +8,8 @@ export interface SyncRecordDTO {
   note: string;
   date: string;
   timestamp: number;
-  accountUuid: string;
   reimbursable: number;
   reimbursed: number;
-  updatedAt: number;
-  deleted: number;
-}
-
-export interface SyncAccountDTO {
-  uuid: string;
-  name: string;
-  type: string;
-  emoji: string;
-  color: string;
-  initialBalance: number;
-  sort: number;
-  updatedAt: number;
-  deleted: number;
-}
-
-export interface SyncTransferDTO {
-  uuid: string;
-  fromAccountUuid: string;
-  toAccountUuid: string;
-  amount: number;
-  date: string;
-  note: string;
-  timestamp: number;
   updatedAt: number;
   deleted: number;
 }
@@ -46,7 +21,6 @@ export interface SyncRecurringDTO {
   amount: number;
   type: 'expense' | 'income';
   category: string;
-  accountUuid: string;
   frequency: string;
   dayOfWeek: number;
   dayOfMonth: number;
@@ -71,8 +45,6 @@ export interface SyncCustomCategoryDTO {
 
 export interface SyncChanges {
   records: SyncRecordDTO[];
-  accounts: SyncAccountDTO[];
-  transfers: SyncTransferDTO[];
   recurring: SyncRecurringDTO[];
   customCategories: SyncCustomCategoryDTO[];
 }

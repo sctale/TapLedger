@@ -3,13 +3,12 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { COLORS, RECURRING_FREQUENCIES, getCategories } from '../../constants';
 import type { RecurringRuleInput } from '../../database/ledgerDB';
-import type { AccountBalance, RecurringRule, RecordType } from '../../types';
+import type { RecurringRule, RecordType } from '../../types';
 import Modal from '../../components/Modal';
 import { manageStyles as styles } from './sharedStyles';
 
 interface Props {
   visible: boolean;
-  accounts: AccountBalance[];
   initialRule?: RecurringRule | null; // 编辑模式：传入原规则；新增：null/不传
   onClose: () => void;
   // editingRule 为 null 表示新增（调 addRecurringRule 的入参），非 null 表示编辑（调用方合并 id/lastGenerated 后调 updateRecurringRule）
@@ -24,12 +23,11 @@ const localStyles = StyleSheet.create({
   },
 });
 
-export default function RuleModal({ visible, accounts, initialRule = null, onClose, onSubmit }: Props) {
+export default function RuleModal({ visible, initialRule = null, onClose, onSubmit }: Props) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<RecordType>('expense');
   const [category, setCategory] = useState('food');
-  const [accountId, setAccountId] = useState(1);
   const [frequency, setFrequency] = useState<RecurringRule['frequency']>('monthly');
   const [dayOfWeek, setDayOfWeek] = useState(1);
   const [dayOfMonth, setDayOfMonth] = useState(1);
@@ -46,7 +44,6 @@ export default function RuleModal({ visible, accounts, initialRule = null, onClo
       setAmount(String(initialRule.amount));
       setType(initialRule.type);
       setCategory(initialRule.category);
-      setAccountId(initialRule.accountId);
       setFrequency(initialRule.frequency);
       setDayOfWeek(initialRule.dayOfWeek);
       setDayOfMonth(initialRule.dayOfMonth);
@@ -57,19 +54,18 @@ export default function RuleModal({ visible, accounts, initialRule = null, onClo
       setAmount('');
       setType('expense');
       setCategory('food');
-      setAccountId(accounts[0]?.id ?? 1);
       setFrequency('monthly');
       setDayOfWeek(1);
       setDayOfMonth(1);
       setMonthOfYear(1);
       setNote('');
     }
-  }, [visible, initialRule, accounts]);
+  }, [visible, initialRule]);
 
   const submit = () => {
     onSubmit(
       {
-        name, amount: parseFloat(amount) || 0, type, category, accountId,
+        name, amount: parseFloat(amount) || 0, type, category,
         frequency, dayOfWeek, dayOfMonth, monthOfYear, note,
         // 编辑时保留原规则的启用状态与最近生成日期，由调用方合并
         enabled: initialRule ? initialRule.enabled : true,
@@ -133,21 +129,6 @@ export default function RuleModal({ visible, accounts, initialRule = null, onClo
               >
                 <Text style={styles.pickEmoji}>{c.emoji}</Text>
                 <Text style={[styles.pickName, category === c.key && styles.pickNameOn]}>{c.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>账户</Text>
-          <View style={styles.catWrap}>
-            {accounts.map((a) => (
-              <Pressable
-                key={a.id}
-                style={[styles.pickChip, accountId === a.id && { backgroundColor: a.color, borderColor: a.color }]}
-                onPress={() => setAccountId(a.id)}
-              >
-                <Text style={styles.pickEmoji}>{a.emoji}</Text>
-                <Text style={[styles.pickName, accountId === a.id && styles.pickNameOn]}>{a.name}</Text>
               </Pressable>
             ))}
           </View>

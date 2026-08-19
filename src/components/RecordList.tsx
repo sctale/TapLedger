@@ -10,7 +10,6 @@ interface Props {
   records: LedgerRecord[];
   onDelete?: (record: LedgerRecord) => void;
   emptyText?: string;
-  accountNames?: Record<number, string>; // 账户名映射
   showTime?: boolean;      // 显示记录时间（今日明细用）
   showDate?: boolean;      // 显示记录日期（跨多日列表用，如报销明细）
   members?: MemberInfo[];  // 家庭成员（显示记账人标识，v0.5）
@@ -18,11 +17,10 @@ interface Props {
 
 // 单条记录行（memo：父组件 state 变化时避免整表重渲染；导出供 FlatList 虚拟化列表使用）
 export const RecordRow = React.memo(function RecordRow({
-  record, onDelete, accountNames, showTime, showDate, members,
+  record, onDelete, showTime, showDate, members,
 }: {
   record: LedgerRecord;
   onDelete?: (record: LedgerRecord) => void;
-  accountNames?: Record<number, string>;
   showTime?: boolean;
   showDate?: boolean;
   members?: MemberInfo[];
@@ -63,9 +61,6 @@ export const RecordRow = React.memo(function RecordRow({
             <Text style={styles.timeTag}>{new Date(record.timestamp).toTimeString().slice(0, 5)}</Text>
           ) : null}
           {record.note ? <Text style={styles.note} numberOfLines={1}>{record.note}</Text> : null}
-          {accountNames && accountNames[record.accountId] ? (
-            <Text style={styles.accountTag} numberOfLines={1}>{accountNames[record.accountId]}</Text>
-          ) : null}
         </View>
       </View>
       <Text
@@ -90,7 +85,7 @@ export const RecordRow = React.memo(function RecordRow({
 });
 
 // 记录列表（暖色卡片风格）
-function RecordList({ records, onDelete, emptyText = '还没有记录，记一笔吧 ✨', accountNames, showTime, showDate, members }: Props) {
+function RecordList({ records, onDelete, emptyText = '还没有记录，记一笔吧 ✨', showTime, showDate, members }: Props) {
   if (records.length === 0) {
     return (
       <View style={styles.empty}>
@@ -107,7 +102,6 @@ function RecordList({ records, onDelete, emptyText = '还没有记录，记一�
           key={record.id}
           record={record}
           onDelete={onDelete}
-          accountNames={accountNames}
           showTime={showTime}
           showDate={showDate}
           members={members}
@@ -216,15 +210,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs + 1,
     color: COLORS.textTertiary,
     flexShrink: 1,
-  },
-  accountTag: {
-    fontSize: FONT_SIZE.xs - 1,
-    color: COLORS.textTertiary,
-    backgroundColor: COLORS.bgAlt,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    overflow: 'hidden',
   },
   timeTag: {
     fontSize: FONT_SIZE.xs - 1,

@@ -1,4 +1,4 @@
-import type { AccountType, CategoryConfig, CategoryConfigItem, CategoryDef, CustomCategory, RecordType, RecurringFrequency } from '../types';
+import type { CategoryConfig, CategoryConfigItem, CategoryDef, CustomCategory, RecordType, RecurringFrequency } from '../types';
 
 // ===== 主题色（延续 TapMood 治愈暖色风格）=====
 export const COLORS = {
@@ -107,20 +107,6 @@ export const INCOME_CATEGORIES: CategoryDef[] = [
   { key: 'invest', label: '理财',   emoji: '📈', color: '#4DB6AC' },
   { key: 'other',  label: '其他',   emoji: '💰', color: '#90A4AE' },
 ];
-
-// ===== 账户类型定义 =====
-export const ACCOUNT_TYPES: { key: AccountType; label: string; emoji: string }[] = [
-  { key: 'cash',    label: '现金',   emoji: '💵' },
-  { key: 'bank',    label: '银行卡', emoji: '💳' },
-  { key: 'credit',  label: '信用卡', emoji: '🏦' },
-  { key: 'alipay',  label: '支付宝', emoji: '🅰️' },
-  { key: 'wechat',  label: '微信',   emoji: '💬' },
-  { key: 'other',   label: '其他',   emoji: '👛' },
-];
-
-export function getAccountTypeDef(type: AccountType): { key: AccountType; label: string; emoji: string } {
-  return ACCOUNT_TYPES.find((t) => t.key === type) ?? ACCOUNT_TYPES[ACCOUNT_TYPES.length - 1];
-}
 
 // ===== 自定义分类缓存（启动时从 DB 加载）=====
 let customCategories: CustomCategory[] = [];

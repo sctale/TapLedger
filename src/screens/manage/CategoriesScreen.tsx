@@ -13,6 +13,7 @@ import {
 } from '../../database/ledgerDB';
 import { hapticError, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
+import Modal from '../../components/Modal';
 import Toast from '../../components/Toast';
 import type { CategoryConfig, CategoryDef, CustomCategory, RecordType } from '../../types';
 import { manageStyles as styles } from './sharedStyles';
@@ -361,6 +362,8 @@ function CategoryForm({
   const [color, setColor] = useState(COLORS.accent);
   const [type, setType] = useState<RecordType>('expense');
   const [loading, setLoading] = useState(false);
+  // 图标选择弹窗：表单内仅显示单行预览框，点击后全屏弹出宫格选择
+  const [iconPickerVisible, setIconPickerVisible] = useState(false);
 
   useEffect(() => {
     if (mode === 'edit' && editingCategory) {
@@ -433,39 +436,19 @@ function CategoryForm({
             />
           </View>
           <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>图标（点选预设或自定义）</Text>
-            {/* 当前选中图标预览 */}
-            <View style={localStyles.previewRow}>
+            <Text style={styles.fieldLabel}>图标</Text>
+            {/* 单行预览框：点击后全屏弹出选择 */}
+            <Pressable
+              style={localStyles.previewBox}
+              onPress={() => setIconPickerVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="选择图标"
+            >
               <View style={[styles.accIcon, { backgroundColor: `${color}22` }]}>
                 <Text style={styles.accEmoji}>{emoji || '🗂️'}</Text>
               </View>
-              <Text style={localStyles.previewText}>当前选中「{emoji || '未选择'}」</Text>
-            </View>
-            {/* 预设图标网格（当前归属分组 + 通用） */}
-            <View style={localStyles.iconGrid}>
-              {[...CATEGORY_ICONS[type], ...CATEGORY_ICONS.common].map((ic) => (
-                <Pressable
-                  key={`${type}-${ic}`}
-                  style={[localStyles.iconCell, emoji === ic && localStyles.iconCellOn]}
-                  onPress={() => setEmoji(ic)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`选择图标${ic}`}
-                  accessibilityState={{ selected: emoji === ic }}
-                >
-                  <Text style={localStyles.iconCellEmoji}>{ic}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {/* 自定义输入（预设之外的表情，如 🚀 🦄） */}
-            <TextInput
-              style={[styles.input, { marginTop: SPACING.sm }]}
-              placeholder="或输入自定义图标，如 🚀"
-              placeholderTextColor={COLORS.textTertiary}
-              value={emoji}
-              onChangeText={(t) => setEmoji(t.replace(/\s+/g, '').slice(0, 4))}
-              maxLength={4}
-              returnKeyType="done"
-            />
+              <Text style={localStyles.previewText}>点击选择图标</Text>
+            </Pressable>
           </View>
           <View style={styles.formGroup}>
             <Text style={styles.fieldLabel}>归属</Text>
@@ -505,7 +488,89 @@ function CategoryForm({
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* 全屏图标选择弹窗 */}
+      <IconPickerModal
+        visible={iconPickerVisible}
+        currentEmoji={emoji}
+        onCancel={() => setIconPickerVisible(false)}
+        onConfirm={(ic) => {
+          setEmoji(ic);
+          setIconPickerVisible(false);
+        }}
+      />
     </View>
+  );
+}
+
+// ===== 全屏图标选择弹窗：按 支出/通用/收入 三组展示预设宫格 + 自定义输入 =====
+function IconPickerModal({
+  visible,
+  currentEmoji,
+  onCancel,
+  onConfirm,
+}: {
+  visible: boolean;
+  currentEmoji: string;
+  onCancel: () => void;
+  onConfirm: (emoji: string) => void;
+}) {
+  const [draft, setDraft] = useState(currentEmoji);
+
+  // 每次打开时同步当前选中图标到草稿
+  useEffect(() => {
+    if (visible) setDraft(currentEmoji);
+  }, [visible, currentEmoji]);
+
+  const groups: { title: string; icons: string[] }[] = [
+    { title: '支出常用', icons: CATEGORY_ICONS.expense },
+    { title: '通用', icons: CATEGORY_ICONS.common },
+    { title: '收入常用', icons: CATEGORY_ICONS.income },
+  ];
+
+  return (
+    <Modal
+      visible={visible}
+      title="选择图标"
+      fullscreen
+      onClose={onCancel}
+      saveLabel="完成"
+      onSave={() => onConfirm(draft || '📌')}
+    >
+      {groups.map((group) => (
+        <View key={group.title} style={localStyles.pickerGroup}>
+          <Text style={localStyles.pickerGroupTitle}>{group.title}</Text>
+          <View style={localStyles.iconGrid}>
+            {group.icons.map((ic) => (
+              <Pressable
+                key={`${group.title}-${ic}`}
+                style={[localStyles.iconCell, draft === ic && localStyles.iconCellOn]}
+                onPress={() => setDraft(ic)}
+                accessibilityRole="button"
+                accessibilityLabel={`选择图标${ic}`}
+                accessibilityState={{ selected: draft === ic }}
+              >
+                <Text style={localStyles.iconCellEmoji}>{ic}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
+
+      {/* 自定义 emoji 输入（保留原替换/去空格/截断逻辑） */}
+      <View style={localStyles.pickerGroup}>
+        <Text style={localStyles.pickerGroupTitle}>自定义</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="输入自定义图标，如 🚀"
+          placeholderTextColor={COLORS.textTertiary}
+          value={draft}
+          onChangeText={(t) => setDraft(t.replace(/\s+/g, '').slice(0, 4))}
+          maxLength={4}
+          returnKeyType="done"
+        />
+      </View>
+    </Modal>
   );
 }
 
@@ -552,15 +617,19 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   // 预设图标选择
-  previewRow: {
+  previewBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.bgAlt,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
   },
   previewText: {
-    fontSize: FONT_SIZE.xs + 1,
+    fontSize: FONT_SIZE.md,
     color: COLORS.textSecondary,
+    fontWeight: '600',
   },
   iconGrid: {
     flexDirection: 'row',
@@ -626,5 +695,15 @@ const localStyles = StyleSheet.create({
   },
   submitBtnDisabled: {
     opacity: 0.7,
+  },
+  // 图标选择弹窗分组
+  pickerGroup: {
+    marginBottom: SPACING.lg,
+  },
+  pickerGroupTitle: {
+    fontSize: FONT_SIZE.xs + 1,
+    fontWeight: '700',
+    color: COLORS.textTertiary,
+    marginBottom: SPACING.sm,
   },
 });

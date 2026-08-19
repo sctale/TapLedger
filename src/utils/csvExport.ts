@@ -2,7 +2,6 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import type { LedgerRecord } from '../types';
 import { findCategory } from '../constants';
-import { getAccount } from '../database/ledgerDB';
 import { formatMoney } from './dateUtils';
 
 // 导出 CSV（Excel 可直接打开）并分享
@@ -11,15 +10,8 @@ export async function exportCSV(records: LedgerRecord[]): Promise<{ success: boo
     if (records.length === 0) {
       return { success: false, error: '暂无数据可导出' };
     }
-    // 账户名缓存
-    const accountNames: Record<number, string> = {};
-    const accountIds = new Set(records.map((r) => r.accountId));
-    for (const id of accountIds) {
-      const acc = await getAccount(id);
-      accountNames[id] = acc ? acc.name : '现金';
-    }
 
-    const header = ['日期', '类型', '分类', '金额', '账户', '备注', '报销状态'];
+    const header = ['日期', '类型', '分类', '金额', '备注', '报销状态'];
     const lines = records.map((r) => {
       const cat = findCategory(r.category, r.type);
       const status = !r.reimbursable ? '-' : r.reimbursed ? '已报销' : '待报销';
@@ -28,7 +20,6 @@ export async function exportCSV(records: LedgerRecord[]): Promise<{ success: boo
         r.type === 'expense' ? '支出' : '收入',
         cat.label,
         (r.type === 'expense' ? '-' : '') + formatMoney(r.amount),
-        accountNames[r.accountId] ?? '现金',
         r.note,
         status,
       ];

@@ -1,7 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import type {
-  Account, AccountBalance, CategoryConfig, CustomCategory, DaySummary, LedgerRecord, RecurringRule,
-  RecordType, Transfer,
+  CategoryConfig, CustomCategory, DaySummary, LedgerRecord, RecurringRule, RecordType,
 } from '../types';
 import { genUuid } from '../constants';
 
@@ -168,31 +167,24 @@ export async function initDatabase(): Promise<void> {
 
 // ===== 记录 CRUD =====
 
-// 新增一笔记录
+// 新增一笔记录（账户体系已移除，始终落默认账户 id=1）
 export async function addRecord(
   amount: number,
   category: string,
   type: RecordType,
   date: string,
   note: string,
-  accountId: number,
   reimbursable = false,
-  opts?: { userId?: number; accountUuid?: string; uuid?: string; timestamp?: number; updatedAt?: number }
+  opts?: { userId?: number; uuid?: string; timestamp?: number; updatedAt?: number }
 ): Promise<LedgerRecord> {
   const database = await getDB();
   const timestamp = opts?.timestamp ?? Date.now();
   const updatedAt = opts?.updatedAt ?? timestamp;
   const uuid = opts?.uuid ?? genUuid();
-  // 查账户 uuid（未显式给出时）
-  let accountUuid = opts?.accountUuid ?? '';
-  if (!accountUuid) {
-    const acc = await database.getFirstAsync<{ uuid: string }>('SELECT uuid FROM accounts WHERE id = ?', [accountId]);
-    accountUuid = acc?.uuid ?? '';
-  }
   const result = await database.runAsync(
     `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, account_id, reimbursable, uuid, user_id, updated_at, deleted, account_uuid)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-    [amount, category, type, note, date, timestamp, accountId, reimbursable ? 1 : 0, uuid, opts?.userId ?? 0, updatedAt, accountUuid]
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '')`,
+    [amount, category, type, note, date, timestamp, 1, reimbursable ? 1 : 0, uuid, opts?.userId ?? 0, updatedAt]
   );
   return {
     id: result.lastInsertRowId,
@@ -204,8 +196,6 @@ export async function addRecord(
     note,
     date,
     timestamp,
-    accountId,
-    accountUuid,
     reimbursable,
     reimbursed: false,
     updatedAt,
@@ -241,8 +231,6 @@ function mapRecord(r: Record<string, unknown>): LedgerRecord {
     note: String(r.note ?? ''),
     date: String(r.date),
     timestamp: Number(r.timestamp),
-    accountId: Number(r.account_id ?? 1),
-    accountUuid: String(r.account_uuid ?? ''),
     reimbursable: Number(r.reimbursable ?? 0) === 1,
     reimbursed: Number(r.reimbursed ?? 0) === 1,
     updatedAt: Number(r.updated_at ?? 0),
@@ -365,196 +353,6 @@ export async function getMaxDailyExpense(start: string, end: string): Promise<nu
   return row?.max ?? 0;
 }
 
-// ===== 账户 =====
-
-// 获取全部账户（含计算余额，过滤墓碑）
-export async function getAccounts(): Promise<AccountBalance[]> {
-  const database = await getDB();
-  const accounts = await database.getAllAsync<Record<string, unknown>>(
-    'SELECT * FROM accounts WHERE deleted = 0 ORDER BY id ASC'
-  );
-  const balances = await database.getAllAsync<Record<string, unknown>>(
-    `SELECT account_id as aid,
-            COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) as flow
-     FROM ledger_records WHERE deleted = 0 AND reimbursable = 0 GROUP BY account_id`
-  );
-  const transfers = await database.getAllAsync<Record<string, unknown>>(
-    `SELECT from_account_id as fid, to_account_id as tid,
-            COALESCE(SUM(amount), 0) as total
-     FROM transfers WHERE deleted = 0 GROUP BY from_account_id, to_account_id`
-  );
-  // 转出/转入汇总
-  const outMap: Record<number, number> = {};
-  const inMap: Record<number, number> = {};
-  for (const t of transfers) {
-    const fid = Number(t.fid);
-    const tid = Number(t.tid);
-    outMap[fid] = (outMap[fid] ?? 0) + Number(t.total);
-    inMap[tid] = (inMap[tid] ?? 0) + Number(t.total);
-  }
-  const flowMap: Record<number, number> = {};
-  for (const b of balances) {
-    flowMap[Number(b.aid)] = Number(b.flow);
-  }
-  return accounts.map((a) => {
-    const id = Number(a.id);
-    const balance = Number(a.initial_balance ?? 0) + (flowMap[id] ?? 0) + (inMap[id] ?? 0) - (outMap[id] ?? 0);
-    return {
-      id,
-      uuid: String(a.uuid ?? ''),
-      name: String(a.name),
-      type: (a.type as Account['type']) ?? 'cash',
-      emoji: String(a.emoji ?? '💵'),
-      color: String(a.color ?? '#90A4AE'),
-      initialBalance: Number(a.initial_balance ?? 0),
-      createdAt: Number(a.created_at),
-      updatedAt: Number(a.updated_at ?? 0),
-      deleted: Number(a.deleted ?? 0) === 1,
-      balance,
-    };
-  });
-}
-
-export async function getAccount(id: number): Promise<AccountBalance | null> {
-  const accounts = await getAccounts();
-  return accounts.find((a) => a.id === id) ?? null;
-}
-
-export async function addAccount(
-  name: string,
-  type: Account['type'],
-  emoji: string,
-  color: string,
-  initialBalance: number,
-  opts?: { uuid?: string; updatedAt?: number }
-): Promise<Account> {
-  const database = await getDB();
-  const uuid = opts?.uuid ?? genUuid();
-  const updatedAt = opts?.updatedAt ?? Date.now();
-  const result = await database.runAsync(
-    `INSERT INTO accounts (name, type, emoji, color, initial_balance, created_at, uuid, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [name, type, emoji, color, initialBalance, Date.now(), uuid, updatedAt]
-  );
-  return {
-    id: result.lastInsertRowId, uuid, name, type, emoji, color, initialBalance,
-    createdAt: Date.now(), updatedAt, deleted: false,
-  };
-}
-
-// 更新账户：名称/类型/图标/颜色/初始余额（同步刷新 updated_at 以便多端同步）
-export async function updateAccount(
-  id: number,
-  name: string,
-  type: Account['type'],
-  emoji: string,
-  color: string,
-  initialBalance: number,
-): Promise<void> {
-  const database = await getDB();
-  await database.runAsync(
-    `UPDATE accounts SET name = ?, type = ?, emoji = ?, color = ?, initial_balance = ?, updated_at = ?
-     WHERE id = ?`,
-    [name, type, emoji, color, initialBalance, Date.now(), id]
-  );
-}
-
-export async function deleteAccount(id: number): Promise<void> {
-  if (id === 1) throw new Error('默认账户不可删除');
-  const database = await getDB();
-  const now = Date.now();
-  // 该账户的历史记录归入默认账户，转账记录墓碑删除，账户本身墓碑删除
-  await database.withTransactionAsync(async () => {
-    // 记录迁移到默认账户（同时刷新 account_uuid + updated_at 以便同步）
-    await database.runAsync(
-      `UPDATE ledger_records SET account_id = 1, account_uuid = (SELECT uuid FROM accounts WHERE id = 1), updated_at = ?
-       WHERE account_id = ? AND deleted = 0`,
-      [now, id]
-    );
-    await database.runAsync(
-      'UPDATE transfers SET deleted = 1, updated_at = ? WHERE (from_account_id = ? OR to_account_id = ?) AND deleted = 0',
-      [now, id, id]
-    );
-    await database.runAsync('UPDATE accounts SET deleted = 1, updated_at = ? WHERE id = ?', [now, id]);
-  });
-}
-
-// ===== 转账 =====
-
-export async function addTransfer(
-  fromAccountId: number,
-  toAccountId: number,
-  amount: number,
-  date: string,
-  note: string,
-  opts?: { uuid?: string; updatedAt?: number; fromAccountUuid?: string; toAccountUuid?: string }
-): Promise<void> {
-  const database = await getDB();
-  const uuid = opts?.uuid ?? genUuid();
-  const updatedAt = Number(opts?.updatedAt ?? Date.now());
-  // 解析账户 uuid
-  let fromAccountUuid = opts?.fromAccountUuid ?? '';
-  let toAccountUuid = opts?.toAccountUuid ?? '';
-  if (!fromAccountUuid || !toAccountUuid) {
-    const rows = await database.getAllAsync<{ id: number; uuid: string }>(
-      'SELECT id, uuid FROM accounts WHERE id IN (?, ?)', [fromAccountId, toAccountId]
-    );
-    const map: Record<number, string> = {};
-    for (const r of rows) map[r.id] = r.uuid;
-    fromAccountUuid = fromAccountUuid || map[fromAccountId] || '';
-    toAccountUuid = toAccountUuid || map[toAccountId] || '';
-  }
-  await database.runAsync(
-    `INSERT INTO transfers (from_account_id, to_account_id, amount, date, note, timestamp, uuid, updated_at, deleted, from_account_uuid, to_account_uuid)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-    [fromAccountId, toAccountId, amount, date, note, Date.now(), uuid, updatedAt, fromAccountUuid, toAccountUuid]
-  );
-}
-
-function mapTransfer(r: Record<string, unknown>): Transfer {
-  return {
-    id: Number(r.id),
-    uuid: String(r.uuid ?? ''),
-    fromAccountId: Number(r.from_account_id),
-    toAccountId: Number(r.to_account_id),
-    fromAccountUuid: String(r.from_account_uuid ?? ''),
-    toAccountUuid: String(r.to_account_uuid ?? ''),
-    amount: Number(r.amount),
-    date: String(r.date),
-    note: String(r.note ?? ''),
-    timestamp: Number(r.timestamp),
-    updatedAt: Number(r.updated_at ?? 0),
-    deleted: Number(r.deleted ?? 0) === 1,
-  };
-}
-
-export async function getTransfersByDate(date: string): Promise<Transfer[]> {
-  const database = await getDB();
-  const rows = await database.getAllAsync<Record<string, unknown>>(
-    'SELECT * FROM transfers WHERE deleted = 0 AND date = ? ORDER BY timestamp DESC',
-    [date]
-  );
-  return rows.map(mapTransfer);
-}
-
-// 删除转账（墓碑）
-export async function deleteTransfer(id: number): Promise<void> {
-  const database = await getDB();
-  await database.runAsync('UPDATE transfers SET deleted = 1, updated_at = ? WHERE id = ?', [Date.now(), id]);
-}
-
-// 按日期区间查询转账（start/end 为空字符串时查全部）
-export async function getTransfersByDateSafe(start: string, end: string): Promise<Transfer[]> {
-  const database = await getDB();
-  const rows = await database.getAllAsync<Record<string, unknown>>(
-    start
-      ? 'SELECT * FROM transfers WHERE deleted = 0 AND date >= ? AND date <= ? ORDER BY date DESC, timestamp DESC'
-      : 'SELECT * FROM transfers WHERE deleted = 0 ORDER BY date DESC, timestamp DESC',
-    start ? [start, end] : []
-  );
-  return rows.map(mapTransfer);
-}
-
 // ===== 周期记账 =====
 
 function mapRule(r: Record<string, unknown>): RecurringRule {
@@ -566,8 +364,6 @@ function mapRule(r: Record<string, unknown>): RecurringRule {
     amount: Number(r.amount),
     type: (r.type as RecordType) ?? 'expense',
     category: String(r.category),
-    accountId: Number(r.account_id ?? 1),
-    accountUuid: String(r.account_uuid ?? ''),
     frequency: (r.frequency as RecurringRule['frequency']) ?? 'monthly',
     dayOfWeek: Number(r.day_of_week ?? 0),
     dayOfMonth: Number(r.day_of_month ?? 1),
@@ -595,7 +391,6 @@ export interface RecurringRuleInput {
   amount: number;
   type: RecordType;
   category: string;
-  accountId: number;
   frequency: RecurringRule['frequency'];
   dayOfWeek: number;
   dayOfMonth: number;
@@ -604,7 +399,6 @@ export interface RecurringRuleInput {
   enabled: boolean;
   lastGenerated: string;
   userId?: number;
-  accountUuid?: string;
   uuid?: string;
   updatedAt?: number;
 }
@@ -613,39 +407,29 @@ export async function addRecurringRule(rule: RecurringRuleInput): Promise<void> 
   const database = await getDB();
   const uuid = rule.uuid ?? genUuid();
   const updatedAt = rule.updatedAt ?? Date.now();
-  let accountUuid = rule.accountUuid ?? '';
-  if (!accountUuid) {
-    const acc = await database.getFirstAsync<{ uuid: string }>('SELECT uuid FROM accounts WHERE id = ?', [rule.accountId]);
-    accountUuid = acc?.uuid ?? '';
-  }
   await database.runAsync(
     `INSERT INTO recurring_rules
      (name, amount, type, category, account_id, frequency, day_of_week, day_of_month, month_of_year, note, enabled, last_generated, created_at, uuid, user_id, updated_at, deleted, account_uuid)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '')`,
     [
-      rule.name, rule.amount, rule.type, rule.category, rule.accountId, rule.frequency,
-      rule.dayOfWeek, rule.dayOfMonth, rule.monthOfYear, rule.note, rule.enabled ? 1 : 0,
-      rule.lastGenerated, Date.now(), uuid, rule.userId ?? 0, updatedAt, accountUuid,
+      rule.name, rule.amount, rule.type, rule.category,
+      rule.frequency, rule.dayOfWeek, rule.dayOfMonth, rule.monthOfYear, rule.note,
+      rule.enabled ? 1 : 0, rule.lastGenerated, Date.now(), uuid, rule.userId ?? 0, updatedAt,
     ]
   );
 }
 
 export async function updateRecurringRule(rule: RecurringRule): Promise<void> {
   const database = await getDB();
-  let accountUuid = rule.accountUuid ?? '';
-  if (!accountUuid) {
-    const acc = await database.getFirstAsync<{ uuid: string }>('SELECT uuid FROM accounts WHERE id = ?', [rule.accountId]);
-    accountUuid = acc?.uuid ?? '';
-  }
   await database.runAsync(
     `UPDATE recurring_rules SET
-       name = ?, amount = ?, type = ?, category = ?, account_id = ?, frequency = ?,
-       day_of_week = ?, day_of_month = ?, month_of_year = ?, note = ?, enabled = ?, last_generated = ?, updated_at = ?, account_uuid = ?
+       name = ?, amount = ?, type = ?, category = ?, account_id = 1, account_uuid = '', frequency = ?,
+       day_of_week = ?, day_of_month = ?, month_of_year = ?, note = ?, enabled = ?, last_generated = ?, updated_at = ?
      WHERE id = ?`,
     [
-      rule.name, rule.amount, rule.type, rule.category, rule.accountId, rule.frequency,
-      rule.dayOfWeek, rule.dayOfMonth, rule.monthOfYear, rule.note, rule.enabled ? 1 : 0,
-      rule.lastGenerated, Date.now(), accountUuid, rule.id,
+      rule.name, rule.amount, rule.type, rule.category,
+      rule.frequency, rule.dayOfWeek, rule.dayOfMonth, rule.monthOfYear, rule.note,
+      rule.enabled ? 1 : 0, rule.lastGenerated, Date.now(), rule.id,
     ]
   );
 }
@@ -809,9 +593,10 @@ export async function bulkInsertRecords(records: Omit<LedgerRecord, 'id'>[]): Pr
     for (const r of records) {
       await database.runAsync(
         `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, account_id, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, account_uuid)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [r.amount, r.category, r.type, r.note, r.date, r.timestamp, r.accountId ?? 1, r.reimbursable ? 1 : 0, r.reimbursed ? 1 : 0,
-         r.uuid || genUuid(), r.userId ?? 0, r.updatedAt || r.timestamp, r.deleted ? 1 : 0, r.accountUuid ?? '']
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '')`,
+        [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
+         r.reimbursable ? 1 : 0, r.reimbursed ? 1 : 0,
+         r.uuid || genUuid(), r.userId ?? 0, r.updatedAt || r.timestamp, r.deleted ? 1 : 0]
       );
     }
   });
@@ -825,9 +610,10 @@ export async function replaceAllRecords(records: Omit<LedgerRecord, 'id'>[]): Pr
     for (const r of records) {
       await database.runAsync(
         `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, account_id, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, account_uuid)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [r.amount, r.category, r.type, r.note, r.date, r.timestamp, r.accountId ?? 1, r.reimbursable ? 1 : 0, r.reimbursed ? 1 : 0,
-         r.uuid || genUuid(), r.userId ?? 0, r.updatedAt || r.timestamp, r.deleted ? 1 : 0, r.accountUuid ?? '']
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '')`,
+        [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
+         r.reimbursable ? 1 : 0, r.reimbursed ? 1 : 0,
+         r.uuid || genUuid(), r.userId ?? 0, r.updatedAt || r.timestamp, r.deleted ? 1 : 0]
       );
     }
   });

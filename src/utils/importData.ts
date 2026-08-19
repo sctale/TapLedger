@@ -2,12 +2,12 @@ import * as DocumentPicker from 'expo-document-picker';
 import { DeviceEventEmitter } from 'react-native';
 import { File } from 'expo-file-system';
 import {
-  bulkInsertRecords, replaceAllRecords, saveSetting, addAccount, addCustomCategory,
-  addRecurringRule, addTransfer, setCustomCategoriesCache, getCategoryConfig,
+  bulkInsertRecords, replaceAllRecords, saveSetting, addCustomCategory,
+  addRecurringRule, setCustomCategoriesCache, getCategoryConfig,
 } from '../database/ledgerDB';
 import { LEDGER_EVENTS, EXPORT_VERSION, setCategoryConfig, setCustomCategories } from '../constants';
 import { isValidRecord, normalizeRecord } from './exportData';
-import type { Account, CustomCategory, LedgerRecord, RecurringRule, Transfer } from '../types';
+import type { CustomCategory, LedgerRecord, RecurringRule } from '../types';
 
 export type ImportStrategy = 'merge' | 'replace';
 
@@ -16,7 +16,7 @@ export interface ImportResult {
   strategy?: ImportStrategy;
   imported: number;
   skipped: number;
-  failed?: number; // 附属数据（账户/转账/周期/分类）写入失败条数
+  failed?: number; // 附属数据（周期/分类）写入失败条数
   error?: string;
   cancelled?: boolean;
 }
@@ -24,8 +24,6 @@ export interface ImportResult {
 interface ParsedBackup {
   records: Omit<LedgerRecord, 'id'>[];
   settings: Record<string, string>;
-  accounts: Account[];
-  transfers: Transfer[];
   recurring: RecurringRule[];
   customCategories: CustomCategory[];
   skipped: number;
@@ -34,7 +32,7 @@ interface ParsedBackup {
 
 // 解析 JSON 备份
 function parseJSONBackup(text: string): ParsedBackup {
-  const empty: ParsedBackup = { records: [], settings: {}, accounts: [], transfers: [], recurring: [], customCategories: [], skipped: 0 };
+  const empty: ParsedBackup = { records: [], settings: {}, recurring: [], customCategories: [], skipped: 0 };
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -64,8 +62,6 @@ function parseJSONBackup(text: string): ParsedBackup {
   return {
     records,
     settings: (obj.settings && typeof obj.settings === 'object' ? obj.settings : {}) as Record<string, string>,
-    accounts: Array.isArray(obj.accounts) ? (obj.accounts as Account[]) : [],
-    transfers: Array.isArray(obj.transfers) ? (obj.transfers as Transfer[]) : [],
     recurring: Array.isArray(obj.recurring) ? (obj.recurring as RecurringRule[]) : [],
     customCategories: Array.isArray(obj.customCategories) ? (obj.customCategories as CustomCategory[]) : [],
     skipped,
@@ -86,39 +82,22 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
     for (const [k, v] of Object.entries(data.settings)) {
       if (typeof v === 'string') await saveSetting(k, v).catch(() => {});
     }
-    // 3) 账户（跳过 id=1 默认账户冲突，其余重建）
-    for (const acc of data.accounts) {
-      if (acc.id === 1) continue;
-      try {
-        await addAccount(acc.name, acc.type, acc.emoji, acc.color, acc.initialBalance);
-      } catch {
-        failed++;
-      }
-    }
-    // 4) 转账（账户重建后 id 可能变化，跳过无法映射的）
-    for (const t of data.transfers) {
-      try {
-        await addTransfer(t.fromAccountId, t.toAccountId, t.amount, t.date, t.note);
-      } catch {
-        failed++;
-      }
-    }
-    // 5) 周期规则
+    // 3) 周期规则
     for (const r of data.recurring) {
       try {
         await addRecurringRule({
           name: r.name, amount: r.amount, type: r.type, category: r.category,
-          accountId: r.accountId, frequency: r.frequency, dayOfWeek: r.dayOfWeek,
+          frequency: r.frequency, dayOfWeek: r.dayOfWeek,
           dayOfMonth: r.dayOfMonth, monthOfYear: r.monthOfYear, note: r.note,
           enabled: r.enabled, lastGenerated: r.lastGenerated,
           uuid: r.uuid || undefined, updatedAt: r.updatedAt || undefined,
-          accountUuid: r.accountUuid || undefined, userId: r.userId || undefined,
+          userId: r.userId || undefined,
         });
       } catch {
         failed++;
       }
     }
-    // 6) 自定义分类（刷新缓存）
+    // 4) 自定义分类（刷新缓存）
     for (const c of data.customCategories) {
       try {
         await addCustomCategory({

@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING, getCategories,
 } from '../constants';
-import { addRecord, getAccounts, getSetting, saveSetting } from '../database/ledgerDB';
+import { addRecord, getSetting, saveSetting } from '../database/ledgerDB';
 import { formatMoney, getToday } from '../utils/dateUtils';
 import { appendKey, isValidAmount, toAmount, type PadKey } from '../utils/moneyUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
@@ -22,17 +22,14 @@ import { useToast } from '../hooks/useToast';
 import { getCachedMembers, type MemberInfo } from '../sync/memberUtils';
 import CategorySelector from '../components/CategorySelector';
 import NumberPad from '../components/NumberPad';
-import AccountPicker from '../components/AccountPicker';
 import Toast from '../components/Toast';
-import type { AccountBalance, RecordType } from '../types';
+import type { RecordType } from '../types';
 
 interface Props {
   active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
 }
 
 export default function HomeScreen({ active }: Props) {
-  const [accountCountZero, setAccountCountZero] = useState(true);
-
   const { toast, showToast, hideToast } = useToast();
 
   // 记账输入状态
@@ -47,10 +44,8 @@ export default function HomeScreen({ active }: Props) {
   const [showNote, setShowNote] = useState(false);
   const [reimbursable, setReimbursable] = useState(false);
 
-  // 账户状态
-  const [accounts, setAccounts] = useState<AccountBalance[]>([]);
-  const [accountId, setAccountId] = useState(1);
-  const [syncUserId, setSyncUserId] = useState(0); // 登录后的记账人标记（0=未登录本地）
+  // 登录后的记账人标记（0=未登录本地）
+  const [syncUserId, setSyncUserId] = useState(0);
   const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5 记账人标识）
 
   const scrollRef = useRef<ScrollView>(null);
@@ -63,25 +58,11 @@ export default function HomeScreen({ active }: Props) {
     setMembers(list);
   }, []);
 
-  const loadAccounts = useCallback(async () => {
-    try {
-      const list = await getAccounts();
-      setAccounts(list);
-      setAccountCountZero(list.length === 0);
-      if (list.length > 0) {
-        setAccountId((prev) => (list.some((a) => a.id === prev) ? prev : list[0].id));
-      }
-    } catch {
-      // 账户加载失败保持现状
-    }
-  }, []);
-
-  // Tab 激活时滚回顶部 + 重载账户
+  // Tab 激活时滚回顶部
   useEffect(() => {
     if (!active) return;
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-    loadAccounts();
-  }, [active, loadAccounts]);
+  }, [active]);
 
   // 首次加载（额外恢复默认收支类型设置 + 同步用户标记）
   useEffect(() => {
@@ -104,7 +85,6 @@ export default function HomeScreen({ active }: Props) {
             // 静默
           }
         })(),
-        loadAccounts(),
         loadMembers(),
       ]);
     })();
@@ -112,46 +92,9 @@ export default function HomeScreen({ active }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 读取默认账户设置（账户加载完成后）
-  useEffect(() => {
-    if (accountCountZero) return;
-    (async () => {
-      try {
-        const saved = await getSetting(SETTING_KEYS.DEFAULT_ACCOUNT);
-        if (saved) {
-          const id = Number(saved);
-          if (accounts.some((a) => a.id === id)) setAccountId(id);
-        }
-      } catch {
-        // 静默
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountCountZero]);
-
-  // App 回到前台刷新
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') {
-        loadAccounts();
-      }
-    });
-    return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // 全局事件刷新
   useEffect(() => {
     const subs = [
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.RECORDED, () => {
-        loadAccounts();
-      }),
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.DATA_IMPORTED, () => {
-        loadAccounts();
-      }),
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.ACCOUNTS_CHANGED, () => {
-        loadAccounts();
-      }),
       // 登录态变化 / 同步完成 → 刷新成员缓存（v0.5）
       DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, loadMembers),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, loadMembers),
@@ -197,7 +140,7 @@ export default function HomeScreen({ active }: Props) {
     }
     const amount = toAmount(amountStr);
     try {
-      await addRecord(amount, category, type, today, note.trim(), accountId, reimbursable, { userId: syncUserId });
+      await addRecord(amount, category, type, today, note.trim(), reimbursable, { userId: syncUserId });
       setAmountStr('');
       setNote('');
       setShowNote(false);
@@ -210,16 +153,7 @@ export default function HomeScreen({ active }: Props) {
       hapticError();
       showToast('保存失败，请重试', 'error');
     }
-  }, [amountStr, category, type, today, note, accountId, reimbursable, showToast, syncUserId]);
-
-  // 选择账户时记住偏好
-  const handleSelectAccount = useCallback((id: number) => {
-    setAccountId(id);
-    hapticLight();
-    saveSetting(SETTING_KEYS.DEFAULT_ACCOUNT, String(id)).catch(() => {
-      showToast('默认账户保存失败', 'error');
-    });
-  }, [showToast]);
+  }, [amountStr, category, type, today, note, reimbursable, showToast, syncUserId]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -270,13 +204,6 @@ export default function HomeScreen({ active }: Props) {
             selected={category}
             onSelect={(key) => { setCategory(key); hapticLight(); }}
           />
-
-          {/* 账户选择（横向滑动一行） */}
-          {accounts.length > 0 ? (
-            <View style={styles.accountSection}>
-              <AccountPicker accounts={accounts} selectedId={accountId} onSelect={handleSelectAccount} />
-            </View>
-          ) : null}
 
           {/* 备注 + 待报销 */}
           <View style={styles.optionRow}>
@@ -404,9 +331,6 @@ const styles = StyleSheet.create({
   },
   amountPlaceholder: {
     color: COLORS.borderSubtle,
-  },
-  accountSection: {
-    gap: 4,
   },
   optionRow: {
     flexDirection: 'row',

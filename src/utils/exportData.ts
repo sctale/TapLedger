@@ -1,15 +1,10 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import {
-  getAllRecords, getAllSettings, getAccounts, getTransfersByDateSafe, getRecurringRules, getCustomCategories,
+  getAllRecords, getAllSettings, getRecurringRules, getCustomCategories,
 } from '../database/ledgerDB';
 import { EXPORT_VERSION } from '../constants';
-import type { Account, CustomCategory, ExportData, LedgerRecord, RecurringRule, Transfer } from '../types';
-
-// 转账查询需要按全部日期——提供一个便捷封装
-async function getAllTransfers(): Promise<Transfer[]> {
-  return getTransfersByDateSafe('', '');
-}
+import type { CustomCategory, ExportData, LedgerRecord, RecurringRule } from '../types';
 
 // 导出全部数据为 JSON 文件并分享
 export async function exportLedgerData(): Promise<{ success: boolean; count: number; error?: string }> {
@@ -20,21 +15,15 @@ export async function exportLedgerData(): Promise<{ success: boolean; count: num
     }
 
     let settings: Record<string, string> = {};
-    let accounts: Account[] = [];
-    let transfers: Transfer[] = [];
     let recurring: RecurringRule[] = [];
     let customCategories: CustomCategory[] = [];
     try {
-      const [s, a, t, r, c] = await Promise.all([
+      const [s, r, c] = await Promise.all([
         getAllSettings(),
-        getAccounts(),
-        getAllTransfers(),
         getRecurringRules(),
         getCustomCategories(),
       ]);
       settings = s;
-      accounts = a;
-      transfers = t;
       recurring = r;
       customCategories = c;
     } catch {
@@ -47,8 +36,6 @@ export async function exportLedgerData(): Promise<{ success: boolean; count: num
       count: records.length,
       records,
       settings,
-      accounts,
-      transfers,
       recurring,
       customCategories,
     };
@@ -106,8 +93,6 @@ export function normalizeRecord(r: LedgerRecord): Omit<LedgerRecord, 'id'> {
     note: typeof r.note === 'string' ? r.note : '',
     date: r.date,
     timestamp: r.timestamp,
-    accountId: Number(r.accountId) > 0 ? Number(r.accountId) : 1,
-    accountUuid: typeof r.accountUuid === 'string' ? r.accountUuid : '',
     reimbursable: Boolean(r.reimbursable),
     reimbursed: Boolean(r.reimbursed),
     updatedAt: Number(r.updatedAt) > 0 ? Number(r.updatedAt) : r.timestamp,

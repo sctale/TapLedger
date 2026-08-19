@@ -3,14 +3,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { COLORS, LEDGER_EVENTS, RECURRING_FREQUENCIES, SPACING, findCategory } from '../../constants';
 import {
-  addRecurringRule, deleteRecurringRule, getAccounts, getRecurringRules, updateRecurringRule,
+  addRecurringRule, deleteRecurringRule, getRecurringRules, updateRecurringRule,
   type RecurringRuleInput,
 } from '../../database/ledgerDB';
 import { formatMoney } from '../../utils/dateUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
-import type { AccountBalance, RecurringRule } from '../../types';
+import type { RecurringRule } from '../../types';
 import RuleModal from './RuleModal';
 import { manageStyles as styles } from './sharedStyles';
 
@@ -25,18 +25,16 @@ const localStyles = StyleSheet.create({
 });
 
 export default function RecurringScreen() {
-  const [accounts, setAccounts] = useState<AccountBalance[]>([]);
   const [rules, setRules] = useState<RecurringRule[]>([]);
   const [ruleModal, setRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null);
 
   const { toast, showToast, hideToast } = useToast();
 
-  // 自加载：规则 + 账户
+  // 自加载：规则
   const reload = useCallback(async () => {
     try {
-      const [accs, rs] = await Promise.all([getAccounts(), getRecurringRules()]);
-      setAccounts(accs);
+      const rs = await getRecurringRules();
       setRules(rs);
     } catch {
       // 加载失败保持现状
@@ -53,13 +51,6 @@ export default function RecurringScreen() {
     ];
     return () => subs.forEach((s) => s.remove());
   }, [reload]);
-
-  // 账户名映射（emoji + name），供行副标题显示
-  const accountNames = useMemo(() => {
-    const map: Record<number, string> = {};
-    for (const a of accounts) map[a.id] = a.emoji + ' ' + a.name;
-    return map;
-  }, [accounts]);
 
   // ===== 保存（新增/编辑） =====
   const handleSubmit = useCallback(async (values: RecurringRuleInput, editing: RecurringRule | null) => {
@@ -157,7 +148,7 @@ export default function RecurringScreen() {
                     </View>
                     <View style={styles.accInfo}>
                       <Text style={styles.accName}>{rule.name}</Text>
-                      <Text style={styles.accType}>{freqLabel} · {cat.label} · {accountNames[rule.accountId] ?? '现金'}</Text>
+                      <Text style={styles.accType}>{freqLabel} · {cat.label}</Text>
                     </View>
                     <Text style={[styles.accBalance, { color: rule.type === 'expense' ? COLORS.expense : COLORS.income }]}>
                       {rule.type === 'expense' ? '-' : '+'}{formatMoney(rule.amount)}
@@ -185,7 +176,6 @@ export default function RecurringScreen() {
       <Toast toast={toast} onHide={hideToast} />
       <RuleModal
         visible={ruleModal}
-        accounts={accounts}
         initialRule={editingRule}
         onClose={() => setRuleModal(false)}
         onSubmit={handleSubmit}

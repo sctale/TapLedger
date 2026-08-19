@@ -2,34 +2,31 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DeviceEventEmitter, Pressable, ScrollView, Text, View } from 'react-native';
 import { COLORS, LEDGER_EVENTS } from '../../constants';
 import {
-  getAccounts, getReimbursableRecords, getReimbursableSummary, markAllReimbursed, setReimbursed,
+  getReimbursableRecords, getReimbursableSummary, markAllReimbursed, setReimbursed,
 } from '../../database/ledgerDB';
 import { formatMoney } from '../../utils/dateUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
 import RecordList from '../../components/RecordList';
 import Toast from '../../components/Toast';
-import type { AccountBalance, LedgerRecord } from '../../types';
+import type { LedgerRecord } from '../../types';
 import { manageStyles as styles } from './sharedStyles';
 
 // 报销二级页（v0.5.9 从 ManageScreen 拆分；顶栏返回按钮由外层 ManageScreen 统一渲染）
 export default function ReimburseScreen() {
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
   const [reimburseRecords, setReimburseRecords] = useState<LedgerRecord[]>([]);
-  const [accounts, setAccounts] = useState<AccountBalance[]>([]);
 
   const { toast, showToast, hideToast } = useToast();
 
   const reload = useCallback(async () => {
     try {
-      const [rsSum, rsRec, accs] = await Promise.all([
+      const [rsSum, rsRec] = await Promise.all([
         getReimbursableSummary(),
         getReimbursableRecords(),
-        getAccounts(),
       ]);
       setReimburseSummary(rsSum);
       setReimburseRecords(rsRec);
-      setAccounts(accs);
     } catch {
       showToast('报销数据加载失败', 'error');
     }
@@ -75,13 +72,6 @@ export default function ReimburseScreen() {
     }
   }, [reload]);
 
-  // 账户名映射（与原 ManageScreen 的 accountNames useMemo 逻辑一致）
-  const accountNames = useMemo(() => {
-    const map: Record<number, string> = {};
-    for (const a of accounts) map[a.id] = a.emoji + ' ' + a.name;
-    return map;
-  }, [accounts]);
-
   return (
     <ScrollView
       style={styles.scroll}
@@ -106,7 +96,6 @@ export default function ReimburseScreen() {
         {reimburseRecords.length > 0 ? (
           <RecordList
             records={reimburseRecords}
-            accountNames={accountNames}
             showDate
           />
         ) : (
