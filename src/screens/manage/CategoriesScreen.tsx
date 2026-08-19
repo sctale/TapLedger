@@ -3,7 +3,7 @@ import {
   Alert, DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import {
-  CATEGORY_COLORS, COLORS, EXPENSE_CATEGORIES, INCOME_CATEGORIES, LEDGER_EVENTS, SPACING,
+  CATEGORY_COLORS, CATEGORY_ICONS, COLORS, EXPENSE_CATEGORIES, FONT_SIZE, INCOME_CATEGORIES, LEDGER_EVENTS, RADIUS, SPACING,
   ensureFullCategoryConfig, setCategoryConfig,
 } from '../../constants';
 import {
@@ -433,13 +433,36 @@ function CategoryForm({
             />
           </View>
           <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>表情图标</Text>
+            <Text style={styles.fieldLabel}>图标（点选预设或自定义）</Text>
+            {/* 当前选中图标预览 */}
+            <View style={localStyles.previewRow}>
+              <View style={[styles.accIcon, { backgroundColor: `${color}22` }]}>
+                <Text style={styles.accEmoji}>{emoji || '🗂️'}</Text>
+              </View>
+              <Text style={localStyles.previewText}>当前选中「{emoji || '未选择'}」</Text>
+            </View>
+            {/* 预设图标网格（当前归属分组 + 通用） */}
+            <View style={localStyles.iconGrid}>
+              {[...CATEGORY_ICONS[type], ...CATEGORY_ICONS.common].map((ic) => (
+                <Pressable
+                  key={`${type}-${ic}`}
+                  style={[localStyles.iconCell, emoji === ic && localStyles.iconCellOn]}
+                  onPress={() => setEmoji(ic)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`选择图标${ic}`}
+                  accessibilityState={{ selected: emoji === ic }}
+                >
+                  <Text style={localStyles.iconCellEmoji}>{ic}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {/* 自定义输入（预设之外的表情，如 🚀 🦄） */}
             <TextInput
-              style={styles.input}
-              placeholder="如 🐱 ✈️ 🎁"
+              style={[styles.input, { marginTop: SPACING.sm }]}
+              placeholder="或输入自定义图标，如 🚀"
               placeholderTextColor={COLORS.textTertiary}
               value={emoji}
-              onChangeText={setEmoji}
+              onChangeText={(t) => setEmoji(t.replace(/\s+/g, '').slice(0, 4))}
               maxLength={4}
               returnKeyType="done"
             />
@@ -527,6 +550,39 @@ const localStyles = StyleSheet.create({
     color: COLORS.accent,
     fontWeight: '600',
     paddingHorizontal: 4,
+  },
+  // 预设图标选择
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  previewText: {
+    fontSize: FONT_SIZE.xs + 1,
+    color: COLORS.textSecondary,
+  },
+  iconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  iconCell: {
+    width: 46,
+    height: 46,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.bgAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  iconCellOn: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  iconCellEmoji: {
+    fontSize: FONT_SIZE.lg,
   },
   // 全屏表单
   formContainer: {
