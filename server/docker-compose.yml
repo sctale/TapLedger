@@ -1,6 +1,9 @@
 services:
   tapledger:
+    # 双写：构建机用 `docker compose build` 产物并 push 到 GHCR；
+    # NAS 部署只 `docker compose pull`，不本地编译
     build: .
+    image: ghcr.io/sctale/tapledger-server:0.4.1
     container_name: tapledger-server
     restart: unless-stopped
     ports:

@@ -6,25 +6,45 @@
 - 零外部依赖：不需要额外的数据库/缓存容器
 - 数据安全：全部数据存在 `./data/tapledger.db`，备份该目录即可
 
-## 一、NAS 部署（Docker Compose）
+## 一、NAS 部署（Docker Compose，镜像拉取 / 免本地编译）
+
+镜像托管在 GitHub 容器仓库 **GHCR**：`ghcr.io/sctale/tapledger-server`。
+NAS 上不再本地编译，只 `pull` 已发布镜像并启动。
 
 ```bash
 cd server
 # 1. 修改 JWT_SECRET（docker-compose.yml 里改成随机长字符串）
-# 2. 构建并启动
-docker compose up -d --build
+# 2. 拉取镜像并启动
+docker compose pull
+docker compose up -d
 
 # 查看日志 / 健康检查
 docker compose logs -f
 curl http://<NAS_IP>:8420/api/health
 ```
 
+> 更新到新版本：`docker compose pull && docker compose up -d` 即可，无需重新编译。
+
 ### 群晖 / 威联通图形化步骤
 
 1. Container Manager / Docker → 项目 → 新建
 2. 路径选到本 `server` 目录（含 docker-compose.yml）
-3. 确认 `JWT_SECRET` 已修改后启动
+3. 确认 `JWT_SECRET` 已修改后启动（首次会从 GHCR 拉镜像）
 4. 防火墙放行 8420 端口（仅局域网使用则无需暴露公网）
+
+### 发布新版本镜像（在装有 Docker 的本地机器执行）
+
+```powershell
+# 机器需已装 Docker + 官方 GitHub CLI(gh) 并登录（gh auth login --web）
+# server/ 目录下：
+powershell -ExecutionPolicy Bypass -File scripts/docker-push.ps1
+```
+
+脚本会：`gh token 登录 GHCR → docker build → docker push`。
+推送成功后，NAS 上 `docker compose pull && docker compose up -d` 即更新。
+（镜像版本号与 `server/package.json` 一致，发版时同步修改脚本 `$TAG` 与 `docker-compose.yml` 的 `image` tag。）
+
+> **首次推送后请公开镜像**：GitHub → 仓库 Packages → `tapledger-server` → Package settings → 勾选 Public，否则 NAS 拉取私有镜像需 `docker login ghcr.io` 并配置凭据。
 
 ### 数据备份
 
