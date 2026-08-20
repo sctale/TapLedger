@@ -503,7 +503,7 @@ function CategoryForm({
   );
 }
 
-// ===== 全屏图标选择弹窗：按 支出/通用/收入 三组展示预设宫格 + 自定义输入 =====
+// ===== 全屏图标选择弹窗：平铺预设宫格 + 自定义输入 =====
 function IconPickerModal({
   visible,
   currentEmoji,
@@ -522,12 +522,6 @@ function IconPickerModal({
     if (visible) setDraft(currentEmoji);
   }, [visible, currentEmoji]);
 
-  const groups: { title: string; icons: string[] }[] = [
-    { title: '支出常用', icons: CATEGORY_ICONS.expense },
-    { title: '通用', icons: CATEGORY_ICONS.common },
-    { title: '收入常用', icons: CATEGORY_ICONS.income },
-  ];
-
   return (
     <Modal
       visible={visible}
@@ -537,25 +531,23 @@ function IconPickerModal({
       saveLabel="完成"
       onSave={() => onConfirm(draft || '📌')}
     >
-      {groups.map((group) => (
-        <View key={group.title} style={localStyles.pickerGroup}>
-          <Text style={localStyles.pickerGroupTitle}>{group.title}</Text>
-          <View style={localStyles.iconGrid}>
-            {group.icons.map((ic) => (
-              <Pressable
-                key={`${group.title}-${ic}`}
-                style={[localStyles.iconCell, draft === ic && localStyles.iconCellOn]}
-                onPress={() => setDraft(ic)}
-                accessibilityRole="button"
-                accessibilityLabel={`选择图标${ic}`}
-                accessibilityState={{ selected: draft === ic }}
-              >
-                <Text style={localStyles.iconCellEmoji}>{ic}</Text>
-              </Pressable>
-            ))}
-          </View>
+      <View style={localStyles.pickerGroup}>
+        <Text style={localStyles.pickerGroupTitle}>常用</Text>
+        <View style={localStyles.iconGrid}>
+          {CATEGORY_ICONS.map((ic) => (
+            <Pressable
+              key={ic}
+              style={[localStyles.iconCell, draft === ic && localStyles.iconCellOn]}
+              onPress={() => setDraft(ic)}
+              accessibilityRole="button"
+              accessibilityLabel={`选择图标${ic}`}
+              accessibilityState={{ selected: draft === ic }}
+            >
+              <Text style={localStyles.iconCellEmoji}>{ic}</Text>
+            </Pressable>
+          ))}
         </View>
-      ))}
+      </View>
 
       {/* 自定义 emoji 输入（保留原替换/去空格/截断逻辑） */}
       <View style={localStyles.pickerGroup}>
