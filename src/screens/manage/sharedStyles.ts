@@ -286,6 +286,3 @@ export const manageStyles = StyleSheet.create({
     gap: SPACING.sm,
   },
 });
-
-// 二级页面顶栏外框的内容内边距（顶栏由 ManageScreen 统一渲染）
-export const SUB_PAGE_TOP_INSET = SPACING.md;

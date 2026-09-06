@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AppState,
   DeviceEventEmitter,
   Pressable,
   ScrollView,
@@ -19,7 +18,6 @@ import { formatMoney, getToday } from '../utils/dateUtils';
 import { appendKey, isValidAmount, toAmount, type PadKey } from '../utils/moneyUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
-import { getCachedMembers, type MemberInfo } from '../sync/memberUtils';
 import CategorySelector from '../components/CategorySelector';
 import NumberPad from '../components/NumberPad';
 import Toast from '../components/Toast';
@@ -46,17 +44,10 @@ export default function HomeScreen({ active }: Props) {
 
   // 登录后的记账人标记（0=未登录本地）
   const [syncUserId, setSyncUserId] = useState(0);
-  const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5 记账人标识）
 
   const scrollRef = useRef<ScrollView>(null);
   const today = getToday();
   const [, setCatTick] = useState(0); // 自定义分类变更 → 触发重渲染刷新分类选择器
-
-  // 加载家庭成员缓存（登录/同步完成后由事件触发刷新）
-  const loadMembers = useCallback(async () => {
-    const list = await getCachedMembers();
-    setMembers(list);
-  }, []);
 
   // Tab 激活时滚回顶部
   useEffect(() => {
@@ -68,36 +59,28 @@ export default function HomeScreen({ active }: Props) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await Promise.all([
-        (async () => {
-          try {
-            const [savedType, uidStr] = await Promise.all([
-              getSetting(SETTING_KEYS.DEFAULT_TYPE),
-              getSetting(SETTING_KEYS.SYNC_USER_ID),
-            ]);
-            if (cancelled) return;
-            setSyncUserId(Number(uidStr ?? '0') || 0);
-            if (savedType === 'income' || savedType === 'expense') {
-              setType(savedType);
-              setCategory(getCategories(savedType)[0]?.key ?? 'food');
-            }
-          } catch {
-            // 静默
-          }
-        })(),
-        loadMembers(),
-      ]);
+      try {
+        const [savedType, uidStr] = await Promise.all([
+          getSetting(SETTING_KEYS.DEFAULT_TYPE),
+          getSetting(SETTING_KEYS.SYNC_USER_ID),
+        ]);
+        if (cancelled) return;
+        setSyncUserId(Number(uidStr ?? '0') || 0);
+        if (savedType === 'income' || savedType === 'expense') {
+          setType(savedType);
+          setCategory(getCategories(savedType)[0]?.key ?? 'food');
+        }
+      } catch {
+        // 静默
+      }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // 全局事件刷新
   useEffect(() => {
     const subs = [
-      // 登录态变化 / 同步完成 → 刷新成员缓存（v0.5）
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, loadMembers),
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, loadMembers),
       // 自定义分类增删/显隐变更 → 重渲染分类选择器并修正当前选中分类（v0.5.4）
       DeviceEventEmitter.addListener(LEDGER_EVENTS.CATEGORIES_CHANGED, () => {
         setCatTick((t) => t + 1);
@@ -109,7 +92,7 @@ export default function HomeScreen({ active }: Props) {
       }),
     ];
     return () => subs.forEach((s) => s.remove());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // 切换收支类型

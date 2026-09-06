@@ -1,0 +1,15 @@
+node_modules
+.expo
+android
+ios
+dist
+coverage
+server/node_modules
+server/dist
+server/data
+package-lock.json
+server/package-lock.json
+*.md
+assets
+plugins/withVersionSync*
+*.apk

@@ -93,7 +93,7 @@ export default function DataManageScreen() {
   const doReset = useCallback(async () => {
     try {
       await resetPersonalLedger();
-      showToast('个人账本已重置');
+      showToast('当前账本已重置');
       DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
       DeviceEventEmitter.emit(LEDGER_EVENTS.CATEGORIES_CHANGED);
       DeviceEventEmitter.emit(LEDGER_EVENTS.SETTINGS_CHANGED);
@@ -156,24 +156,24 @@ export default function DataManageScreen() {
             <Text style={[styles.actionBtnText, { color: COLORS.text }]}>导入数据</Text>
           </Pressable>
         </View>
-        <Text style={styles.hint}>JSON 完整备份（含账户/周期/报销）；Excel 供日常查看分析</Text>
+        <Text style={styles.hint}>JSON 完整备份（当前账本的记录 / 周期 / 报销）；Excel 供日常查看分析</Text>
       </View>
 
       {/* ===== 危险操作 ===== */}
       <Text style={styles.sectionTitle}>危险操作</Text>
       <View style={styles.card}>
         <View style={styles.dataRow}>
-          <Text style={styles.label}>重置个人账本</Text>
+          <Text style={styles.label}>重置当前账本</Text>
         </View>
-        <Text style={styles.hint}>清空所有记账记录、账户、周期规则、自定义分类，数据不可恢复。</Text>
+        <Text style={styles.hint}>清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复；若已登录，删除会同步到你的服务器（家人端也会移除）。</Text>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: COLORS.danger }]}
-          onPress={() => Alert.alert('重置个人账本', '此操作将清空所有记账记录、账户、周期规则、自定义分类，数据不可恢复。确定继续吗？', [
+          onPress={() => Alert.alert('重置当前账本', '此操作将清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复。确定继续吗？', [
             { text: '取消', style: 'cancel' },
             { text: '继续', style: 'destructive', onPress: confirmReset },
           ])}
         >
-          <Text style={styles.actionBtnText}>重置个人账本</Text>
+          <Text style={styles.actionBtnText}>重置当前账本</Text>
         </Pressable>
       </View>
 
@@ -189,7 +189,7 @@ export default function DataManageScreen() {
         onSave={handleResetModalConfirm}
       >
         <Text style={styles.hint}>请输入「重置」二字以确认操作</Text>
-        <Text style={[styles.hint, { marginTop: SPACING.xs }]}>清空所有记账记录、账户、周期规则、自定义分类，数据不可恢复。</Text>
+        <Text style={[styles.hint, { marginTop: SPACING.xs }]}>清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复。</Text>
         <TextInput
           style={[styles.input, { marginTop: SPACING.md, fontSize: 18, paddingVertical: 14 }]}
           placeholder="重置"

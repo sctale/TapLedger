@@ -5,7 +5,7 @@ import {
   bulkInsertRecords, replaceAllRecords, saveSetting, addCustomCategory,
   addRecurringRule, setCustomCategoriesCache, getCategoryConfig,
 } from '../database/ledgerDB';
-import { LEDGER_EVENTS, EXPORT_VERSION, setCategoryConfig, setCustomCategories } from '../constants';
+import { LEDGER_EVENTS, EXPORT_VERSION, setCategoryConfig } from '../constants';
 import { isValidRecord, normalizeRecord } from './exportData';
 import type { CustomCategory, LedgerRecord, RecurringRule } from '../types';
 
@@ -113,7 +113,7 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
     setCategoryConfig(cfg);
     DeviceEventEmitter.emit(LEDGER_EVENTS.DATA_IMPORTED);
     return { success: true, strategy, imported: data.records.length, skipped: data.skipped, failed };
-  } catch (e) {
+  } catch {
     return { success: false, imported: 0, skipped: 0, error: '数据库写入失败' };
   }
 }

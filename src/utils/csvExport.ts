@@ -44,7 +44,7 @@ export async function exportCSV(records: LedgerRecord[]): Promise<{ success: boo
       return { success: true };
     }
     return { success: false, error: '当前设备不支持分享' };
-  } catch (e) {
+  } catch {
     return { success: false, error: '导出失败，请重试' };
   }
 }

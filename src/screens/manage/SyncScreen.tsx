@@ -3,7 +3,7 @@ import {
   Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING } from '../../constants';
-import { getSetting, saveSetting } from '../../database/ledgerDB';
+import { getSetting, saveSetting, setActiveLedgerId as setDbActiveLedgerId } from '../../database/ledgerDB';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
@@ -123,22 +123,20 @@ export default function SyncScreen() {
   const [syncUid, setSyncUid] = useState(0);
   const [ledgers, setLedgers] = useState<LedgerInfo[]>([]);      // 可用账本（个人+家庭）
   const [activeLedgerId, setActiveLedgerId] = useState(0);
-  const [activeLedgerName, setActiveLedgerName] = useState('');
   const [ledgerSwitchBusy, setLedgerSwitchBusy] = useState(false);
 
   // 读取同步配置（reload 时一并刷新）
   const loadSyncState = useCallback(async () => {
     try {
-      const [url, token, name, avatar, family, lastSync, uid, actId, actName] = await Promise.all([
+      const [url, token, name, avatar, family, lastSync, uid, actId] = await Promise.all([
         getSetting(SETTING_KEYS.SYNC_SERVER_URL),
         getSetting(SETTING_KEYS.SYNC_TOKEN),
         getSetting(SETTING_KEYS.SYNC_USER_DISPLAY),
         getSetting(SETTING_KEYS.SYNC_USER_AVATAR),
-        getSetting('sync.family_name'),
+        getSetting(SETTING_KEYS.SYNC_FAMILY_NAME),
         getSetting(SETTING_KEYS.SYNC_LAST_SYNC_TIME),
         getSetting(SETTING_KEYS.SYNC_USER_ID),
         getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID),
-        getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME),
       ]);
       setServerUrl(url ?? '');
       setServerUrlDraft(url ?? '');
@@ -150,7 +148,7 @@ export default function SyncScreen() {
       setSyncUid(Number(uid ?? '0') || 0);
       const actIdNum = Number(actId ?? '0') || 0;
       setActiveLedgerId(actIdNum);
-      setActiveLedgerName(actName ?? '');
+      setDbActiveLedgerId(actIdNum); // 本地读写作用域与持久化的活动账本保持一致
       // 登录后拉取账本列表
       if (url && token) {
         try {
@@ -161,7 +159,7 @@ export default function SyncScreen() {
           const target = list.find((l) => l.id === actIdNum) || personal;
           if (target && target.id !== actIdNum) {
             setActiveLedgerId(target.id);
-            setActiveLedgerName(target.name);
+            setDbActiveLedgerId(target.id);
             saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(target.id));
             saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, target.name);
           }
@@ -232,7 +230,7 @@ export default function SyncScreen() {
     // 查询家庭名
     try {
       const { family } = await apiGetFamily(serverUrlDraft.trim().replace(/\/+$/, ''), token);
-      await saveSetting('sync.family_name', family?.name ?? '');
+      await saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, family?.name ?? '');
       setFamilyName(family?.name ?? '');
       if (family) {
         // 已入家庭 → 首次同步（推送本地存量 + 拉取家人数据）
@@ -252,7 +250,7 @@ export default function SyncScreen() {
     try {
       const url = serverUrl || serverUrlDraft.trim().replace(/\/+$/, '');
       const { family } = await apiGetFamily(url, syncToken);
-      await saveSetting('sync.family_name', family?.name ?? '');
+      await saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, family?.name ?? '');
       setFamilyName(family?.name ?? '');
       // 资料可能已修改（昵称/头像），从服务端回读并更新本地缓存（v0.5）
       try {
@@ -309,7 +307,7 @@ export default function SyncScreen() {
       await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(target.id));
       await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, target.name);
       setActiveLedgerId(target.id);
-      setActiveLedgerName(target.name);
+      setDbActiveLedgerId(target.id); // 立即切换本地读写作用域
       // 切账本后拉取该账本数据到本地展示
       const res = await runSync();
       if (res.ok) {
@@ -318,6 +316,8 @@ export default function SyncScreen() {
       } else {
         showToast(res.error ?? '同步失败', 'error');
       }
+      // 活动账本已变，展示的数据集整体切换；无论是否拉到数据都通知各页重新查询
+      DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
     } catch (e) {
       hapticError();
       showToast(e instanceof Error ? e.message : '切换失败', 'error');
@@ -340,7 +340,7 @@ export default function SyncScreen() {
             saveSetting(SETTING_KEYS.SYNC_USER_ID, '0'),
             saveSetting(SETTING_KEYS.SYNC_USER_DISPLAY, ''),
             saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, ''),
-            saveSetting('sync.family_name', ''),
+            saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, ''),
             saveSetting(SETTING_KEYS.SYNC_MEMBERS_JSON, ''), // 清空成员缓存（v0.5）
             saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, '0'),
             saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, ''),
@@ -350,8 +350,6 @@ export default function SyncScreen() {
           setLoggedAvatar('');
           setFamilyName('');
           setLedgers([]);
-          setActiveLedgerId(0);
-          setActiveLedgerName('');
           hapticLight();
           showToast('已退出登录');
           DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);

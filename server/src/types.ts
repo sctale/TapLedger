@@ -13,37 +13,10 @@ export interface SyncRecord {
   note: string;
   date: string;            // YYYY-MM-DD
   timestamp: number;
-  accountUuid: string;
   reimbursable: number;    // 0/1
   reimbursed: number;      // 0/1
   updatedAt: number;
   deleted: number;         // 0/1
-}
-
-export interface SyncAccount {
-  uuid: string;
-  familyId: number;
-  name: string;
-  type: string;
-  emoji: string;
-  color: string;
-  initialBalance: number;
-  sort: number;
-  updatedAt: number;
-  deleted: number;
-}
-
-export interface SyncTransfer {
-  uuid: string;
-  familyId: number;
-  fromAccountUuid: string;
-  toAccountUuid: string;
-  amount: number;
-  date: string;
-  note: string;
-  timestamp: number;
-  updatedAt: number;
-  deleted: number;
 }
 
 export interface SyncRecurring {
@@ -54,7 +27,6 @@ export interface SyncRecurring {
   amount: number;
   type: RecordType;
   category: string;
-  accountUuid: string;
   frequency: string;       // daily/weekly/monthly/yearly
   dayOfWeek: number;
   dayOfMonth: number;
@@ -118,8 +90,6 @@ export interface FamilyMember {
 // pull 响应 / push 请求共用的变更集合
 export interface SyncChanges {
   records: SyncRecord[];
-  accounts: SyncAccount[];
-  transfers: SyncTransfer[];
   recurring: SyncRecurring[];
   customCategories: SyncCustomCategory[];
 }

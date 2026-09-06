@@ -1,5 +1,35 @@
 # 更新日志
 
+## [0.9.0] - 2026-09-02
+
+### Bug 修复
+
+- **数据导入彻底修复**：JSON「合并 / 替换」导入此前因 `INSERT` 列与参数错位、且 `deleted` 被硬编码为 1，导致导入的记录全部变成隐形墓碑、字段串档（提示"已导入 N 条"却一条都不显示）。已修正列/占位符/参数对齐；「替换」也改为只替换当前账本，不再误清其它账本
+- **新建周期记账修复**：`addRecurringRule` 的 `INSERT` 同样存在列错位，导致**新建规则被存成 `frequency=1`、永不自动生成**。重写后按正确列绑定，周期记账恢复正常
+
+### 重构
+
+- **账本本地隔离（ledger 作用域）**：本地「记录 / 周期规则 / 自定义分类」三表新增 `ledger_id`，DB 层维护活动账本 `activeLedgerId`，所有读写 / 汇总 / 统计 / 报销查询按当前账本过滤；`push` 只推本账本、`pull` 落库打标本账本，**同一台设备在个人与家庭账本间切换不再互相串数据**。`ledger_id=0` 表示本地未归属；登录后首轮同步用 `adoptUnassignedRowsIntoLedger` 把本地存量一次性认领进个人账本
+- **重置当前账本改为墓碑**：由"跨表硬删"改为对当前账本写 `deleted=1` + 新 `updated_at`，下一轮同步把删除推到服务端且 LWW 不会复活，修复已登录用户"重置后数据被重新拉回"的问题；且只作用于当前账本
+- **冷启动同步**：不再只认 `family_name`，只要配好服务器即拉一轮，个人账本用户冷启动也能同步
+- **切换账本即时生效**：切换后立即切换本地读写作用域，并无条件通知各页刷新
+
+### 体验
+
+- **报销页单条核销 / 撤销**：报销明细每条可单独核销 / 撤销（此前仅有"一键全部核销"）
+
+### 清理
+
+- **移除账户 / 转账遗留**：客户端不再创建 / 读写 `accounts`、`transfers` 表及 `account_*` 列；服务端 `pull` 不再返回 `accounts`/`transfers`，删除对应 UPSERT / schema / 类型（老部署物理表未 DROP，无害）
+- 移除死代码：`clearAllRecords`、`constants.getCustomCategories`、`DEFAULT_ACCOUNT`、`SUB_PAGE_TOP_INSET`、服务端 `requireFamily`、HomeScreen 未用的成员缓存、SyncScreen 未用的 `activeLedgerName`、若干未用 import / 样式 / 变量
+- `sync.family_name` 魔法串收进 `SETTING_KEYS.SYNC_FAMILY_NAME`
+
+### 工程
+
+- 修正管理页"数据完全保存在本地，不上传任何服务器"的误导性文案（改为"默认本地、家庭同步为可选自托管"）
+- 服务端未设置 `JWT_SECRET` 时启动告警
+- 新增 ESLint + Prettier 配置与 `lint` / `format` 脚本、Vitest 纯函数单测（金额键盘、日期工具、周期规则）
+
 ## [0.8.2] - 2026-08-20
 
 ### 优化

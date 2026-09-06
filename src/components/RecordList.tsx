@@ -13,17 +13,19 @@ interface Props {
   showTime?: boolean;      // 显示记录时间（今日明细用）
   showDate?: boolean;      // 显示记录日期（跨多日列表用，如报销明细）
   members?: MemberInfo[];  // 家庭成员（显示记账人标识，v0.5）
+  onToggleReimbursed?: (record: LedgerRecord) => void; // 报销页单条核销/撤销
 }
 
 // 单条记录行（memo：父组件 state 变化时避免整表重渲染；导出供 FlatList 虚拟化列表使用）
 export const RecordRow = React.memo(function RecordRow({
-  record, onDelete, showTime, showDate, members,
+  record, onDelete, showTime, showDate, members, onToggleReimbursed,
 }: {
   record: LedgerRecord;
   onDelete?: (record: LedgerRecord) => void;
   showTime?: boolean;
   showDate?: boolean;
   members?: MemberInfo[];
+  onToggleReimbursed?: (record: LedgerRecord) => void;
 }) {
   const cat = findCategory(record.category, record.type);
   const isExpense = record.type === 'expense';
@@ -63,6 +65,17 @@ export const RecordRow = React.memo(function RecordRow({
           {record.note ? <Text style={styles.note} numberOfLines={1}>{record.note}</Text> : null}
         </View>
       </View>
+      {onToggleReimbursed && record.reimbursable ? (
+        <Pressable
+          style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
+          onPress={() => onToggleReimbursed(record)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={record.reimbursed ? '撤销核销' : '核销报销'}
+        >
+          <Text style={styles.reimburseToggleText}>{record.reimbursed ? '撤销' : '核销'}</Text>
+        </Pressable>
+      ) : null}
       <Text
         style={[styles.amount, { color: isExpense ? COLORS.expense : COLORS.income }]}
         accessibilityLabel={`${isExpense ? '支出' : '收入'}${formatMoney(record.amount)}元`}
@@ -85,7 +98,7 @@ export const RecordRow = React.memo(function RecordRow({
 });
 
 // 记录列表（暖色卡片风格）
-function RecordList({ records, onDelete, emptyText = '还没有记录，记一笔吧 ✨', showTime, showDate, members }: Props) {
+function RecordList({ records, onDelete, emptyText = '还没有记录，记一笔吧 ✨', showTime, showDate, members, onToggleReimbursed }: Props) {
   if (records.length === 0) {
     return (
       <View style={styles.empty}>
@@ -105,6 +118,7 @@ function RecordList({ records, onDelete, emptyText = '还没有记录，记一�
           showTime={showTime}
           showDate={showDate}
           members={members}
+          onToggleReimbursed={onToggleReimbursed}
         />
       ))}
     </View>
@@ -225,6 +239,23 @@ const styles = StyleSheet.create({
   },
   amount: {
     fontSize: FONT_SIZE.lg - 2,
+    fontWeight: '700',
+  },
+  reimburseToggle: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.warningBg,
+    borderWidth: 1,
+    borderColor: COLORS.warningBorder,
+  },
+  reimburseToggleUndo: {
+    backgroundColor: COLORS.bgAlt,
+    borderColor: COLORS.border,
+  },
+  reimburseToggleText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.warningText,
     fontWeight: '700',
   },
   deleteBtn: {

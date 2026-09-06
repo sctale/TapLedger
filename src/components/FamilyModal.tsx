@@ -30,15 +30,6 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
   // 可选头像池（与登录注册一致）
   const AVATARS = ['🙂', '😊', '😎', '🥳', '🧑', '👩', '👨', '🧕', '👴', '👵', '🐱', '🐶'];
 
-  useEffect(() => {
-    if (!visible) return;
-    setName('');
-    setInviteCode('');
-    setEditingProfile(false);
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
-
   const reload = async () => {
     try {
       const { apiGetFamily, apiFamilyMembers } = await import('../sync/apiClient');
@@ -58,6 +49,15 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
       onError(e instanceof Error ? e.message : '加载失败');
     }
   };
+
+  useEffect(() => {
+    if (!visible) return;
+    setName('');
+    setInviteCode('');
+    setEditingProfile(false);
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   // 创建家庭
   const createFamily = async () => {

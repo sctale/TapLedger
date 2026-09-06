@@ -115,10 +115,6 @@ export function setCustomCategories(list: CustomCategory[]): void {
   customCategories = list;
 }
 
-export function getCustomCategories(): CustomCategory[] {
-  return customCategories;
-}
-
 // ===== 分类显隐/排序配置缓存（启动时从 DB 加载）=====
 let categoryConfig: CategoryConfig | null = null;
 
@@ -273,13 +269,13 @@ export const LEDGER_EVENTS = {
 export const SETTING_KEYS = {
   MONTHLY_BUDGET: 'monthly_budget',
   DEFAULT_TYPE: 'default_type',
-  DEFAULT_ACCOUNT: 'default_account',
   // ===== 家庭同步 =====
   SYNC_SERVER_URL: 'sync.server_url',
   SYNC_TOKEN: 'sync.token',
   SYNC_USER_ID: 'sync.user_id',
   SYNC_USER_DISPLAY: 'sync.user_display',
   SYNC_USER_AVATAR: 'sync.user_avatar',
+  SYNC_FAMILY_NAME: 'sync.family_name',       // 家庭名（管理页摘要显示用；空=未入家庭）
   SYNC_LAST_PULL_AT: 'sync.last_pull_at',   // 服务端时间光标
   SYNC_LAST_PUSH_AT: 'sync.last_push_at',   // 本地 updated_at 水位
   SYNC_LAST_SYNC_TIME: 'sync.last_sync_time', // 上次同步完成的人类时间戳

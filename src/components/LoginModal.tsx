@@ -145,22 +145,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     color: COLORS.text,
   },
-  submitBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: RADIUS.lg,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: SPACING.xs,
-  },
-  submitBtnDisabled: {
-    opacity: 0.6,
-  },
-  submitText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZE.md,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
   switchRow: {
     alignItems: 'center',
     paddingVertical: SPACING.md,

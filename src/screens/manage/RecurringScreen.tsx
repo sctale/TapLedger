@@ -1,5 +1,5 @@
 // 周期记账二级页面（顶栏返回按钮由外层 ManageScreen 渲染，本组件不含顶栏）
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { COLORS, LEDGER_EVENTS, RECURRING_FREQUENCIES, SPACING, findCategory } from '../../constants';
 import {

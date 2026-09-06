@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { DeviceEventEmitter, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { COLORS, LEDGER_EVENTS, setCategoryConfig } from './src/constants';
-import { initDatabase, setCustomCategoriesCache, getSetting, getCategoryConfig } from './src/database/ledgerDB';
+import { initDatabase, setCustomCategoriesCache, getCategoryConfig } from './src/database/ledgerDB';
 import { runRecurringCheck } from './src/utils/recurring';
 import { getSyncConfig } from './src/sync/apiClient';
 import { runSync, purgeOldTombstones } from './src/sync/syncEngine';
@@ -36,17 +36,13 @@ export default function App() {
       } catch {
         // 静默
       }
-      // 同步：墓碑清理 + 已登录则启动即拉一轮
+      // 同步：墓碑清理 + 已配置则启动即拉一轮（个人/家庭账本均生效）
       try {
         await purgeOldTombstones();
         const config = await getSyncConfig();
         if (config) {
-          // 已入家庭才自动同步（未入家庭 pull 会被服务端 403）
-          const familyId = await getSetting('sync.family_name');
-          if (familyId) {
-            const res = await runSync();
-            if (res.ok) DeviceEventEmitter.emit(LEDGER_EVENTS.SYNC_DONE);
-          }
+          // runSync 内部解析当前账本（无选择时兜底个人账本）、自检配置并广播刷新事件
+          await runSync();
         }
       } catch {
         // 同步失败静默（断网等场景），下次记账/启动再试

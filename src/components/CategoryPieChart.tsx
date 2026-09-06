@@ -48,17 +48,18 @@ export default function CategoryPieChart({ data, type, height = 180 }: Props) {
   const radius = Math.max((height - strokeWidth) / 2 - 4, 30);
   const circumference = 2 * Math.PI * radius;
 
-  let accumulated = 0;
-  const arcs = slices.map((slice) => {
-    const fraction = total > 0 ? slice.total / total : 0;
-    const arc = {
-      ...slice,
-      start: accumulated,
-      fraction,
-    };
-    accumulated += fraction;
-    return arc;
-  });
+  const arcs = slices
+    .reduce<{ arcs: (Slice & { start: number; fraction: number })[]; last: number }>(
+      (acc, slice) => {
+        const fraction = total > 0 ? slice.total / total : 0;
+        return {
+          arcs: [...acc.arcs, { ...slice, start: acc.last, fraction }],
+          last: acc.last + fraction,
+        };
+      },
+      { arcs: [], last: 0 }
+    )
+    .arcs;
 
   return (
     <View style={styles.container}>

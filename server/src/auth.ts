@@ -25,7 +25,7 @@ export function verifyToken(token: string): JwtPayload | null {
 
 // 扩展 Request：注入当前用户
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
+   
   namespace Express {
     interface Request {
       authUser?: AuthUser;
@@ -92,15 +92,6 @@ export function ensurePersonalLedger(userId: number, displayName: string): numbe
 // 校验用户对某账本（家庭/个人）是否有读写权限
 export function canAccessLedger(user: AuthUser, ledgerId: number): boolean {
   return ledgerId === user.personalLedgerId || ledgerId === user.familyId;
-}
-
-// 要求已加入家庭（同步接口前置）
-export function requireFamily(req: Request, res: Response, next: NextFunction): void {
-  if (!req.authUser || req.authUser.familyId == null) {
-    res.status(403).json({ error: '请先创建或加入家庭' });
-    return;
-  }
-  next();
 }
 
 // 登录限流（内存版，同 IP 每分钟 5 次）

@@ -2,7 +2,7 @@
 // 流程：push 本地水位后的变更 → pull 服务端变更 → 本地 upsert（LWW）→ 更新水位
 import { DeviceEventEmitter } from 'react-native';
 import { LEDGER_EVENTS, SETTING_KEYS } from '../constants';
-import { getDB, saveSetting, getSetting } from '../database/ledgerDB';
+import { getDB, saveSetting, getSetting, getActiveLedgerId, setActiveLedgerId, adoptUnassignedRowsIntoLedger } from '../database/ledgerDB';
 import { apiSyncPull, apiSyncPush, apiGetLedgers, getSyncConfig, ApiError } from './apiClient';
 import type {
   SyncChanges, SyncCustomCategoryDTO, SyncRecordDTO,
@@ -45,26 +45,27 @@ function watermarkKey(base: string, ledgerId: number): string {
 
 async function collectPushChanges(sinceTs: number): Promise<{ changes: Partial<SyncChanges>; maxLocalTs: number }> {
   const db = await getDB();
+  const ledgerId = getActiveLedgerId();
 
   const records = await db.getAllAsync<SyncRecordDTO & { user_id: number }>(
     `SELECT uuid, user_id as userId, amount, category, type, note, date, timestamp,
             reimbursable, reimbursed, updated_at as updatedAt, deleted
-     FROM ledger_records WHERE updated_at > ? AND uuid != '' ORDER BY updated_at ASC`,
-    [sinceTs]
+     FROM ledger_records WHERE updated_at > ? AND uuid != '' AND ledger_id = ? ORDER BY updated_at ASC`,
+    [sinceTs, ledgerId]
   );
 
   const recurring = await db.getAllAsync<SyncRecurringDTO & { user_id: number }>(
     `SELECT uuid, user_id as userId, name, amount, type, category,
             frequency, day_of_week as dayOfWeek, day_of_month as dayOfMonth, month_of_year as monthOfYear,
             note, enabled, last_generated as lastGenerated, updated_at as updatedAt, deleted
-     FROM recurring_rules WHERE updated_at > ? AND uuid != '' ORDER BY updated_at ASC`,
-    [sinceTs]
+     FROM recurring_rules WHERE updated_at > ? AND uuid != '' AND ledger_id = ? ORDER BY updated_at ASC`,
+    [sinceTs, ledgerId]
   );
 
   const customCategories = await db.getAllAsync<SyncCustomCategoryDTO>(
     `SELECT uuid, key, label, emoji, color, type, updated_at as updatedAt, deleted
-     FROM custom_categories WHERE updated_at > ? AND uuid != '' ORDER BY updated_at ASC`,
-    [sinceTs]
+     FROM custom_categories WHERE updated_at > ? AND uuid != '' AND ledger_id = ? ORDER BY updated_at ASC`,
+    [sinceTs, ledgerId]
   );
 
   // 水位推进：本次推送行中的最大 updated_at
@@ -84,6 +85,7 @@ async function collectPushChanges(sinceTs: number): Promise<{ changes: Partial<S
 
 async function applyPullChanges(changes: SyncChanges): Promise<number> {
   const db = await getDB();
+  const activeLedger = getActiveLedgerId();
   let applied = 0;
   // 整体包事务：任一条失败即整体回滚，避免半程写入导致下次漏拉（水位不一致）
   await db.withTransactionAsync(async () => {
@@ -105,10 +107,10 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
         }
       } else {
         await db.runAsync(
-          `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, account_id, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, account_uuid)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, ledger_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
-           1, r.reimbursable, r.reimbursed, r.uuid, r.userId, r.updatedAt, r.deleted, '']
+           r.reimbursable, r.reimbursed, r.uuid, r.userId, r.updatedAt, r.deleted, activeLedger]
         );
         applied++;
       }
@@ -122,7 +124,7 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
       if (local) {
         if (r.updatedAt > local.updated_at) {
           await db.runAsync(
-            `UPDATE recurring_rules SET name = ?, amount = ?, type = ?, category = ?, account_id = 1, account_uuid = '',
+            `UPDATE recurring_rules SET name = ?, amount = ?, type = ?, category = ?,
              frequency = ?, day_of_week = ?, day_of_month = ?, month_of_year = ?, note = ?, enabled = ?,
              last_generated = ?, user_id = ?, updated_at = ?, deleted = ? WHERE id = ?`,
             [r.name, r.amount, r.type, r.category, r.frequency,
@@ -132,10 +134,10 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
         }
       } else {
         await db.runAsync(
-          `INSERT INTO recurring_rules (name, amount, type, category, account_id, frequency, day_of_week, day_of_month, month_of_year, note, enabled, last_generated, created_at, uuid, user_id, updated_at, deleted, account_uuid)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [r.name, r.amount, r.type, r.category, 1, r.frequency, r.dayOfWeek, r.dayOfMonth,
-           r.monthOfYear, r.note, r.enabled, r.lastGenerated, Date.now(), r.uuid, r.userId, r.updatedAt, r.deleted, '']
+          `INSERT INTO recurring_rules (name, amount, type, category, frequency, day_of_week, day_of_month, month_of_year, note, enabled, last_generated, created_at, uuid, user_id, updated_at, deleted, ledger_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [r.name, r.amount, r.type, r.category, r.frequency, r.dayOfWeek, r.dayOfMonth,
+           r.monthOfYear, r.note, r.enabled, r.lastGenerated, Date.now(), r.uuid, r.userId, r.updatedAt, r.deleted, activeLedger]
         );
         applied++;
       }
@@ -156,9 +158,9 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
         }
       } else {
         await db.runAsync(
-          `INSERT INTO custom_categories (key, label, emoji, color, type, created_at, uuid, updated_at, deleted)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [c.key, c.label, c.emoji, c.color, c.type, Date.now(), c.uuid, c.updatedAt, c.deleted]
+          `INSERT INTO custom_categories (key, label, emoji, color, type, created_at, uuid, updated_at, deleted, ledger_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [c.key, c.label, c.emoji, c.color, c.type, Date.now(), c.uuid, c.updatedAt, c.deleted, activeLedger]
         );
         applied++;
       }
@@ -185,6 +187,9 @@ export async function runSync(): Promise<SyncResult> {
     if (!ledgerId) {
       return { ok: false, pushed: 0, pulled: 0, error: '未选择账本，请在同步页选择个人/家庭账本' };
     }
+    // 解析/切换活动账本后：DB 层读写限定到该账本，并把本地未归属存量一次性认领进来（幂等）
+    setActiveLedgerId(ledgerId);
+    await adoptUnassignedRowsIntoLedger(ledgerId);
 
     // --- push ---
     const lastPushStr = await getSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PUSH_AT, ledgerId));
@@ -192,7 +197,7 @@ export async function runSync(): Promise<SyncResult> {
     const { changes, maxLocalTs } = await collectPushChanges(lastPushAt);
     const pushCount = Object.values(changes).reduce((s, arr) => s + (arr?.length ?? 0), 0);
     if (pushCount > 0) {
-      const pushRes = await apiSyncPush(config.baseUrl, config.token, changes, ledgerId);
+      await apiSyncPush(config.baseUrl, config.token, changes, ledgerId);
       await saveSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PUSH_AT, ledgerId), String(maxLocalTs));
       // 首次登录/老用户：同步即视为已确认归属，后续无需重复 claim
     } else {

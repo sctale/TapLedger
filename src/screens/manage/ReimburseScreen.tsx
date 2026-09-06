@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { DeviceEventEmitter, Pressable, ScrollView, Text, View } from 'react-native';
-import { COLORS, LEDGER_EVENTS } from '../../constants';
+import { LEDGER_EVENTS } from '../../constants';
 import {
   getReimbursableRecords, getReimbursableSummary, markAllReimbursed, setReimbursed,
 } from '../../database/ledgerDB';
@@ -97,6 +97,7 @@ export default function ReimburseScreen() {
           <RecordList
             records={reimburseRecords}
             showDate
+            onToggleReimbursed={handleToggleReimbursed}
           />
         ) : (
           <Text style={styles.emptyText}>暂无报销记录</Text>

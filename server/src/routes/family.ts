@@ -162,8 +162,6 @@ router.post('/leave', requireAuth, (req, res) => {
     // 唯一成员：解散家庭（账本数据保留由客户端墓碑同步处理，服务端一并清理）
     const tx = db.transaction(() => {
       db.prepare('DELETE FROM records WHERE family_id = ?').run(familyId);
-      db.prepare('DELETE FROM accounts WHERE family_id = ?').run(familyId);
-      db.prepare('DELETE FROM transfers WHERE family_id = ?').run(familyId);
       db.prepare('DELETE FROM recurring WHERE family_id = ?').run(familyId);
       db.prepare('DELETE FROM custom_categories WHERE family_id = ?').run(familyId);
       db.prepare("UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?").run(req.authUser!.id);

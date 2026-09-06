@@ -54,7 +54,7 @@ export async function exportLedgerData(): Promise<{ success: boolean; count: num
       return { success: true, count: records.length };
     }
     return { success: false, count: records.length, error: '当前设备不支持分享' };
-  } catch (e) {
+  } catch {
     return { success: false, count: 0, error: '导出失败，请重试' };
   }
 }

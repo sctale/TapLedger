@@ -10,7 +10,7 @@ import {
 } from '../constants';
 import {
   getCustomCategories, getRecurringRules,
-  getSetting, getTotalCount,
+  getSetting,
 } from '../database/ledgerDB';
 import { useToast } from '../hooks/useToast';
 import Toast from '../components/Toast';
@@ -47,7 +47,6 @@ export default function ManageScreen({ active }: Props) {
   // ===== 主页数据：各板块摘要 =====
   const [ruleCount, setRuleCount] = useState(0);          // 周期记账规则数
   const [catCount, setCatCount] = useState(0);             // 自定义分类数
-  const [totalCount, setTotalCount] = useState(0);         // 本地记录总数
   const [budgetStr, setBudgetStr] = useState('');          // 月度预算（原始字符串）
   const [syncSummary, setSyncSummary] = useState('');      // 家庭同步状态摘要
 
@@ -56,19 +55,17 @@ export default function ManageScreen({ active }: Props) {
   // 主页摘要加载：各板块计数 + 同步状态（一次并行读齐）
   const loadSummary = useCallback(async () => {
     try {
-      const [rules, cats, count, budget, cfg, name, family, serverUrl] = await Promise.all([
+      const [rules, cats, budget, cfg, name, family, serverUrl] = await Promise.all([
         getRecurringRules(),
         getCustomCategories(),
-        getTotalCount(),
         getSetting(SETTING_KEYS.MONTHLY_BUDGET),
         getSyncConfig(),                                  // serverUrl + token 均存在 → 已连接且已登录
         getSetting(SETTING_KEYS.SYNC_USER_DISPLAY),       // 登录昵称（摘要显示用）
-        getSetting('sync.family_name'),                   // 家庭名（摘要显示用）
+        getSetting(SETTING_KEYS.SYNC_FAMILY_NAME),          // 家庭名（摘要显示用）
         getSetting(SETTING_KEYS.SYNC_SERVER_URL),         // 区分「已连接未登录」与「未配置」
       ]);
       setRuleCount(rules.length);
       setCatCount(cats.length);
-      setTotalCount(count);
       setBudgetStr(budget ?? '');
       if (cfg) {
         // 已连接且已登录：昵称（无则「已登录」）+ 可选家庭名
@@ -173,7 +170,7 @@ export default function ManageScreen({ active }: Props) {
                 <Text style={styles.aboutName}>一点账本</Text>
                 <Text style={styles.aboutVersion}>v{APP_VERSION}</Text>
               </View>
-              <Text style={styles.hint}>极简记账 · 3 秒记一笔 · 数据完全保存在本地，不上传任何服务器</Text>
+              <Text style={styles.hint}>极简记账 · 3 秒记一笔 · 数据默认保存在本地；家庭同步为可选功能，仅在你自行部署并登录后才上传到你的服务器</Text>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
