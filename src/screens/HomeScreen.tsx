@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DeviceEventEmitter,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -168,9 +170,9 @@ export default function HomeScreen({ active }: Props) {
     hapticLight();
   }, []);
 
-  // 备注聚焦时滚回顶部（记账卡片置顶，避免键盘遮挡输入框）
+  // 备注聚焦时滚到内容底部，确保输入框位于固定键盘上方可见
   const handleNoteFocus = useCallback(() => {
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    scrollRef.current?.scrollToEnd({ animated: true });
   }, []);
 
   // 保存记录
@@ -345,21 +347,25 @@ export default function HomeScreen({ active }: Props) {
             </View>
           </View>
 
-          {/* 数字键盘 + 记一笔（紧邻组合） */}
-          <View style={styles.inputArea}>
-            <NumberPad onKey={handleKey} />
-            <Pressable
-              style={[styles.saveBtn, { backgroundColor: type === 'expense' ? COLORS.expense : COLORS.income }]}
-              onPress={handleSave}
-              android_ripple={{ color: 'rgba(255,255,255,0.25)' }}
-              accessibilityRole="button"
-              accessibilityLabel="记一笔"
-            >
-              <Text style={styles.saveText}>记一笔</Text>
-            </Pressable>
-          </View>
         </View>
       </ScrollView>
+
+      {/* 数字键盘固定停靠区：不随内容滚动、不因系统键盘弹起重排（Android adjustResize 下稳定贴在键盘上方） */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.padDock}
+      >
+        <NumberPad onKey={handleKey} />
+        <Pressable
+          style={[styles.saveBtn, { backgroundColor: type === 'expense' ? COLORS.expense : COLORS.income }]}
+          onPress={handleSave}
+          android_ripple={{ color: 'rgba(255,255,255,0.25)' }}
+          accessibilityRole="button"
+          accessibilityLabel="记一笔"
+        >
+          <Text style={styles.saveText}>记一笔</Text>
+        </Pressable>
+      </KeyboardAvoidingView>
 
       <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
@@ -376,7 +382,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.md,
-    paddingBottom: SPACING.xl,
+    paddingBottom: SPACING.lg,
   },
   // ===== 记账卡片 =====
   card: {
@@ -539,8 +545,14 @@ const styles = StyleSheet.create({
   reimburseTextOn: {
     color: COLORS.warningText,
   },
-  inputArea: {
+  padDock: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.sm,
     gap: 6,
+    backgroundColor: COLORS.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
   },
   saveBtn: {
     height: 48,
