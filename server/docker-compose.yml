@@ -1,6 +1,6 @@
 services:
   tapledger:
-    # 镜像由 GitHub Actions 自动构建并推送（server/** 变更即触发，推 latest + 版本号）
+    # 镜像由开发者本地构建并推送到 GHCR（版本号 + latest 双标签；NAS 拉取无需登录）
     image: ghcr.io/sctale/tapledger-server:latest
     container_name: tapledger-server
     restart: unless-stopped
@@ -13,7 +13,7 @@ services:
     env_file:
       - .env
     volumes:
-      # 数据库持久化（备份这个目录即可）
+      # 数据库持久化：compose 文件所在目录的 data/ 子目录（群晖示例：/volume1/docker/tapledger/data）
       - ./data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8420/api/health"]
