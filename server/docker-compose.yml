@@ -1,18 +1,17 @@
 services:
   tapledger:
-    # 双写：构建机用 `docker compose build` 产物并 push 到 GHCR；
-    # NAS 部署只 `docker compose pull`，不本地编译
-    build: .
-    image: ghcr.io/sctale/tapledger-server:0.4.1
+    # 镜像由 GitHub Actions 自动构建并推送（server/** 变更即触发，推 latest + 版本号）
+    image: ghcr.io/sctale/tapledger-server:latest
     container_name: tapledger-server
     restart: unless-stopped
     ports:
       - "8420:8420"
     environment:
-      # 生产请改成随机长字符串（JWT 签名密钥）
-      - JWT_SECRET=please-change-me-to-a-long-random-string
       - PORT=8420
       - TZ=Asia/Shanghai
+      # JWT_SECRET 从同级 .env 读取（不提交到公开仓库；首次部署前在 server/.env 里设置）
+    env_file:
+      - .env
     volumes:
       # 数据库持久化（备份这个目录即可）
       - ./data:/app/data

@@ -23,6 +23,8 @@ gradle-build.log
 server/data/
 server/node_modules/
 server/dist/
+# server 密钥配置（含真实 JWT_SECRET，不入库）
+server/.env
 
 # vscode
 .vscode/

@@ -14,8 +14,9 @@ Set-StrictMode -Version Latest
 
 # 镜像 tag（版本号与 server/package.json 保持一致）
 $TAG = '0.4.1'
-# 镜像全名
+# 版本镜像名 + latest 镜像名（latest 供 NAS 无脑拉取）
 $IMAGE = "ghcr.io/sctale/tapledger-server:$TAG"
+$IMAGE_LATEST = "ghcr.io/sctale/tapledger-server:latest"
 
 function Fail([string]$msg) { Write-Host "[错误] $msg" -ForegroundColor Red; exit 1 }
 function SkipIfNoDocker {
@@ -63,14 +64,20 @@ try {
   Write-Host "==> docker build -t $IMAGE ." -ForegroundColor Cyan
   & docker build -t $IMAGE .
   if ($LASTEXITCODE -ne 0) { Fail "镜像构建失败。" }
+  # 相同内容再打一个 latest tag（供 NAS docker compose pull 无脑拉取）
+  & docker tag $IMAGE $IMAGE_LATEST
+  if ($LASTEXITCODE -ne 0) { Fail "打 latest 标签失败。" }
 
-  # 3) 推送镜像到 GHCR
+  # 3) 推送镜像到 GHCR（版本号 + latest）
   Write-Host "==> docker push $IMAGE" -ForegroundColor Cyan
   & docker push $IMAGE
   if ($LASTEXITCODE -ne 0) { Fail "镜像推送失败，请检查 gh 是否对该仓库有写权限。" }
+  Write-Host "==> docker push $IMAGE_LATEST" -ForegroundColor Cyan
+  & docker push $IMAGE_LATEST
+  if ($LASTEXITCODE -ne 0) { Fail "latest 镜像推送失败，请检查 gh 是否对该仓库有写权限。" }
 
   Write-Host ""
-  Write-Host "镜像已推送: $IMAGE" -ForegroundColor Green
+  Write-Host "镜像已推送: $IMAGE 与 $IMAGE_LATEST" -ForegroundColor Green
   Write-Host "NAS 上更新步骤：" -ForegroundColor Cyan
   Write-Host "  cd server && docker compose pull && docker compose up -d" -ForegroundColor Cyan
 }

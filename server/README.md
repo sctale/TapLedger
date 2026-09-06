@@ -13,7 +13,8 @@ NAS 上不再本地编译，只 `pull` 已发布镜像并启动。
 
 ```bash
 cd server
-# 1. 修改 JWT_SECRET（docker-compose.yml 里改成随机长字符串）
+# 1. 首次部署先创建密钥文件（生产务必改成随机长字符串）
+#    cp .env.example .env  然后编辑 .env 填真实 JWT_SECRET
 # 2. 拉取镜像并启动
 docker compose pull
 docker compose up -d
@@ -29,20 +30,20 @@ curl http://<NAS_IP>:8420/api/health
 
 1. Container Manager / Docker → 项目 → 新建
 2. 路径选到本 `server` 目录（含 docker-compose.yml）
-3. 确认 `JWT_SECRET` 已修改后启动（首次会从 GHCR 拉镜像）
+3. 在同目录放好 `.env`（含 JWT_SECRET）后启动（首次会从 GHCR 拉镜像）
 4. 防火墙放行 8420 端口（仅局域网使用则无需暴露公网）
 
-### 发布新版本镜像（在装有 Docker 的本地机器执行）
+### 发布新版本镜像（自动：GitHub Actions）
 
-```powershell
-# 机器需已装 Docker + 官方 GitHub CLI(gh) 并登录（gh auth login --web）
-# server/ 目录下：
-powershell -ExecutionPolicy Bypass -File scripts/docker-push.ps1
-```
+服务端代码合并到 `main` 后，仓库内的 **GitHub Actions**（`.github/workflows/build-and-push-server-image.yml`）会自动：
 
-脚本会：`gh token 登录 GHCR → docker build → docker push`。
-推送成功后，NAS 上 `docker compose pull && docker compose up -d` 即更新。
-（镜像版本号与 `server/package.json` 一致，发版时同步修改脚本 `$TAG` 与 `docker-compose.yml` 的 `image` tag。）
+1. 读取 `server/package.json` 的版本号
+2. 用 Buildx 构建 `linux/amd64` + `linux/arm64` 双平台镜像
+3. 推送到 GHCR：同时打 `<版本号>` 和 `latest` 两个 tag
+
+NAS 上 `docker compose pull && docker compose up -d` 即可拉到最新 `latest`。
+
+> 已无需本地运行 `scripts/docker-push.ps1`；该脚本仅作为开发机上手动发布备用。
 
 > **首次推送后请公开镜像**：GitHub → 仓库 Packages → `tapledger-server` → Package settings → 勾选 Public，否则 NAS 拉取私有镜像需 `docker login ghcr.io` 并配置凭据。
 
