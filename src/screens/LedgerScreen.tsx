@@ -8,6 +8,7 @@ import {
   getRecordsByDate, getRecordsByRange,
 } from '../database/ledgerDB';
 import { formatMoney, getMonthRange, getToday, parseDate, addMonths, getMonthName, getDaysInMonth } from '../utils/dateUtils';
+import { hapticLight } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
 import { confirmDeleteRecord } from '../hooks/useDeleteRecord';
 import { getCachedMembers, type MemberInfo } from '../sync/memberUtils';
@@ -34,14 +35,13 @@ export default function LedgerScreen({ active }: Props) {
   const [maxExpense, setMaxExpense] = useState(0);
   const [selectedDate, setSelectedDate] = useState(getToday());
   const [dayRecords, setDayRecords] = useState<LedgerRecord[]>([]);
-  const [dayExpense, setDayExpense] = useState(0);
-  const [dayIncome, setDayIncome] = useState(0);
 
   // 流水模式
   const [monthRecords, setMonthRecords] = useState<LedgerRecord[]>([]);
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchText, setSearchText] = useState('');
   const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5 记账人标识）
+  const [memberFilter, setMemberFilter] = useState(0); // 0=全部，>0 按记账人筛选（v0.9.1）
 
   const { toast, showToast, hideToast } = useToast();
 
@@ -71,14 +71,6 @@ export default function LedgerScreen({ active }: Props) {
     try {
       const records = await getRecordsByDate(date);
       setDayRecords(records);
-      let exp = 0;
-      let inc = 0;
-      for (const r of records) {
-        if (r.type === 'expense' && !r.reimbursable) exp += r.amount;
-        else if (r.type === 'income') inc += r.amount;
-      }
-      setDayExpense(exp);
-      setDayIncome(inc);
     } catch {
       // 单日加载失败保持现状
     }
@@ -152,9 +144,10 @@ export default function LedgerScreen({ active }: Props) {
     confirmDeleteRecord(record.id, (msg, isError) => showToast(msg, isError ? 'error' : 'success'));
   }, [showToast]);
 
-  // 流水筛选（records 按类型/关键词）
+  // 流水筛选（records 按记账人 / 类型 / 关键词）
   const filteredRecords = useMemo(() => {
     let list = monthRecords;
+    if (memberFilter !== 0) list = list.filter((r) => r.userId === memberFilter);
     if (filterType !== 'all') {
       list = list.filter((r) => r.type === filterType);
     }
@@ -170,7 +163,22 @@ export default function LedgerScreen({ active }: Props) {
       });
     }
     return list;
-  }, [monthRecords, filterType, searchText]);
+  }, [monthRecords, memberFilter, filterType, searchText]);
+
+  // 日历模式：当日记录按记账人筛选 + 当日收支小计（与筛选一致）
+  const visibleDayRecords = useMemo(
+    () => (memberFilter === 0 ? dayRecords : dayRecords.filter((r) => r.userId === memberFilter)),
+    [dayRecords, memberFilter]
+  );
+  const dayTotals = useMemo(() => {
+    let exp = 0;
+    let inc = 0;
+    for (const r of visibleDayRecords) {
+      if (r.type === 'expense' && !r.reimbursable) exp += r.amount;
+      else if (r.type === 'income') inc += r.amount;
+    }
+    return { exp, inc };
+  }, [visibleDayRecords]);
 
   // 拍平为虚拟化列表数据（日期头 + 记录行按时间降序分组）
   const flowItems = useMemo<FlowItem[]>(() => {
@@ -203,11 +211,12 @@ export default function LedgerScreen({ active }: Props) {
     let exp = 0;
     let inc = 0;
     for (const r of monthRecords) {
+      if (memberFilter !== 0 && r.userId !== memberFilter) continue;
       if (r.type === 'expense' && !r.reimbursable) exp += r.amount;
       else if (r.type === 'income') inc += r.amount;
     }
     return { exp, inc };
-  }, [monthRecords]);
+  }, [monthRecords, memberFilter]);
 
   const isCurrentMonth = useMemo(() => {
     const now = new Date();
@@ -235,6 +244,38 @@ export default function LedgerScreen({ active }: Props) {
       </View>
     );
   }, [handleDelete, members]);
+
+  // 成员筛选（家庭多成员账本才显示；0=全部）
+  const renderMemberFilter = () => {
+    if (members.length <= 1) return null;
+    const chips: { id: number; label: string }[] = [
+      { id: 0, label: '👨‍👩‍👧 全部' },
+      ...members.map((m) => ({ id: m.id, label: `${m.avatarEmoji} ${m.displayName}` })),
+    ];
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.memberScroll}
+        contentContainerStyle={styles.memberChipsRow}
+      >
+        {chips.map((c) => (
+          <Pressable
+            key={c.id}
+            style={[styles.memberChip, memberFilter === c.id && styles.memberChipActive]}
+            onPress={() => { setMemberFilter(c.id); hapticLight(); }}
+            accessibilityRole="button"
+            accessibilityLabel={c.id === 0 ? '全部成员' : `只看 ${c.label}`}
+            accessibilityState={{ selected: memberFilter === c.id }}
+          >
+            <Text style={[styles.memberChipText, memberFilter === c.id && styles.memberChipTextActive]}>
+              {c.label}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -300,24 +341,26 @@ export default function LedgerScreen({ active }: Props) {
             />
           </View>
 
+          {renderMemberFilter()}
+
           {/* 选中日期明细 */}
           <View style={styles.dayHeader}>
             <Text style={styles.dayTitle}>{selectedLabel}</Text>
             <View style={styles.daySummary}>
-              {dayExpense > 0 ? (
+              {dayTotals.exp > 0 ? (
                 <Text style={styles.daySummaryText}>
-                  支出 <Text style={{ color: COLORS.expense, fontWeight: '700' }}>¥{formatMoney(dayExpense)}</Text>
+                  支出 <Text style={{ color: COLORS.expense, fontWeight: '700' }}>¥{formatMoney(dayTotals.exp)}</Text>
                 </Text>
               ) : null}
-              {dayIncome > 0 ? (
+              {dayTotals.inc > 0 ? (
                 <Text style={styles.daySummaryText}>
-                  收入 <Text style={{ color: COLORS.income, fontWeight: '700' }}>¥{formatMoney(dayIncome)}</Text>
+                  收入 <Text style={{ color: COLORS.income, fontWeight: '700' }}>¥{formatMoney(dayTotals.inc)}</Text>
                 </Text>
               ) : null}
             </View>
           </View>
           <RecordList
-            records={dayRecords}
+            records={visibleDayRecords}
             onDelete={handleDelete}
             emptyText="这一天还没有记录"
             members={members}
@@ -355,6 +398,7 @@ export default function LedgerScreen({ active }: Props) {
                   ))}
                 </View>
               </View>
+              {renderMemberFilter()}
               {/* 月份切换（流水模式与日历模式共享 viewDate，v0.5.1） */}
               <View style={styles.monthBar}>
                 <Pressable
@@ -568,6 +612,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   filterChipTextActive: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
+  memberScroll: {
+    flexGrow: 0,
+    marginBottom: SPACING.sm,
+  },
+  memberChipsRow: {
+    gap: SPACING.sm,
+    paddingVertical: 2,
+  },
+  memberChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  memberChipActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  memberChipText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  memberChipTextActive: {
     color: COLORS.white,
     fontWeight: '700',
   },

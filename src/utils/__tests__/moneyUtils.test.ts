@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { appendKey, toAmount, isValidAmount } from '../moneyUtils';
+import { appendKey, toAmount, isValidAmount, evaluateAmount, hasOperator } from '../moneyUtils';
 
 describe('appendKey 数字键盘金额拼装', () => {
   it('从空开始输入数字', () => {
@@ -44,5 +44,61 @@ describe('toAmount / isValidAmount', () => {
     expect(isValidAmount('')).toBe(false);
     expect(isValidAmount('0.5')).toBe(true);
     expect(isValidAmount('99')).toBe(true);
+  });
+});
+
+describe('appendKey 运算符输入', () => {
+  it('不能以运算符开头', () => {
+    expect(appendKey('', '+')).toBe('');
+    expect(appendKey('', '*')).toBe('');
+  });
+
+  it('连续运算符按最后一次替换', () => {
+    expect(appendKey('12+', '-')).toBe('12-');
+    expect(appendKey('12-', '*')).toBe('12*');
+  });
+
+  it('末尾裸小数点接运算符时替换该点', () => {
+    expect(appendKey('12.', '+')).toBe('12+');
+  });
+
+  it('运算符后重新计数：小数两位、整数七位各自独立', () => {
+    expect(appendKey('12+', '.')).toBe('12+0.');
+    expect(appendKey('12+.2', '3')).toBe('12+.23');
+    expect(appendKey('12+.23', '4')).toBe('12+.23'); // 第二段最多两位小数
+    expect(appendKey('9+', '1234567')).toBe('9+1234567');
+    expect(appendKey('9+1234567', '8')).toBe('9+1234567'); // 第二段整数最多七位
+  });
+});
+
+describe('evaluateAmount 四则运算求值', () => {
+  it('乘除优先于加减', () => {
+    expect(evaluateAmount('2+3*4')).toBe(14);
+    expect(evaluateAmount('10-6/2')).toBe(7);
+    expect(evaluateAmount('2*3+4*5')).toBe(26);
+  });
+
+  it('尾部运算符被忽略、除零视为 0', () => {
+    expect(evaluateAmount('12+')).toBe(12);
+    expect(evaluateAmount('5/0')).toBe(0);
+    expect(evaluateAmount('100/4')).toBe(25);
+  });
+
+  it('两位小数四舍五入', () => {
+    expect(evaluateAmount('0.1+0.2')).toBe(0.3);
+    expect(evaluateAmount('10/3')).toBe(3.33);
+  });
+
+  it('单值与空串兼容', () => {
+    expect(evaluateAmount('12.5')).toBe(12.5);
+    expect(evaluateAmount('')).toBe(0);
+  });
+
+  it('hasOperator / toAmount / isValidAmount 与求值一致', () => {
+    expect(hasOperator('12')).toBe(false);
+    expect(hasOperator('12+3')).toBe(true);
+    expect(toAmount('12+3')).toBe(15);
+    expect(isValidAmount('5-5')).toBe(false); // 结果 0 视为无效
+    expect(isValidAmount('5+5')).toBe(true);
   });
 });

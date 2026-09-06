@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS, FONT_SIZE, RADIUS, SPACING, findCategory } from '../constants';
 import { formatMoney } from '../utils/dateUtils';
 import { findMember, memberColor } from '../sync/memberUtils';
@@ -31,7 +31,40 @@ export const RecordRow = React.memo(function RecordRow({
   const isExpense = record.type === 'expense';
   // 记账人标识（多成员账本时在分类行右侧显示头像+名字；单成员/未登录不显示）
   const member = members && members.length > 1 && record.userId > 0 ? findMember(members, record.userId) : null;
+
+  // 左滑删除：仅在明显横向拖动时接管手势（不抢点击），越过阈值触发删除后弹回；✕ 仍作为兜底
+  const translateX = useRef(new Animated.Value(0)).current;
+  const swipeable = !!onDelete;
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: (_, g) => !!onDelete && g.dx < -8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        onPanResponderMove: (_, g) => {
+          if (g.dx < 0) translateX.setValue(Math.max(g.dx, -96));
+        },
+        onPanResponderRelease: (_, g) => {
+          if (onDelete && g.dx <= -64) onDelete(record);
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
+        },
+        onPanResponderTerminate: () =>
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8 }).start(),
+      }),
+    [onDelete, record, translateX]
+  );
+
   return (
+    <View style={styles.swipeWrap}>
+      {swipeable ? (
+        <View style={styles.swipeDelete} pointerEvents="none">
+          <Text style={styles.swipeDeleteText}>删除</Text>
+        </View>
+      ) : null}
+      <Animated.View
+        style={swipeable ? { transform: [{ translateX }] } : undefined}
+        {...(swipeable ? panResponder.panHandlers : {})}
+      >
     <View style={styles.row}>
       <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
         <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>{cat.emoji}</Text>
@@ -94,6 +127,8 @@ export const RecordRow = React.memo(function RecordRow({
         </Pressable>
       ) : null}
     </View>
+      </Animated.View>
+    </View>
   );
 });
 
@@ -143,6 +178,26 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: SPACING.sm,
+  },
+  swipeWrap: {
+    position: 'relative',
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    backgroundColor: COLORS.danger,
+  },
+  swipeDelete: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: 84,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swipeDeleteText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
   },
   row: {
     flexDirection: 'row',

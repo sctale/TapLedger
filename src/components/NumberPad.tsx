@@ -8,32 +8,51 @@ interface Props {
   disabled?: boolean;
 }
 
-const KEYS: PadKey[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'backspace'];
+// 4 列布局，右列为四则运算符（随手记式）
+const ROWS: PadKey[][] = [
+  ['7', '8', '9', '/'],
+  ['4', '5', '6', '*'],
+  ['1', '2', '3', '-'],
+  ['.', '0', 'backspace', '+'],
+];
 
-// 自定义数字键盘（大按键、触感反馈、零阻力输入）
+const OP_LABEL: Record<string, string> = { '/': '÷', '*': '×', '-': '−', '+': '+' };
+const OP_ACCESSIBILITY: Record<string, string> = { '/': '除', '*': '乘', '-': '减', '+': '加' };
+
+const isOperator = (key: PadKey): boolean => key === '+' || key === '-' || key === '*' || key === '/';
+
+// 自定义数字键盘（大按键、触感反馈、支持 + - * / 四则运算）
 function NumberPad({ onKey, disabled }: Props) {
   return (
     <View style={styles.pad}>
-      {KEYS.map((key) => (
-        <Pressable
-          key={key}
-          disabled={disabled}
-          style={({ pressed }) => [
-            styles.key,
-            pressed && styles.keyPressed,
-            disabled && styles.keyDisabled,
-          ]}
-          onPress={() => onKey(key)}
-          android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: false }}
-          accessibilityRole="button"
-          accessibilityLabel={key === 'backspace' ? '退格' : key === '.' ? '小数点' : key}
-        >
-          {key === 'backspace' ? (
-            <Text style={styles.backspace}>⌫</Text>
-          ) : (
-            <Text style={styles.digit}>{key}</Text>
-          )}
-        </Pressable>
+      {ROWS.map((row) => (
+        <View key={row.join('')} style={styles.keyRow}>
+          {row.map((key) => {
+            const op = isOperator(key);
+            const label = key === 'backspace' ? '⌫' : op ? OP_LABEL[key] : key;
+            const a11y = key === 'backspace' ? '退格' : op ? OP_ACCESSIBILITY[key] : key === '.' ? '小数点' : key;
+            return (
+              <Pressable
+                key={key}
+                disabled={disabled}
+                style={({ pressed }) => [
+                  styles.key,
+                  op && styles.keyOp,
+                  pressed && styles.keyPressed,
+                  disabled && styles.keyDisabled,
+                ]}
+                onPress={() => onKey(key)}
+                android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: false }}
+                accessibilityRole="button"
+                accessibilityLabel={a11y}
+              >
+                <Text style={[styles.digit, op && styles.opText, key === 'backspace' && styles.backspace]}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       ))}
     </View>
   );
@@ -43,13 +62,14 @@ export default React.memo(NumberPad);
 
 const styles = StyleSheet.create({
   pad: {
+    gap: SPACING.sm,
+  },
+  keyRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: SPACING.sm,
+    gap: SPACING.sm,
   },
   key: {
-    width: '31%',
+    flex: 1,
     height: 52,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.surface,
@@ -58,8 +78,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  keyPressed: {
+  keyOp: {
     backgroundColor: COLORS.bgAlt,
+    borderColor: COLORS.borderSubtle,
+  },
+  keyPressed: {
+    backgroundColor: COLORS.borderSubtle,
   },
   keyDisabled: {
     opacity: 0.4,
@@ -68,6 +92,10 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: COLORS.text,
     fontWeight: '600',
+  },
+  opText: {
+    color: COLORS.accentDark,
+    fontWeight: '700',
   },
   backspace: {
     fontSize: 20,

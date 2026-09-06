@@ -282,6 +282,9 @@ export const SETTING_KEYS = {
   SYNC_MEMBERS_JSON: 'sync.members_json',   // 家庭成员缓存（v0.5 记账人标识）
   SYNC_ACTIVE_LEDGER_ID: 'sync.active_ledger_id',   // 当前账本 id（个人/家庭）
   SYNC_ACTIVE_LEDGER_NAME: 'sync.active_ledger_name', // 当前账本名
+  // ===== 快捷记账偏好（v0.9.1，随手记式）=====
+  CONTINUOUS_MODE: 'continuous_mode',               // 连记开关（保存后不弹提示，便于连续补记）
+  LAST_AMOUNT_BY_CATEGORY: 'last_amount_by_category', // 各分类最近一次金额（JSON: {categoryKey: number}）
 } as const;
 
 // 生成同步 uuid（时间戳36进制 + 随机串，家庭场景碰撞概率可忽略）
