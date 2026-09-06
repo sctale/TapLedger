@@ -284,6 +284,7 @@ export default function HomeScreen({ active }: Props) {
                 <Pressable
                   style={styles.lastChip}
                   onPress={() => { setAmountStr(String(lastAmount)); hapticLight(); }}
+                  hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel={`填入上次金额 ${formatMoney(lastAmount)} 元`}
                 >
@@ -455,7 +456,7 @@ const styles = StyleSheet.create({
     minHeight: 64,
   },
   calcSlot: {
-    height: 22,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -488,14 +489,14 @@ const styles = StyleSheet.create({
   lastChip: {
     alignSelf: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 5,
+    paddingVertical: 7,
     borderRadius: RADIUS.pill,
     backgroundColor: COLORS.bgAlt,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   lastChipText: {
-    fontSize: FONT_SIZE.xs,
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
