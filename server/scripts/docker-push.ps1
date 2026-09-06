@@ -1,4 +1,4 @@
-# =====================================================
+﻿# =====================================================
 # TapLedger Server — 本地构建并推送镜像到 GitHub 容器仓库 (GHCR)
 # 用法（在装有 Docker 的机器上，server/ 目录下）：
 #   powershell -ExecutionPolicy Bypass -File scripts/docker-push.ps1
