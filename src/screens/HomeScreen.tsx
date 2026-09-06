@@ -229,15 +229,16 @@ export default function HomeScreen({ active }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
+      {/* 记账卡片：上半内容与数字键盘连为一张卡；键盘固定卡底，上半区仅在极小屏时兜底滚动 */}
+      <View style={styles.card}>
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        bounces={false}
       >
-        {/* ===== 记账卡片（核心，置顶） ===== */}
-        <View style={styles.card}>
           {/* 当前账本 + 记账人（家庭共同记账时防记错账本） */}
           <View style={styles.identityRow}>
             <Text style={styles.identityLedger} numberOfLines={1}>📒 {identity.ledgerName}</Text>
@@ -264,21 +265,35 @@ export default function HomeScreen({ active }: Props) {
             ))}
           </View>
 
-          {/* 金额显示（表达式自适应字号 + 实时结果预览） */}
-          <View style={styles.amountRow}>
-            <Text style={[styles.amountSymbol, { color: type === 'expense' ? COLORS.expense : COLORS.income }]}>¥</Text>
-            <Text
-              style={[styles.amountInput, amountStr === '' && styles.amountPlaceholder]}
-              adjustsFontSizeToFit
-              numberOfLines={1}
-              accessibilityLabel={`金额 ${displayAmount}元`}
-            >
-              {displayAmount}
-            </Text>
+          {/* 金额区（弹性占据卡内剩余空间，保证键盘稳定卡底） */}
+          <View style={styles.amountZone}>
+            <View style={styles.amountRow}>
+              <Text style={[styles.amountSymbol, { color: type === 'expense' ? COLORS.expense : COLORS.income }]}>¥</Text>
+              <Text
+                style={[styles.amountInput, amountStr === '' && styles.amountPlaceholder]}
+                adjustsFontSizeToFit
+                numberOfLines={1}
+                accessibilityLabel={`金额 ${displayAmount}元`}
+              >
+                {displayAmount}
+              </Text>
+            </View>
+            {/* 「上次填入」与「= 结果」互斥（金额为空 vs 含运算符），共用同一固定高度槽位避免跳动 */}
+            <View style={styles.calcSlot}>
+              {showLastChip ? (
+                <Pressable
+                  style={styles.lastChip}
+                  onPress={() => { setAmountStr(String(lastAmount)); hapticLight(); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`填入上次金额 ${formatMoney(lastAmount)} 元`}
+                >
+                  <Text style={styles.lastChipText}>上次 ¥{formatMoney(lastAmount)} · 点击填入</Text>
+                </Pressable>
+              ) : showPreview ? (
+                <Text style={styles.calcPreview}>= ¥{formatMoney(previewAmount)}</Text>
+              ) : null}
+            </View>
           </View>
-          {showPreview ? (
-            <Text style={styles.calcPreview}>= ¥{formatMoney(previewAmount)}</Text>
-          ) : null}
 
           {/* 分类选择（横向滑动一行） */}
           <CategorySelector
@@ -286,17 +301,6 @@ export default function HomeScreen({ active }: Props) {
             selected={category}
             onSelect={(key) => { setCategory(key); hapticLight(); }}
           />
-
-          {showLastChip ? (
-            <Pressable
-              style={styles.lastChip}
-              onPress={() => { setAmountStr(String(lastAmount)); hapticLight(); }}
-              accessibilityRole="button"
-              accessibilityLabel={`填入上次金额 ${formatMoney(lastAmount)} 元`}
-            >
-              <Text style={styles.lastChipText}>上次 ¥{formatMoney(lastAmount)} · 点击填入</Text>
-            </Pressable>
-          ) : null}
 
           {/* 备注 + 待报销 + 连记 */}
           <View style={styles.optionRow}>
@@ -347,10 +351,9 @@ export default function HomeScreen({ active }: Props) {
             </View>
           </View>
 
-        </View>
       </ScrollView>
 
-      {/* 数字键盘固定停靠区：不随内容滚动、不因系统键盘弹起重排（Android adjustResize 下稳定贴在键盘上方） */}
+      {/* 数字键盘：固定在卡片底部，与上半区连为一张卡；弹系统键盘时整体稳定不重排 */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.padDock}
@@ -366,6 +369,7 @@ export default function HomeScreen({ active }: Props) {
           <Text style={styles.saveText}>记一笔</Text>
         </Pressable>
       </KeyboardAvoidingView>
+      </View>
 
       <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
@@ -381,17 +385,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: SPACING.md,
-    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.sm,
+    gap: SPACING.sm,
+    flexGrow: 1,
   },
   // ===== 记账卡片 =====
   card: {
+    flex: 1,
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: SPACING.sm,
-    gap: SPACING.sm,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    overflow: 'hidden',
   },
   typeSwitch: {
     flexDirection: 'row',
@@ -440,11 +449,20 @@ const styles = StyleSheet.create({
   amountPlaceholder: {
     color: COLORS.borderSubtle,
   },
+  amountZone: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 64,
+  },
+  calcSlot: {
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   calcPreview: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.textTertiary,
     textAlign: 'center',
-    marginTop: -4,
   },
   identityRow: {
     flexDirection: 'row',
@@ -550,7 +568,7 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.xs,
     paddingBottom: SPACING.sm,
     gap: 6,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.border,
   },
