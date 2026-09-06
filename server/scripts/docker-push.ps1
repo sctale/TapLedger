@@ -12,8 +12,9 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# 镜像 tag（版本号与 server/package.json 保持一致）
-$TAG = '0.4.1'
+# 镜像 tag：自动读取 server/package.json 版本号（单一数据源，无需手动改）
+$serverDir = Split-Path -Parent $PSScriptRoot
+$TAG = (Get-Content (Join-Path $serverDir 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
 # 版本镜像名 + latest 镜像名（latest 供 NAS 无脑拉取）
 $IMAGE = "ghcr.io/sctale/tapledger-server:$TAG"
 $IMAGE_LATEST = "ghcr.io/sctale/tapledger-server:latest"
@@ -35,9 +36,8 @@ SkipIfNoGh
 & gh auth status 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail "gh 未登录，请执行 gh auth login --web 后重试。" }
 
-# 0.1) 进入 server 目录（脚本挂在 server/scripts/ 下）
-$serverDir = Split-Path -Parent $PSScriptRoot
-Push-Location $serverDir
+# 0.1) 进入 server 目录（$serverDir 已在顶部解析）
+  Push-Location $serverDir
 try {
   # 1) 登录 GHCR（用 gh 生成的临时 token 走 stdin，不落盘）
   Write-Host "==> docker login ghcr.io（用 gh token）" -ForegroundColor Cyan

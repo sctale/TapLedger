@@ -33,19 +33,19 @@ curl http://<NAS_IP>:8420/api/health
 3. 在同目录放好 `.env`（含 JWT_SECRET）后启动（首次会从 GHCR 拉镜像）
 4. 防火墙放行 8420 端口（仅局域网使用则无需暴露公网）
 
-### 发布新版本镜像（自动：GitHub Actions）
+### 发布新版本镜像（本地构建推送，默认流程）
 
-服务端代码合并到 `main` 后，仓库内的 **GitHub Actions**（`.github/workflows/build-and-push-server-image.yml`）会自动：
+在装有 Docker 的开发机上执行（tag 自动读 `server/package.json`，推 `<版本号>` + `latest` 双标签）：
 
-1. 读取 `server/package.json` 的版本号
-2. 用 Buildx 构建 `linux/amd64` + `linux/arm64` 双平台镜像
-3. 推送到 GHCR：同时打 `<版本号>` 和 `latest` 两个 tag
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\docker-push.ps1
+```
 
-NAS 上 `docker compose pull && docker compose up -d` 即可拉到最新 `latest`。
+脚本完成：gh token 登录 GHCR → `docker build` → 推送双标签。镜像已设为 **Public**，NAS 无需 `docker login` 直接拉取。
 
-> 已无需本地运行 `scripts/docker-push.ps1`；该脚本仅作为开发机上手动发布备用。
+NAS 更新：`docker compose pull && docker compose up -d`。
 
-> **首次推送后请公开镜像**：GitHub → 仓库 Packages → `tapledger-server` → Package settings → 勾选 Public，否则 NAS 拉取私有镜像需 `docker login ghcr.io` 并配置凭据。
+> 仓库内的 GitHub Actions workflow（`.github/workflows/build-and-push-server-image.yml`，已改为仅手动触发）仅作为无本地 Docker 环境时的备用通道。
 
 ### 数据备份
 

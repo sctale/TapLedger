@@ -58,7 +58,33 @@ npx expo start          # 启动开发服务器
 npx expo start --android
 ```
 
-## 构建 Android APK
+## 构建与发布
+
+**默认发布流程：全部本地构建 + 推送 GitHub（Release APK）与 GHCR（Docker 镜像），不使用 GitHub Actions**（不消耗 CI 时间与存储）。
+
+### APP 发布（一键脚本）
+
+```powershell
+# 1. 完成代码改动，并在 CHANGELOG.md 顶部新增 ## [X.Y.Z] 条目
+# 2. 一键发布：自动 patch +1（或 -Version 1.0.0 指定版本）
+powershell -ExecutionPolicy Bypass -File scripts\release-app.ps1
+```
+
+脚本自动完成全链路：版本号同步（app.json / package.json / package-lock.json / android build.gradle / README）→ 单测 + 类型检查 → 本地构建 release APK → `aapt` 校验 versionName/versionCode → 复制到根目录 `TapLedger-vX.Y.Z.apk` → git 提交推送 → 创建 GitHub Release 并上传 APK（说明取自 CHANGELOG 最新条目）。
+
+### 服务端镜像发布（GHCR）
+
+```powershell
+# 1. 完成 server 代码改动，更新 server/package.json 版本号
+# 2. 一键构建推送（tag 自动读 package.json，推 <版本> + latest 双标签）
+powershell -ExecutionPolicy Bypass -File server\scripts\docker-push.ps1
+```
+
+- 镜像：`ghcr.io/sctale/tapledger-server`（Public，NAS 无需 `docker login` 直接拉取）
+- NAS 更新：`docker compose pull && docker compose up -d`
+- 前置：本机装有 Docker Desktop；`gh auth login` 已登录且含 `write:packages` 权限
+
+### 手动构建 APK（调试用）
 
 ```bash
 npx expo prebuild --platform android
@@ -112,7 +138,8 @@ server/                 # 自托管后端（NAS Docker，v0.4）
 ├── docker-compose.yml  # 一键部署（volume 持久化）
 └── README.md           # NAS 部署指南
 scripts/
-└── generate-icons.ps1         # 图标生成脚本
+├── generate-icons.ps1         # 图标生成脚本
+└── release-app.ps1            # APP 一键发布脚本（版本同步→构建→校验→Release）
 ```
 
 ## 设计令牌（与 TapMood 同源）
