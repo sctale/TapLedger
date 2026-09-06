@@ -1,11 +1,7 @@
 name: build-and-push-server-image
 
-# 仅针对服务端目录变更：构建并推送 Docker 镜像到 GHCR（开源仓库，Actions 免费）
+# 手动触发：构建并推送 Docker 镜像到 GHCR（开源仓库，Actions 免费）
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
   workflow_dispatch:
 
 env:
