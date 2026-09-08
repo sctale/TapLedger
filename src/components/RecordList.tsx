@@ -9,6 +9,7 @@ import type { MemberInfo } from '../sync/memberUtils';
 interface Props {
   records: LedgerRecord[];
   onDelete?: (record: LedgerRecord) => void;
+  onEdit?: (record: LedgerRecord) => void; // 点击行编辑（v0.10，不传则整行不可点）
   emptyText?: string;
   showTime?: boolean;      // 显示记录时间（今日明细用）
   showDate?: boolean;      // 显示记录日期（跨多日列表用，如报销明细）
@@ -18,10 +19,11 @@ interface Props {
 
 // 单条记录行（memo：父组件 state 变化时避免整表重渲染；导出供 FlatList 虚拟化列表使用）
 export const RecordRow = React.memo(function RecordRow({
-  record, onDelete, showTime, showDate, members, onToggleReimbursed,
+  record, onDelete, onEdit, showTime, showDate, members, onToggleReimbursed,
 }: {
   record: LedgerRecord;
   onDelete?: (record: LedgerRecord) => void;
+  onEdit?: (record: LedgerRecord) => void;
   showTime?: boolean;
   showDate?: boolean;
   members?: MemberInfo[];
@@ -65,6 +67,13 @@ export const RecordRow = React.memo(function RecordRow({
         style={swipeable ? { transform: [{ translateX }] } : undefined}
         {...(swipeable ? panResponder.panHandlers : {})}
       >
+    {/* 整行可点击编辑（v0.10）：左滑删除手势仅横向拖动接管，不与点击冲突 */}
+    <Pressable
+      onPress={() => onEdit?.(record)}
+      disabled={!onEdit}
+      accessibilityRole={onEdit ? 'button' : undefined}
+      accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
+    >
     <View style={styles.row}>
       <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
         <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>{cat.emoji}</Text>
@@ -127,13 +136,14 @@ export const RecordRow = React.memo(function RecordRow({
         </Pressable>
       ) : null}
     </View>
+    </Pressable>
       </Animated.View>
     </View>
   );
 });
 
 // 记录列表（暖色卡片风格）
-function RecordList({ records, onDelete, emptyText = '还没有记录，记一笔吧 ✨', showTime, showDate, members, onToggleReimbursed }: Props) {
+function RecordList({ records, onDelete, onEdit, emptyText = '还没有记录，记一笔吧 ✨', showTime, showDate, members, onToggleReimbursed }: Props) {
   if (records.length === 0) {
     return (
       <View style={styles.empty}>
@@ -150,6 +160,7 @@ function RecordList({ records, onDelete, emptyText = '还没有记录，记一�
           key={record.id}
           record={record}
           onDelete={onDelete}
+          onEdit={onEdit}
           showTime={showTime}
           showDate={showDate}
           members={members}

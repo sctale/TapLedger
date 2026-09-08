@@ -17,12 +17,35 @@ export function memberColor(userId: number): string {
 }
 
 // 读取成员缓存（未登录/无缓存返回 []）
+// 兜底：若当前登录用户不在缓存中（成员列表未拉到/个人账本），从本地登录态合并进来，
+// 保证明细页/统计页能稳定显示「自己」的记账人标识
 export async function getCachedMembers(): Promise<MemberInfo[]> {
   try {
-    const raw = await getSetting(SETTING_KEYS.SYNC_MEMBERS_JSON);
-    if (!raw) return [];
-    const list = JSON.parse(raw);
-    return Array.isArray(list) ? (list as MemberInfo[]) : [];
+    const [raw, uidStr, display, avatar] = await Promise.all([
+      getSetting(SETTING_KEYS.SYNC_MEMBERS_JSON),
+      getSetting(SETTING_KEYS.SYNC_USER_ID),
+      getSetting(SETTING_KEYS.SYNC_USER_DISPLAY),
+      getSetting(SETTING_KEYS.SYNC_USER_AVATAR),
+    ]);
+    let list: MemberInfo[] = [];
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed as MemberInfo[];
+      } catch {
+        list = [];
+      }
+    }
+    const uid = Number(uidStr ?? '0') || 0;
+    if (uid > 0 && !list.some((m) => m.id === uid)) {
+      list = [...list, {
+        id: uid,
+        displayName: display || '我',
+        avatarEmoji: avatar || '🙂',
+        role: 'member',
+      }];
+    }
+    return list;
   } catch {
     return [];
   }

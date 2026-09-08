@@ -14,6 +14,7 @@ import { confirmDeleteRecord } from '../hooks/useDeleteRecord';
 import { getCachedMembers, type MemberInfo } from '../sync/memberUtils';
 import MonthHeatmap from '../components/MonthHeatmap';
 import RecordList, { RecordRow } from '../components/RecordList';
+import EditRecordModal from '../components/EditRecordModal';
 import Toast from '../components/Toast';
 import type { LedgerRecord, RecordType } from '../types';
 
@@ -42,6 +43,7 @@ export default function LedgerScreen({ active }: Props) {
   const [searchText, setSearchText] = useState('');
   const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5 记账人标识）
   const [memberFilter, setMemberFilter] = useState(0); // 0=全部，>0 按记账人筛选（v0.9.1）
+  const [editing, setEditing] = useState<LedgerRecord | null>(null); // 点击编辑的记录（v0.10）
 
   const { toast, showToast, hideToast } = useToast();
 
@@ -240,7 +242,7 @@ export default function LedgerScreen({ active }: Props) {
     }
     return (
       <View style={styles.flowRecordWrap}>
-        <RecordRow record={item.record} onDelete={handleDelete} members={members} />
+        <RecordRow record={item.record} onDelete={handleDelete} onEdit={setEditing} members={members} />
       </View>
     );
   }, [handleDelete, members]);
@@ -362,6 +364,7 @@ export default function LedgerScreen({ active }: Props) {
           <RecordList
             records={visibleDayRecords}
             onDelete={handleDelete}
+            onEdit={setEditing}
             emptyText="这一天还没有记录"
             members={members}
           />
@@ -482,6 +485,12 @@ export default function LedgerScreen({ active }: Props) {
           }
         />
       )}
+      {/* 点击记录编辑（v0.10）：保存后 RECORDED 事件刷新列表并自动同步 */}
+      <EditRecordModal
+        visible={editing !== null}
+        record={editing}
+        onClose={() => setEditing(null)}
+      />
       <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
   );

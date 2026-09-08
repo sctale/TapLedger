@@ -215,6 +215,27 @@ export async function deleteRecord(id: number): Promise<void> {
   await database.runAsync('UPDATE ledger_records SET deleted = 1, updated_at = ? WHERE id = ?', [Date.now(), id]);
 }
 
+// 编辑一笔记录（明细页点击编辑用，v0.10）
+// 整体覆盖可编辑字段 + updated_at 触发增量同步推送（LWW 全家最终一致）
+export async function updateRecord(
+  id: number,
+  patch: {
+    amount: number;
+    category: string;
+    type: RecordType;
+    note: string;
+    reimbursable: boolean;
+  }
+): Promise<void> {
+  const database = await getDB();
+  await database.runAsync(
+    `UPDATE ledger_records
+     SET amount = ?, category = ?, type = ?, note = ?, reimbursable = ?, updated_at = ?
+     WHERE id = ?`,
+    [patch.amount, patch.category, patch.type, patch.note, patch.reimbursable ? 1 : 0, Date.now(), id]
+  );
+}
+
 // 更新报销状态
 export async function setReimbursed(id: number, reimbursed: boolean): Promise<void> {
   const database = await getDB();
@@ -333,14 +354,14 @@ export async function getCategorySummary(
   );
 }
 
-// 按记账人汇总支出（成员排行用，v0.5）
+// 按记账人汇总支出（成员排行用，v0.5；v0.10 增加笔数便于「谁花得多/花得勤」对比）
 export async function getMemberExpenseSummary(
   start: string,
   end: string
-): Promise<{ userId: number; total: number }[]> {
+): Promise<{ userId: number; total: number; count: number }[]> {
   const database = await getDB();
-  return database.getAllAsync<{ userId: number; total: number }>(
-    `SELECT user_id as userId, SUM(amount) as total FROM ledger_records
+  return database.getAllAsync<{ userId: number; total: number; count: number }>(
+    `SELECT user_id as userId, SUM(amount) as total, COUNT(*) as count FROM ledger_records
      WHERE deleted = 0 AND ledger_id = ? AND date >= ? AND date <= ? AND type = 'expense' AND reimbursable = 0
      GROUP BY user_id ORDER BY total DESC`,
     [activeLedgerId, start, end]

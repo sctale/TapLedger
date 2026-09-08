@@ -9,7 +9,7 @@ import {
   getCategorySummary, getRangeSummary, getDaySummaries, getSetting, getMemberExpenseSummary,
   getReimbursableSummary,
 } from '../database/ledgerDB';
-import { formatMoney, getLastNDates, getMonthRange, getMonthName, getToday } from '../utils/dateUtils';
+import { formatMoney, getLastNDates, getMonthRange, getToday } from '../utils/dateUtils';
 import { useToast } from '../hooks/useToast';
 import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUtils';
 import CategoryPieChart from '../components/CategoryPieChart';
@@ -36,7 +36,7 @@ export default function StatsScreen({ active }: Props) {
   const [tick, setTick] = useState(0);
   const [members, setMembers] = useState<MemberInfo[]>([]);   // 家庭成员缓存（v0.5）
   const [memberFilter, setMemberFilter] = useState(0);        // 0=全部成员
-  const [memberStats, setMemberStats] = useState<{ userId: number; total: number }[]>([]);
+  const [memberStats, setMemberStats] = useState<{ userId: number; total: number; count: number }[]>([]);
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
 
   const { toast, showToast, hideToast } = useToast();
@@ -80,7 +80,13 @@ export default function StatsScreen({ active }: Props) {
     }
     if (range === 'month') {
       const mr = getMonthRange(new Date());
-      const dates = getLastNDates(30);
+      // 本月 1 日 → 今天（与标题「本月」一致，替代旧的近 30 天滚动窗口）
+      const now = new Date();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dates: string[] = [];
+      for (let day = 1; day <= now.getDate(); day++) {
+        dates.push(`${now.getFullYear()}-${mm}-${String(day).padStart(2, '0')}`);
+      }
       return { rangeLabel: '本月', start: mr.start, end: mr.end, trendDates: dates };
     }
     // 近 12 个月
@@ -130,7 +136,7 @@ export default function StatsScreen({ active }: Props) {
               const dt = new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
               return range === 'week'
                 ? ['日', '一', '二', '三', '四', '五', '六'][dt.getDay()] ?? ''
-                : `${dt.getMonth() + 1}/${dt.getDate()}`;
+                : `${dt.getDate()}`; // 本月视图只显示「日」，图内自动抽样不拥挤
             })
           );
         }
@@ -188,7 +194,7 @@ export default function StatsScreen({ active }: Props) {
   const maxCategoryTotal = topCategories.length > 0 ? topCategories[0].total : 0;
   const trendEmpty = trendValues.length > 0 && trendValues.every((v) => v <= 0);
 
-  // 成员支出排行（多成员且未筛选时显示，v0.5）
+  // 成员支出排行（多成员且未筛选时显示，v0.5；v0.10 增加笔数）
   const multiMember = members.length > 1;
   const memberRows = useMemo(() => {
     if (!multiMember) return [];
@@ -203,6 +209,7 @@ export default function StatsScreen({ active }: Props) {
           name: info?.displayName ?? (m.userId === 0 ? '未标记' : `成员${m.userId}`),
           emoji: info?.avatarEmoji ?? '👤',
           total: m.total,
+          count: m.count,
           pct: allExpense > 0 ? (m.total / allExpense) * 100 : 0,
           barPct: maxTotal > 0 ? (m.total / maxTotal) * 100 : 0,
         };
@@ -400,7 +407,9 @@ export default function StatsScreen({ active }: Props) {
                     <View style={styles.memberInfo}>
                       <View style={styles.memberHead}>
                         <Text style={[styles.memberName, { color: memberColor(m.userId) }]}>{m.name}</Text>
-                        <Text style={styles.memberAmount}>¥{formatMoney(m.total)} · {m.pct.toFixed(1)}%</Text>
+                        <Text style={styles.memberAmount}>
+                          ¥{formatMoney(m.total)} · {m.pct.toFixed(1)}% · {m.count}笔
+                        </Text>
                       </View>
                       <View style={styles.memberTrack}>
                         <View
@@ -414,10 +423,8 @@ export default function StatsScreen({ active }: Props) {
             </>
           ) : null}
 
-          {/* 支出趋势 */}
-          <Text style={styles.sectionTitle}>
-            支出趋势 · {range === 'week' ? '近 7 天' : range === 'month' ? `近 30 天 · ${getMonthName(new Date())}` : '近 12 个月'}
-          </Text>
+          {/* 支出趋势（时间范围与支出占比统一用简化标签） */}
+          <Text style={styles.sectionTitle}>支出趋势 · {rangeLabel}</Text>
           <View style={styles.card}>
             {trendEmpty ? (
               <View style={styles.empty}>

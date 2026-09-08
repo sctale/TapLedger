@@ -51,8 +51,7 @@ try {
 
   # ---------- 2. 版本号同步 ----------
   Write-Host "==> 同步版本号：app.json / package.json / package-lock.json" -ForegroundColor Cyan
-  $env:TAPLEDGER_VERSION = $Version
-  node -e 'const fs=require("fs");const V=process.env.TAPLEDGER_VERSION;for(const f of ["app.json","package.json"]){let s=fs.readFileSync(f,"utf8");s=s.replace(/"version": "[\d.]+"/,`"version": "${V}"`);fs.writeFileSync(f,s);}const lf="package-lock.json";const l=JSON.parse(fs.readFileSync(lf,"utf8"));l.version=V;if(l.packages&&l.packages[""])l.packages[""].version=V;fs.writeFileSync(lf,JSON.stringify(l,null,2)+"\n");'
+  & node (Join-Path $PSScriptRoot 'sync-version.js') $Version
   if ($LASTEXITCODE -ne 0) { Fail "版本号同步失败。" }
 
   Write-Host "==> 同步 android/app/build.gradle（versionCode $versionCode / versionName $Version）" -ForegroundColor Cyan

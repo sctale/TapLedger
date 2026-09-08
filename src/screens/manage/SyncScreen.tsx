@@ -28,6 +28,42 @@ const extraStyles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // ===== 服务器地址脱敏状态行 =====
+  serverStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  serverDot: {
+    width: 8,
+    height: 8,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.income,
+  },
+  serverStatusText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  serverEditBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
+  },
+  serverEditText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.accent,
+    fontWeight: '700',
+  },
+  serverCancelBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.xs,
+  },
+  serverCancelText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textTertiary,
+    fontWeight: '600',
+  },
   syncUserRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -112,8 +148,9 @@ export default function SyncScreen() {
   const [familyModal, setFamilyModal] = useState(false);
 
   // ===== 家庭同步状态 =====
-  const [serverUrl, setServerUrl] = useState('');          // 已保存的服务器地址
-  const [serverUrlDraft, setServerUrlDraft] = useState(''); // 输入中的地址
+  const [serverUrl, setServerUrl] = useState('');          // 已保存的服务器地址（不展示明文）
+  const [serverUrlDraft, setServerUrlDraft] = useState(''); // 输入中的地址（仅在编辑态使用）
+  const [editingServer, setEditingServer] = useState(false); // 修改地址编辑态（已连接时不显示明文）
   const [syncToken, setSyncToken] = useState('');
   const [loggedName, setLoggedName] = useState('');
   const [loggedAvatar, setLoggedAvatar] = useState('');
@@ -139,7 +176,8 @@ export default function SyncScreen() {
         getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID),
       ]);
       setServerUrl(url ?? '');
-      setServerUrlDraft(url ?? '');
+      setServerUrlDraft(''); // 已保存地址不回填明文，仅在编辑态输入
+      setEditingServer(false);
       setSyncToken(token ?? '');
       setLoggedName(name ?? '');
       setLoggedAvatar(avatar ?? '');
@@ -188,12 +226,13 @@ export default function SyncScreen() {
 
   // ===== 家庭同步操作 =====
 
-  // 保存服务器地址（探活）
+  // 保存服务器地址（探活）；已连接状态下进入编辑态需先点「修改」
   const handleSaveServer = useCallback(async () => {
     const url = serverUrlDraft.trim().replace(/\/+$/, '');
     if (!url) {
       await saveSetting(SETTING_KEYS.SYNC_SERVER_URL, '');
       setServerUrl('');
+      setEditingServer(false);
       hapticLight();
       showToast('已清除服务器地址');
       return;
@@ -202,6 +241,8 @@ export default function SyncScreen() {
       await apiHealth(url);
       await saveSetting(SETTING_KEYS.SYNC_SERVER_URL, url);
       setServerUrl(url);
+      setServerUrlDraft('');
+      setEditingServer(false); // 连接成功退出编辑态，地址不再明文展示
       hapticSuccess();
       showToast('服务器连接成功');
     } catch (e) {
@@ -227,9 +268,9 @@ export default function SyncScreen() {
     hapticSuccess();
     showToast(`欢迎，${user.displayName}`);
     DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
-    // 查询家庭名
+    // 查询家庭名（服务器地址用已保存值，编辑态草稿不再回填明文）
     try {
-      const { family } = await apiGetFamily(serverUrlDraft.trim().replace(/\/+$/, ''), token);
+      const { family } = await apiGetFamily(serverUrl, token);
       await saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, family?.name ?? '');
       setFamilyName(family?.name ?? '');
       if (family) {
@@ -243,7 +284,7 @@ export default function SyncScreen() {
       // 家庭信息查询失败不阻断
     }
     loadSyncState();
-  }, [serverUrlDraft, showToast, loadSyncState]);
+  }, [serverUrl, showToast, loadSyncState]);
 
   // 家庭变化（创建/加入/退出/资料修改）
   const handleFamilyChanged = useCallback(async () => {
@@ -368,24 +409,54 @@ export default function SyncScreen() {
       {/* ===== 家庭同步 ===== */}
       <Text style={styles.sectionTitle}>家庭同步</Text>
       <View style={styles.card}>
-        {/* 服务器地址 */}
+        {/* 服务器地址（已连接不显示明文，点「修改」进入编辑态） */}
         <View style={styles.budgetRow}>
-          <Text style={styles.label}>服务器地址</Text>
+          <Text style={styles.label}>服务器</Text>
+          {serverUrl && !editingServer ? (
+            <Pressable
+              style={styles.serverEditBtn}
+              onPress={() => { setEditingServer(true); setServerUrlDraft(''); }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="修改服务器地址"
+            >
+              <Text style={styles.serverEditText}>修改</Text>
+            </Pressable>
+          ) : null}
         </View>
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            placeholder="如 http://192.168.1.10:8420"
-            placeholderTextColor={COLORS.textTertiary}
-            value={serverUrlDraft}
-            onChangeText={setServerUrlDraft}
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-          <Pressable style={styles.primaryBtn} onPress={handleSaveServer}>
-            <Text style={styles.primaryBtnText}>连接</Text>
-          </Pressable>
-        </View>
+        {serverUrl && !editingServer ? (
+          // 已连接：仅显示状态，不展示地址明文（截图/演示不泄露内网地址）
+          <View style={styles.serverStatusRow}>
+            <View style={styles.serverDot} />
+            <Text style={styles.serverStatusText}>已连接服务器</Text>
+          </View>
+        ) : (
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder={serverUrl ? '输入新的服务器地址' : '如 http://192.168.1.10:8420'}
+              placeholderTextColor={COLORS.textTertiary}
+              value={serverUrlDraft}
+              onChangeText={setServerUrlDraft}
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+            <Pressable style={styles.primaryBtn} onPress={handleSaveServer}>
+              <Text style={styles.primaryBtnText}>连接</Text>
+            </Pressable>
+            {serverUrl && editingServer ? (
+              <Pressable
+                style={styles.serverCancelBtn}
+                onPress={() => { setEditingServer(false); setServerUrlDraft(''); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="取消修改服务器地址"
+              >
+                <Text style={styles.serverCancelText}>取消</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        )}
 
         {serverUrl ? (
           syncToken ? (

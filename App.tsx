@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { DeviceEventEmitter, View, StyleSheet, ActivityIndicator } from 'react-native';
+import { AppState, DeviceEventEmitter, View, StyleSheet, ActivityIndicator } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { COLORS, LEDGER_EVENTS, setCategoryConfig } from './src/constants';
 import { initDatabase, setCustomCategoriesCache, getCategoryConfig } from './src/database/ledgerDB';
 import { runRecurringCheck } from './src/utils/recurring';
-import { getSyncConfig } from './src/sync/apiClient';
 import { runSync, purgeOldTombstones } from './src/sync/syncEngine';
 import TabBar, { type TabKey } from './src/components/TabBar';
 import HomeScreen from './src/screens/HomeScreen';
@@ -14,6 +14,15 @@ import ManageScreen from './src/screens/ManageScreen';
 
 // 已登录时：数据变更后 debounce 自动同步（毫秒）
 const AUTO_SYNC_DEBOUNCE = 5000;
+
+// 静默后台同步（未配置/断网时内部自检跳过；完成或失败都不打扰 UI）
+async function syncInBackground(): Promise<void> {
+  try {
+    await runSync();
+  } catch {
+    // 静默（断网等场景），下次事件/回前台/网络恢复再试
+  }
+}
 
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
@@ -36,19 +45,34 @@ export default function App() {
       } catch {
         // 静默
       }
-      // 同步：墓碑清理 + 已配置则启动即拉一轮（个人/家庭账本均生效）
-      try {
-        await purgeOldTombstones();
-        const config = await getSyncConfig();
-        if (config) {
-          // runSync 内部解析当前账本（无选择时兜底个人账本）、自检配置并广播刷新事件
-          await runSync();
-        }
-      } catch {
-        // 同步失败静默（断网等场景），下次记账/启动再试
-      }
+      // 本地优先：先渲染 UI 再后台同步（runSync 内部自检配置，
+      // 未配置同步则跳过；完成后广播 SYNC_DONE，各页面自行刷新）
       setDbReady(true);
+      (async () => {
+        try {
+          await purgeOldTombstones();
+        } catch {
+          // 静默
+        }
+        syncInBackground();
+      })();
     })();
+  }, []);
+
+  // 本地优先的补网策略：回前台 / 网络恢复时自动补一轮同步（已配置才生效）
+  useEffect(() => {
+    // 回前台（后台期间断网记的账，回来看一眼就能补上）
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncInBackground();
+    });
+    // 网络恢复（前台等待断网恢复的场景，如地铁出站）
+    const netSub = NetInfo.addEventListener((state) => {
+      if (state.isConnected) syncInBackground();
+    });
+    return () => {
+      appStateSub.remove();
+      netSub();
+    };
   }, []);
 
   // 数据变更 → debounce 自动同步（仅已配置时；runSync 内部自检配置）
