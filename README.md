@@ -28,7 +28,7 @@
 
 不想只一个人记？把后端部署到自家 NAS，全家人共享一本账：
 
-1. **部署后端**：NAS 上 `cd server && docker compose up -d --build`（详细步骤见 [server/README.md](server/README.md)）
+1. **部署后端**：按下文「服务端部署」在 NAS 上启动容器（约 3 分钟）
 2. **APP 连接**：管理页 → 家庭同步 → 填入服务器地址（如 `http://192.168.1.10:8420`）→ 连接
 3. **注册/登录**：每位家庭成员注册自己的账号
 4. **创建/加入家庭**：一人创建家庭拿到 6 位邀请码，其他人凭码加入
@@ -43,6 +43,65 @@
 - **成员筛选**：统计页按成员过滤（总览/饼图/排行/趋势）
 - **成员支出排行**：各成员支出金额、占比与笔数对比
 - **成员管理**：成员显示创建者/成员角色徽标；创建者可移除成员（历史记录保留）；任何人可改自己的昵称/头像，全家设备同步生效
+
+## 服务端部署（NAS / Docker，可选）
+
+后端镜像托管在 GHCR：`ghcr.io/sctale/tapledger-server`（**公开镜像，NAS 无需 docker login 直接拉取**）。零外部依赖——不需要额外的数据库/缓存容器，全部数据落在一个 SQLite 文件里。
+
+### 通用 Docker 部署（3 步）
+
+**1. 准备目录**：任意机器新建文件夹，放入 `docker-compose.yml`：
+
+```yaml
+services:
+  tapledger:
+    image: ghcr.io/sctale/tapledger-server:latest
+    container_name: tapledger-server
+    restart: unless-stopped
+    ports:
+      - "8420:8420"
+    environment:
+      - PORT=8420
+      - TZ=Asia/Shanghai
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data    # 数据库持久化：备份/迁移只需带走这个目录
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8420/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+```
+
+**2. 生成 JWT 密钥**：同目录创建 `.env`（不要提交到任何仓库）：
+
+```
+JWT_SECRET=<至少 32 位的随机字符串>
+```
+
+**3. 拉取启动并验证**：
+
+```bash
+docker compose pull && docker compose up -d
+curl http://<服务器IP>:8420/api/health   # 返回 {"ok":true,...} 即部署成功
+```
+
+### 群晖 NAS（Container Manager 图形化，无命令行）
+
+File Station 在 `docker` 共享文件夹下新建 `tapledger` → 放入上面的 `docker-compose.yml` 与 `.env`（卷路径写绝对路径 `/volume1/docker/tapledger/data:/app/data`）→ Container Manager → 项目 → 新建 → 路径选该文件夹 → 创建，等状态变「运行中」即可。
+
+逐步截图说明见 [server/DEPLOY_SYNOLOGY.md](server/DEPLOY_SYNOLOGY.md)（DSM 7 / DS224+ 实测教程）。
+
+### 运维要点
+
+- **升级**：`docker compose pull && docker compose up -d`（群晖：项目 → 更新），数据保留不丢
+- **备份**：定期备份 `data/` 整个目录（数据库为 `data/tapledger.db` 单文件；WAL 模式运行时同目录的 `-wal` / `-shm` 临时文件属正常现象）
+- **迁移**：带走整个部署文件夹（`docker-compose.yml` + `.env` + `data/`）到新机器重建即可；`.env` 里的 `JWT_SECRET` **必须保持同值**，否则所有用户需重新登录
+- **安全**：局域网使用直接填 `http://NAS_IP:8420`；如需公网访问，务必加 HTTPS 反向代理（Nginx / 群晖反代 / Caddy），不要让明文 8420 裸露公网
+
+> 更多细节（API 概览、同步协议、本地开发、curl 自测）见 [server/README.md](server/README.md)。
 
 ## 技术栈
 
@@ -137,7 +196,8 @@ server/                 # 自托管后端（NAS Docker，v0.4）
 ├── src/routes/         # auth / family / sync / health
 ├── Dockerfile          # 多阶段 alpine 构建
 ├── docker-compose.yml  # 一键部署（volume 持久化）
-└── README.md           # NAS 部署指南
+├── DEPLOY_SYNOLOGY.md  # 群晖 DS224+ 图形化部署教程
+└── README.md           # 服务端详情（API / 同步协议 / 本地开发）
 scripts/
 ├── generate-icons.ps1         # 图标生成脚本
 └── release-app.ps1            # APP 一键发布脚本（版本同步→构建→校验→Release）
