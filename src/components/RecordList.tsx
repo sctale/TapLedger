@@ -31,8 +31,9 @@ export const RecordRow = React.memo(function RecordRow({
 }) {
   const cat = findCategory(record.category, record.type);
   const isExpense = record.type === 'expense';
-  // 记账人标识（多成员账本时在分类行右侧显示头像+名字；单成员/未登录不显示）
-  const member = members && members.length > 1 && record.userId > 0 ? findMember(members, record.userId) : null;
+  // 记账人标识：已登录且能解析出成员即显示（v0.10.1：家庭账本即使只有 1 人也显示，
+  // 家人后续加入时历史记录已有归属；members 为空数组 = 未加入家庭，不显示）
+  const member = members && record.userId > 0 ? findMember(members, record.userId) : null;
 
   // 左滑删除：仅在明显横向拖动时接管手势（不抢点击），越过阈值触发删除后弹回；✕ 仍作为兜底
   const translateX = useRef(new Animated.Value(0)).current;

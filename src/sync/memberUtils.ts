@@ -16,16 +16,17 @@ export function memberColor(userId: number): string {
   return MEMBER_COLORS[Math.abs(userId) % MEMBER_COLORS.length];
 }
 
-// 读取成员缓存（未登录/无缓存返回 []）
-// 兜底：若当前登录用户不在缓存中（成员列表未拉到/个人账本），从本地登录态合并进来，
-// 保证明细页/统计页能稳定显示「自己」的记账人标识
+// 读取成员缓存（未登录/未加入家庭返回 []）
+// 兜底：已加入家庭但成员列表尚未拉到时，从本地登录态合并「自己」，
+// 保证家庭账本即使只有 1 人也能显示记账人标识（v0.10.1）
 export async function getCachedMembers(): Promise<MemberInfo[]> {
   try {
-    const [raw, uidStr, display, avatar] = await Promise.all([
+    const [raw, uidStr, display, avatar, familyName] = await Promise.all([
       getSetting(SETTING_KEYS.SYNC_MEMBERS_JSON),
       getSetting(SETTING_KEYS.SYNC_USER_ID),
       getSetting(SETTING_KEYS.SYNC_USER_DISPLAY),
       getSetting(SETTING_KEYS.SYNC_USER_AVATAR),
+      getSetting(SETTING_KEYS.SYNC_FAMILY_NAME),
     ]);
     let list: MemberInfo[] = [];
     if (raw) {
@@ -37,7 +38,9 @@ export async function getCachedMembers(): Promise<MemberInfo[]> {
       }
     }
     const uid = Number(uidStr ?? '0') || 0;
-    if (uid > 0 && !list.some((m) => m.id === uid)) {
+    // 仅已加入家庭（familyName 非空）才兜底合并自己：
+    // 未加入家庭的纯个人使用不合并，明细页保持无记账人标识（随手记语义）
+    if (uid > 0 && !!familyName && !list.some((m) => m.id === uid)) {
       list = [...list, {
         id: uid,
         displayName: display || '我',
