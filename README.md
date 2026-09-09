@@ -120,7 +120,7 @@ npx expo start --android
 
 ## 构建与发布
 
-**发布流程：全部本地构建**，产物推送 GitHub（Release APK）与 GHCR（Docker 镜像），不依赖 GitHub Actions。
+**发布流程：全部本地构建**，产物推送 GitHub（Release APK）与 GHCR（Docker 镜像）。
 
 ### APP 发布（一键脚本）
 
