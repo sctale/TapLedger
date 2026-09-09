@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { db, genUniqueInviteCode } from '../db';
+import { db, genUniqueInviteCode, getFlag } from '../db';
 import { requireAuth, joinRateLimit } from '../auth';
 import type { FamilyInfo, FamilyMember } from '../types';
 
@@ -51,6 +51,10 @@ const JOIN_LOCK_MS = 10 * 60_000;
 
 // POST /api/family/join（邀请码加入）
 router.post('/join', joinRateLimit, requireAuth, (req, res) => {
+  if (getFlag('allow_join') !== '1') {
+    res.status(403).json({ error: '服务器已暂停加入家庭，请联系管理员在后台开启' });
+    return;
+  }
   if (req.authUser!.familyId != null) {
     res.status(409).json({ error: '你已属于一个家庭，先退出后才能加入其他家庭' });
     return;

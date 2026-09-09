@@ -111,7 +111,7 @@ export function canAccessLedger(user: AuthUser, ledgerId: number): boolean {
 }
 
 // 通用 IP 限流（内存版，单实例自托管足够）
-function makeIpRateLimit(limit: number, windowMs: number) {
+export function makeIpRateLimit(limit: number, windowMs: number) {
   const hits = new Map<string, { count: number; resetAt: number }>();
   return function ipRateLimit(req: Request, res: Response, next: NextFunction): void {
     const ip = req.ip || 'unknown';

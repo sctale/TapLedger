@@ -1,5 +1,15 @@
 # 更新日志
 
+## [server 0.5.0] - 2026-09-09
+
+管理面板（公网应急熔断）：
+
+- **运行时开关**：新增 `app_flags` 表 + `getFlag/setFlag`；`/register`、`/family/join` 分别受 `allow_register`、`allow_join` 拦截（关闭即 403，家人老账号登录不受影响）
+- **极简面板**：`GET /admin` 单文件页（内联，随 tsc 构建产出）+ `/api/admin/{state,flags}`；即时切换开关、显示用户/家庭/记录数与最近同步
+- **鉴权**：`.env` 配 `ADMIN_TOKEN` 才启用；未配一律 503、口令错 401，另有 10 次/分/IP 限流，`timingSafeEqual` 定值比较
+- **文档**：`.env.example`、`server/README.md`、`DEPLOY_SYNOLOGY.md` 补充面板用法与安全说明
+- 用途：服务器已通过反代暴露公网时，随时在网页端关闭「允许新用户注册」，阻断攻击链「注册 → 爆破邀请码 → 进入他人家庭账本」，无需重启容器
+
 ## [server 0.4.3] - 2026-09-09
 
 数据安全（自动备份）：

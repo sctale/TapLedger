@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { db } from '../db';
+import { db, getFlag } from '../db';
 import { requireAuth, signToken, ensurePersonalLedger } from '../auth';
 import type { AuthUser } from '../types';
 
@@ -44,6 +44,10 @@ function toAuthUser(row: {
 
 // POST /api/auth/register
 router.post('/register', (req, res) => {
+  if (getFlag('allow_register') !== '1') {
+    res.status(403).json({ error: '服务器已关闭注册，请联系管理员在后台开启' });
+    return;
+  }
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? '参数无效' });

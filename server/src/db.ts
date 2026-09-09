@@ -88,7 +88,25 @@ db.exec(`
     deleted INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_custom_cats_family_updated ON custom_categories(family_id, updated_at);
+
+  -- 运维开关（管理面板读写）：allow_register / allow_join，'1' 开 '0' 关
+  CREATE TABLE IF NOT EXISTS app_flags (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
+
+// ===== 运维开关 =====
+export function getFlag(key: string, fallback = '1'): string {
+  const row = db.prepare('SELECT value FROM app_flags WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value ?? fallback;
+}
+
+export function setFlag(key: string, value: string): void {
+  db.prepare(
+    'INSERT INTO app_flags (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+  ).run(key, value);
+}
 
 // ===== 存量库迁移（新列）=====
 // 若列不存在则 ALTER TABLE 补充，保证老库升级后字段一致

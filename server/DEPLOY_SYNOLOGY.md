@@ -49,7 +49,10 @@ services:
 然后在**同一个 `/volume1/docker/tapledger` 文件夹**里再建一个 `.env` 文件（不要提交到任何 git），内容：
 ```
 JWT_SECRET=这里填你的随机长字符串（至少32位）
+# 可选：配置后可浏览器打开 http://NAS_IP:8420/admin 在线开关「注册/加入家庭」；不填则无面板
+ADMIN_TOKEN=另一个随机长字符串（可留空注释掉本行）
 ```
+> `JWT_SECRET` 必填：生产环境镜像 `NODE_ENV=production`，若缺失/过短/沿用默认值，容器会**拒绝启动**（防 token 伪造）。`ADMIN_TOKEN` 可先注释掉，需要面板时再取消注释并重启一次。
 
 ### 持久化文件夹说明（重要）
 

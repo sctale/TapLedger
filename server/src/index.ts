@@ -5,6 +5,7 @@ import familyRoutes from './routes/family';
 import syncRoutes from './routes/sync';
 import ledgerRoutes from './routes/ledgers';
 import healthRoutes from './routes/health';
+import { adminPageRouter, adminApiRouter } from './routes/admin';
 import { loginRateLimit, registerRateLimit } from './auth';
 import { startAutoBackup } from './backup';
 
@@ -25,6 +26,8 @@ app.use('/api', meRouter); // /api/me（GET 查询 / PUT 改资料）
 app.use('/api/family', familyRoutes);
 app.use('/api/ledgers', ledgerRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/admin', adminPageRouter); // 管理面板单页
+app.use('/api/admin', adminApiRouter); // /admin 面板的数据接口
 
 // 404
 app.use((_req, res) => {
