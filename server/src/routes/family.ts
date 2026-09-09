@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { db, genUniqueInviteCode } from '../db';
-import { requireAuth } from '../auth';
+import { requireAuth, joinRateLimit } from '../auth';
 import type { FamilyInfo, FamilyMember } from '../types';
 
 const router = Router();
@@ -44,8 +44,13 @@ router.post('/', requireAuth, (req, res) => {
   res.json({ family: info, user: { ...req.authUser!, familyId: familyId, familyRole: 'owner' } });
 });
 
+// 邀请码爆破防护：同一码连续错误 10 次临时锁定 10 分钟（配合 join 限流双保险）
+const joinFailures = new Map<string, { count: number; lockedUntil: number }>();
+const JOIN_MAX_FAILS = 10;
+const JOIN_LOCK_MS = 10 * 60_000;
+
 // POST /api/family/join（邀请码加入）
-router.post('/join', requireAuth, (req, res) => {
+router.post('/join', joinRateLimit, requireAuth, (req, res) => {
   if (req.authUser!.familyId != null) {
     res.status(409).json({ error: '你已属于一个家庭，先退出后才能加入其他家庭' });
     return;
@@ -55,12 +60,27 @@ router.post('/join', requireAuth, (req, res) => {
     res.status(400).json({ error: '请输入 6 位邀请码' });
     return;
   }
+  const code = parsed.data.inviteCode;
+  const locked = joinFailures.get(code);
+  if (locked && locked.lockedUntil > Date.now()) {
+    res.status(429).json({ error: '该邀请码尝试次数过多，已临时锁定，请 10 分钟后再试' });
+    return;
+  }
   const family = db.prepare('SELECT id, name, invite_code, owner_id FROM families WHERE invite_code = ?')
-    .get(parsed.data.inviteCode) as { id: number; name: string; invite_code: string; owner_id: number } | undefined;
+    .get(code) as { id: number; name: string; invite_code: string; owner_id: number } | undefined;
   if (!family) {
+    let rec = joinFailures.get(code);
+    if (!rec || rec.lockedUntil <= Date.now()) rec = { count: 0, lockedUntil: 0 };
+    rec.count += 1;
+    if (rec.count >= JOIN_MAX_FAILS) {
+      rec.count = 0;
+      rec.lockedUntil = Date.now() + JOIN_LOCK_MS;
+    }
+    joinFailures.set(code, rec);
     res.status(404).json({ error: '邀请码无效' });
     return;
   }
+  joinFailures.delete(code);
   db.prepare("UPDATE users SET family_id = ?, family_role = 'member' WHERE id = ?")
     .run(family.id, req.authUser!.id);
   const info: FamilyInfo = {

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { randomInt } from 'node:crypto';
 
 // 数据目录（Docker 内挂载 /app/data；本地开发为 server/data）
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -104,12 +105,12 @@ if (!hasColumn('users', 'personal_family_id')) {
   db.exec('ALTER TABLE users ADD COLUMN personal_family_id INTEGER');
 }
 
-// 生成 6 位大写字母数字邀请码（避开易混淆字符）
+// 生成 6 位大写字母数字邀请码（避开易混淆字符；CSPRNG，公网可达时抗预测/爆破）
 export function genInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += chars[randomInt(chars.length)];
   }
   return code;
 }

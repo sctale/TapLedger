@@ -3,8 +3,24 @@ import jwt from 'jsonwebtoken';
 import { db } from './db';
 import type { AuthUser } from './types';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'tapledger-dev-secret-change-me';
+const DEFAULT_JWT_SECRET = 'tapledger-dev-secret-change-me';
 const JWT_EXPIRES = '7d';
+
+// 生产环境强制要求安全密钥：缺失/沿用默认值/过短 → 拒绝启动（否则 token 可被任意伪造）
+function loadJwtSecret(): string {
+  const raw = process.env.JWT_SECRET || '';
+  if (!raw || raw === DEFAULT_JWT_SECRET || raw.length < 16) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[fatal] 生产环境必须配置 JWT_SECRET（≥16 位随机串且不等于内置默认值），服务拒绝启动。');
+      process.exit(1);
+    }
+    console.warn('[warn] 未配置安全 JWT_SECRET，正在使用开发默认密钥（仅限本地开发，勿用于生产）。');
+    return DEFAULT_JWT_SECRET;
+  }
+  return raw;
+}
+
+const JWT_SECRET = loadJwtSecret();
 
 export interface JwtPayload {
   uid: number;
@@ -94,21 +110,26 @@ export function canAccessLedger(user: AuthUser, ledgerId: number): boolean {
   return ledgerId === user.personalLedgerId || ledgerId === user.familyId;
 }
 
-// 登录限流（内存版，同 IP 每分钟 5 次）
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-
-export function loginRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const ip = req.ip || 'unknown';
-  const now = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (entry && now < entry.resetAt) {
-    if (entry.count >= 5) {
-      res.status(429).json({ error: '尝试过于频繁，请 1 分钟后再试' });
-      return;
+// 通用 IP 限流（内存版，单实例自托管足够）
+function makeIpRateLimit(limit: number, windowMs: number) {
+  const hits = new Map<string, { count: number; resetAt: number }>();
+  return function ipRateLimit(req: Request, res: Response, next: NextFunction): void {
+    const ip = req.ip || 'unknown';
+    const now = Date.now();
+    const entry = hits.get(ip);
+    if (entry && now < entry.resetAt) {
+      if (entry.count >= limit) {
+        res.status(429).json({ error: '尝试过于频繁，请稍后再试' });
+        return;
+      }
+      entry.count += 1;
+    } else {
+      hits.set(ip, { count: 1, resetAt: now + windowMs });
     }
-    entry.count += 1;
-  } else {
-    loginAttempts.set(ip, { count: 1, resetAt: now + 60_000 });
-  }
-  next();
+    next();
+  };
 }
+
+export const loginRateLimit = makeIpRateLimit(5, 60_000);
+export const registerRateLimit = makeIpRateLimit(3, 60_000);
+export const joinRateLimit = makeIpRateLimit(5, 60_000);
