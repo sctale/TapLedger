@@ -126,12 +126,18 @@ http://192.168.1.200:8420/api/health
 | 重启 NAS 后容器没起来 | 确认 yml 里有 `restart: unless-stopped`；Container Manager 项目需已启用 |
 | 想换新版本 | 镜像在**开发者本地构建发布**到 GHCR（版本号 + latest 双标签）。你只需进项目 → **更新**：重新拉取 latest 再「重新创建」即可，或手动在上面的 yml 里指定 `image: ...:具体版本号` 更稳定 |
 | 数据会不会丢 | 不会。数据库在 `/volume1/docker/tapledger/data/tapledger.db`，容器每天自动热备份到 `data/backups/`（留 7 份）；再用 Hyper Backup 整包备份 `data/` 即双保险 |
+| 升级到 v0.4.2+ 后容器立刻退出/反复重启，日志有 `[fatal] 生产环境必须配置 JWT_SECRET` | 不是镜像坏了：新版生产环境**拒绝用不安全密钥启动**。编辑 `.env` 填入 ≥16 位随机串（建议 32 位，`openssl rand -hex 32` 生成），再「重新创建」容器即可 |
+| APP 注册报 403「服务器已关闭注册」 | 你在 `/admin` 面板关过「允许新用户注册」。家人老账号登录不受影响；要加新成员时开回即可 |
+| 加入家庭报 429 | 正常保护：同一 IP 每分钟限 5 次尝试，或同一邀请码被连错 10 次锁定 10 分钟。核对邀请码（家庭管理里可重新生成），稍后再试 |
 
 ---
 
 ## 7. 升级 / 备份要点
 
 - **升级**：项目 → 更新（拉取 latest）→ 重新创建；或改 yml 里 `image: ghcr.io/sctale/tapledger-server:新版本号` → 重新创建。数据保留在 `/volume1/docker/tapledger/data/`，升级不丢。
+  - ⚠️ **升级到 v0.4.2+ 前先查 `.env`**：`JWT_SECRET` 必须是真实强随机串（≥16 位，建议 32 位），不能留示例值——新版生产环境密钥不安全会**拒绝启动**（见第 6 节 FAQ）。想启用管理面板，顺手加一行 `ADMIN_TOKEN=<强随机串>`（可先不加，之后要用再取消注释并重启一次）。
+  - **升级后自查**：容器状态为“健康”；`curl http://NAS_IP:8420/api/health` 有 `{"ok":true}`；日志出现一行 `[backup] wrote tapledger-日期.db` 说明自动备份正常。
+  - **想回退旧版**：把 yml 里 `image:` 改回旧版本号 tag → 重新创建即可，数据卷不动。
 - **备份**：容器每天自动热备份到 `/volume1/docker/tapledger/data/backups/tapledger-日期.db`（保留 7 份，可用 `.env` 里 `BACKUP_KEEP` 调整、`BACKUP_DISABLED=1` 关闭）。需回滚时：停止容器 → 删除 `data/` 下 `tapledger.db-wal`、`tapledger.db-shm` → 把目标备份复制为 `tapledger.db` → 启动容器。另建议 DSM Hyper Backup 整包备份 `data/` 做双保险。
 - 强烈建议把 `JWT_SECRET` 记到安全的地方——换库/迁移时保持同一个值，已登录的用户才不需重新登录。
 

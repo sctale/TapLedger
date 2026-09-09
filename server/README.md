@@ -26,6 +26,19 @@ curl http://<NAS_IP>:8420/api/health
 
 > 更新到新版本：`docker compose pull && docker compose up -d` 即可，无需重新编译。
 
+### ⚠️ 升级到 v0.4.2+ 注意（重要）
+
+自 v0.4.2 起服务端加了防伪造保护，**首次升级到 v0.4.2/v0.4.3/v0.5.0 前请先确认 `.env`**：
+
+1. **必须先配好 `JWT_SECRET` 再升级**。生产镜像（`NODE_ENV=production`）若 `.env` 里的 `JWT_SECRET` **缺失、仍是示例值、短于 16 位或等于内置默认值**，容器会打印 `[fatal] 生产环境必须配置 JWT_SECRET…` 后**拒绝启动**。这是刻意保护（默认密钥下任何人可伪造登录 token 读取全家账本），不是 bug。
+   - 升级前：`docker compose logs` 若看到上面这行，说明密钥没配好——先在 `.env` 写一个强随机串再 `docker compose up -d`。
+   - 生成强密钥：`openssl rand -hex 32`（或任意 ≥32 位随机串）填入 `JWT_SECRET=`。
+   - 该值是登录凭证的签名密钥，**迁移/换机时保持不变**，否则全员需重新登录；切勿提交到任何 git/网盘。
+2. **（可选）管理面板**：v0.5.0 起，在 `.env` 加 `ADMIN_TOKEN=<强随机串>` 并重启一次，浏览器开 `http://NAS_IP:8420/admin` 可在线开关「允许新用户注册 / 允许邀请码加入家庭」（即时生效，用于公网暴露时随时熔断陌生人）。不配 `ADMIN_TOKEN` 则该面板不可用，其余功能不受影响。
+3. **（可选）自动备份**：v0.4.3 起每天自动热备份到 `data/backups/tapledger-日期.db`（保留 7 份）。升级本身不动数据，但可顺手确认该目录已生成当日备份。
+
+> 回退：改 `docker-compose.yml` 里 `image:` 指回旧版本号 tag 重新拉取即可；数据在 `data/` 卷内，升降级都不丢。
+
 ### 群晖 / 威联通图形化步骤
 
 1. Container Manager / Docker → 项目 → 新建
