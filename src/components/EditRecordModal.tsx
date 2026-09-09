@@ -362,7 +362,8 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.sm,
   },
   reimburseBtnOn: {
-    backgroundColor: COLORS.warningBg,
+    // v0.10.2：选中效果与「连记」统一——主色 9% 透明底 + 主色边框 + 深色文字
+    backgroundColor: `${COLORS.warningBorder}18`,
     borderColor: COLORS.warningBorder,
   },
   reimburseText: {

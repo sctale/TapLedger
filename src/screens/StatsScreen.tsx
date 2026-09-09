@@ -258,7 +258,10 @@ export default function StatsScreen({ active }: Props) {
                 accessibilityLabel="全部成员"
                 accessibilityState={{ selected: memberFilter === 0 }}
               >
-                <Text style={[styles.memberChipText, memberFilter === 0 && styles.memberChipTextActive]}>
+                <Text
+                  style={[styles.memberChipText, memberFilter === 0 && styles.memberChipTextActive]}
+                  numberOfLines={1}
+                >
                   👨‍👩‍👧 全部
                 </Text>
               </Pressable>
@@ -271,7 +274,10 @@ export default function StatsScreen({ active }: Props) {
                   accessibilityLabel={`只看${m.displayName}`}
                   accessibilityState={{ selected: memberFilter === m.id }}
                 >
-                  <Text style={[styles.memberChipText, memberFilter === m.id && styles.memberChipTextActive]}>
+                  <Text
+                    style={[styles.memberChipText, memberFilter === m.id && styles.memberChipTextActive]}
+                    numberOfLines={1}
+                  >
                     {m.avatarEmoji} {m.displayName}
                   </Text>
                 </Pressable>

@@ -270,7 +270,10 @@ export default function LedgerScreen({ active }: Props) {
             accessibilityLabel={c.id === 0 ? '全部成员' : `只看 ${c.label}`}
             accessibilityState={{ selected: memberFilter === c.id }}
           >
-            <Text style={[styles.memberChipText, memberFilter === c.id && styles.memberChipTextActive]}>
+            <Text
+              style={[styles.memberChipText, memberFilter === c.id && styles.memberChipTextActive]}
+              numberOfLines={1}
+            >
               {c.label}
             </Text>
           </Pressable>
