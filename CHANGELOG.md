@@ -1,5 +1,12 @@
 # 更新日志
 
+## [server 0.4.3] - 2026-09-09
+
+数据安全（自动备份）：
+
+- **每日自动热备份**：用 SQLite 在线备份 API（无需停服）把数据库备份到 `data/backups/tapledger-YYYY-MM-DD.db`，默认保留最近 7 份（`BACKUP_KEEP` 可调、`BACKUP_DISABLED=1` 关闭）；当天缺备则启动即补一份，之后每 24h 一份
+- **文档**：`server/README.md` 与 `DEPLOY_SYNOLOGY.md` 更新备份/回滚步骤（停容器→删 `tapledger.db-wal/-shm`→用目标备份替换 `tapledger.db`→起容器），`.env.example` 补 `BACKUP_*` 说明
+
 ## [server 0.4.2] - 2026-09-09
 
 服务端（公网可达场景）安全硬化：

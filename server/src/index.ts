@@ -6,6 +6,7 @@ import syncRoutes from './routes/sync';
 import ledgerRoutes from './routes/ledgers';
 import healthRoutes from './routes/health';
 import { loginRateLimit, registerRateLimit } from './auth';
+import { startAutoBackup } from './backup';
 
 const app = express();
 const PORT = Number(process.env.PORT || 8420);
@@ -38,4 +39,5 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 app.listen(PORT, () => {
   console.log(`TapLedger server listening on :${PORT}`);
+  startAutoBackup();
 });

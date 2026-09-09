@@ -55,7 +55,7 @@ JWT_SECRET=这里填你的随机长字符串（至少32位）
 
 - 数据库文件为 **`/volume1/docker/tapledger/data/tapledger.db`**（SQLite 单文件，WAL 模式运行时同目录还会有 `tapledger.db-wal` / `tapledger.db-shm` 两个临时文件，属正常现象）。
 - **首次启动时容器会自动创建** `data` 文件夹和数据库，无需手动新建；之后所有记账数据（用户/家庭/账本/记录）都只落在这里，容器删了重建数据也不丢。
-- **备份**：定期备份 `/volume1/docker/tapledger/data` 整个文件夹即可（停机备份最稳，见第 7 节）。
+- **备份**：容器**每天自动热备份**数据库到 `/volume1/docker/tapledger/data/backups/`（保留最近 7 份，v0.4.3 起内置）；再配合 DSM「Hyper Backup」定期整包备份 `data/` 文件夹即可双保险。
 - **迁移到新 NAS**：把整个 `/volume1/docker/tapledger` 文件夹（含 `docker-compose.yml`、`.env`、`data/`）原样复制过去，照第 2 节重新建项目即可，数据完整保留。
 - ⚠️ `.env` 里的 `JWT_SECRET` 是登录凭证的签名密钥，**换库/迁移时必须保持同一个值**，否则所有用户需要重新登录；也不要把它放到任何仓库/网盘里。
 
@@ -122,14 +122,14 @@ http://192.168.1.200:8420/api/health
 | APP 提示连接失败 | IP/端口填错，或在非局域网环境没做端口转发/HTTPS |
 | 重启 NAS 后容器没起来 | 确认 yml 里有 `restart: unless-stopped`；Container Manager 项目需已启用 |
 | 想换新版本 | 镜像在**开发者本地构建发布**到 GHCR（版本号 + latest 双标签）。你只需进项目 → **更新**：重新拉取 latest 再「重新创建」即可，或手动在上面的 yml 里指定 `image: ...:具体版本号` 更稳定 |
-| 数据会不会丢 | 不会。数据库在 `/volume1/docker/tapledger/data/tapledger.db`，**定期备份这个文件夹即可** |
+| 数据会不会丢 | 不会。数据库在 `/volume1/docker/tapledger/data/tapledger.db`，容器每天自动热备份到 `data/backups/`（留 7 份）；再用 Hyper Backup 整包备份 `data/` 即双保险 |
 
 ---
 
 ## 7. 升级 / 备份要点
 
 - **升级**：项目 → 更新（拉取 latest）→ 重新创建；或改 yml 里 `image: ghcr.io/sctale/tapledger-server:新版本号` → 重新创建。数据保留在 `/volume1/docker/tapledger/data/`，升级不丢。
-- **备份**：进 Container Manager **停止容器**后，整包复制 `/volume1/docker/tapledger/data/`，或用 DSM 的「Hyper Backup」备份该文件夹（WAL 运行中热备份也基本安全，停机最稳）。
+- **备份**：容器每天自动热备份到 `/volume1/docker/tapledger/data/backups/tapledger-日期.db`（保留 7 份，可用 `.env` 里 `BACKUP_KEEP` 调整、`BACKUP_DISABLED=1` 关闭）。需回滚时：停止容器 → 删除 `data/` 下 `tapledger.db-wal`、`tapledger.db-shm` → 把目标备份复制为 `tapledger.db` → 启动容器。另建议 DSM Hyper Backup 整包备份 `data/` 做双保险。
 - 强烈建议把 `JWT_SECRET` 记到安全的地方——换库/迁移时保持同一个值，已登录的用户才不需重新登录。
 
 ---

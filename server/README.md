@@ -49,10 +49,25 @@ NAS 更新：`docker compose pull && docker compose up -d`。
 
 ### 数据备份
 
-所有数据（用户/家庭/账本）都在 `server/data/` 卷里：
+服务端内置**每日自动热备份**（v0.4.3 起，走 SQLite 在线备份 API，无需停服）：
+
+- 产物：`data/backups/tapledger-YYYY-MM-DD.db`，默认保留最近 7 份（env 可调：`BACKUP_KEEP=份数`；`BACKUP_DISABLED=1` 关闭）
+- 服务器当天开过机就会补一份当日备份；长期不停机则每 24 小时一份
+- 想再稳一层：用 DSM「Hyper Backup」定期整包备份 `data/` 文件夹
+
+**回滚到某个备份点**（如误删数据）：
 
 ```bash
-# 停机备份最稳（WAL 模式下热备份也基本安全）
+docker compose down
+cp data/tapledger.db data/tapledger.db.broken   # 留出现场
+rm -f data/tapledger.db-wal data/tapledger.db-shm
+cp data/backups/tapledger-2026-09-08.db data/tapledger.db   # 换成目标备份
+docker compose up -d
+```
+
+手动整包备份仍然可用（停机时最稳）：
+
+```bash
 tar czf tapledger-backup-$(date +%Y%m%d).tar.gz server/data
 ```
 
