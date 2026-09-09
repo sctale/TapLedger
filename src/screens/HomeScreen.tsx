@@ -345,7 +345,7 @@ export default function HomeScreen({ active }: Props) {
                   accessibilityState={{ selected: reimbursable }}
                 >
                   <Text style={[styles.reimburseText, reimbursable && styles.reimburseTextOn]}>
-                    {reimbursable ? '✓ 待报销' : '待报销'}
+                    待报销
                   </Text>
                 </Pressable>
               ) : null}
