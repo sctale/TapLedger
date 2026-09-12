@@ -2,7 +2,6 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import type { LedgerRecord } from '../types';
 import { findCategory } from '../constants';
-import { formatMoney } from './dateUtils';
 
 // 导出 CSV（Excel 可直接打开）并分享
 export async function exportCSV(records: LedgerRecord[]): Promise<{ success: boolean; error?: string }> {
@@ -19,7 +18,8 @@ export async function exportCSV(records: LedgerRecord[]): Promise<{ success: boo
         r.date,
         r.type === 'expense' ? '支出' : '收入',
         cat.label,
-        (r.type === 'expense' ? '-' : '') + formatMoney(r.amount),
+        // v0.11 修复：金额不带千分位逗号（此前 Excel 按文本处理无法求和）
+        (r.type === 'expense' ? '-' : '') + r.amount.toFixed(2),
         r.note,
         status,
       ];

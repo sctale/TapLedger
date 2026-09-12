@@ -31,10 +31,12 @@ export function isDueOn(rule: RecurringRule, date: Date): boolean {
 }
 
 // 规则的上一个应生成日期（用于判断是否已生成）
-function previousDueDate(rule: RecurringRule, today: Date): Date | null {
+// v0.11 修复：notBefore=规则创建日，不回溯生成创建之前的到期记录（避免新建规则当天"补记"）
+function previousDueDate(rule: RecurringRule, today: Date, notBefore: Date): Date | null {
   // 从今天往前找最近一个到期日
   for (let i = 0; i < 370; i++) {
     const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    if (d < notBefore) return null;
     if (isDueOn(rule, d)) return d;
   }
   return null;
@@ -52,7 +54,7 @@ export async function runRecurringCheck(): Promise<number> {
 
   for (const rule of rules) {
     if (!rule.enabled) continue;
-    const due = previousDueDate(rule, today);
+    const due = previousDueDate(rule, today, new Date(rule.createdAt));
     if (!due) continue;
     const dueStr = formatDate(due);
     // 已生成过（>= lastGenerated）则跳过

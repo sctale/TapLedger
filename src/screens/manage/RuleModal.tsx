@@ -98,7 +98,13 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
             keyboardType="decimal-pad"
             returnKeyType="done"
             value={amount}
-            onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
+            onChangeText={(t) => {
+              // v0.11 修复：只保留第一个小数点，"1.2.3" 归一为 "1.23"（此前 parseFloat 静默截为 1.2）
+              let v = t.replace(/[^0-9.]/g, '');
+              const i = v.indexOf('.');
+              if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '');
+              setAmount(v);
+            }}
             maxLength={9}
           />
         </View>

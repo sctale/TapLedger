@@ -19,6 +19,10 @@ gradle-build.log
 # 构建产物（APK 走 GitHub Release 分发）
 *.apk
 
+# 发布签名（密钥严禁提交；丢失 keystore 后老用户无法升级，务必备份）
+keystore.properties
+keystore/
+
 # server 运行数据（数据库）
 server/data/
 server/node_modules/

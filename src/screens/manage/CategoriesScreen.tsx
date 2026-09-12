@@ -261,7 +261,7 @@ export default function CategoriesScreen() {
                   onPress={() => handleMove(type, item.def.key, -1)}
                   disabled={idx === 0}
                   style={[localStyles.sortBtn, idx === 0 && localStyles.sortBtnDisabled]}
-                  hitSlop={4}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Text style={localStyles.sortBtnText}>↑</Text>
                 </Pressable>
@@ -269,7 +269,7 @@ export default function CategoriesScreen() {
                   onPress={() => handleMove(type, item.def.key, 1)}
                   disabled={idx === items.length - 1}
                   style={[localStyles.sortBtn, idx === items.length - 1 && localStyles.sortBtnDisabled]}
-                  hitSlop={4}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Text style={localStyles.sortBtnText}>↓</Text>
                 </Pressable>

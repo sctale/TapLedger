@@ -30,6 +30,7 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
   const [showNote, setShowNote] = useState(false);
   const [reimbursable, setReimbursable] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   // 打开时用记录内容初始化（金额转字符串供键盘继续编辑）
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
       setShowNote(!!record.note);
       setReimbursable(record.reimbursable);
       setSaving(false);
+      setError('');
     }
   }, [visible, record]);
 
@@ -73,6 +75,8 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
     } catch {
       hapticError();
       setSaving(false);
+      // v0.11 修复：保存失败在弹窗内给出文案提示（此前仅震动，用户以为已保存）
+      setError('保存失败，请重试');
     }
   };
 
@@ -105,6 +109,9 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
             <Text style={[styles.navSave, !canSave && styles.navSaveDisabled]}>保存</Text>
           </Pressable>
         </View>
+
+        {/* 保存失败提示（弹窗内可见，Toast 会被本全屏 Modal 遮挡） */}
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {/* 记账卡片结构：上半内容与数字键盘连为一张卡，键盘固定卡底 */}
         <View style={styles.card}>
@@ -248,6 +255,13 @@ const styles = StyleSheet.create({
   },
   navSaveDisabled: {
     opacity: 0.4,
+  },
+  errorText: {
+    color: COLORS.danger,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: SPACING.xs,
   },
   // ===== 记账卡片（与 HomeScreen 记账卡一致） =====
   card: {

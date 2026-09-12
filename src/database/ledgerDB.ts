@@ -653,6 +653,15 @@ export async function replaceAllRecords(records: Omit<LedgerRecord, 'id'>[]): Pr
   });
 }
 
+// 清空当前账本的周期规则与自定义分类（v0.11：replace 导入前置步骤，与记录同语义硬删重插）
+export async function clearRecurringAndCategories(): Promise<void> {
+  const database = await getDB();
+  await database.withTransactionAsync(async () => {
+    await database.runAsync('DELETE FROM recurring_rules WHERE ledger_id = ?', [activeLedgerId]);
+    await database.runAsync('DELETE FROM custom_categories WHERE ledger_id = ?', [activeLedgerId]);
+  });
+}
+
 // ===== 重置当前账本 =====
 // 墓碑软删除当前账本的全部数据（记录 / 周期规则 / 自定义分类），带新的 updated_at，
 // 使下一轮同步把删除推送到服务端；服务端 LWW 只会向前推进，历史记录不会被重新拉回。

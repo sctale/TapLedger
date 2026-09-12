@@ -88,6 +88,8 @@ tar czf tapledger-backup-$(date +%Y%m%d).tar.gz server/data
 
 APP 直连 `http://NAS_IP:8420` 即可（自托管场景）。如需公网访问，建议用反向代理（Nginx / 群晖反向代理 / Caddy）加 HTTPS，并在 APP 中填 `https://your.domain.com`。
 
+> **走反向代理时请设 `TRUST_PROXY=1`**（v0.5.2 起，写在 `server/.env` 后重启容器）。否则服务端看到的客户端 IP 恒为代理地址，登录/注册限流会按代理 IP 聚合——一人输错密码全家 429。局域网直连无需配置。
+
 ### 管理面板（v0.5.0，可选）
 
 给公网部署准备的一个极简后台，用于**随时熔断陌生人进入**：

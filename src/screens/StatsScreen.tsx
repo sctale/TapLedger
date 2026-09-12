@@ -89,16 +89,15 @@ export default function StatsScreen({ active }: Props) {
       }
       return { rangeLabel: '本月', start: mr.start, end: mr.end, trendDates: dates };
     }
-    // 近 12 个月
+    // 近 12 个月（v0.11 修复：start 取回溯窗口的首月月初，跨年时去年月份不再恒为 0）
     const now = new Date();
-    const yearStart = `${now.getFullYear()}-01-01`;
     const today = getToday();
     const dates: string[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
     }
-    return { rangeLabel: '近 12 个月', start: yearStart, end: today, trendDates: dates };
+    return { rangeLabel: '近 12 个月', start: dates[0], end: today, trendDates: dates };
   }, [range]);
 
   // 加载数据（memberFilter > 0 时按记账人筛选，v0.5）
@@ -168,7 +167,9 @@ export default function StatsScreen({ active }: Props) {
   }, [refresh, loadMembers, loadReimburseSummary]);
 
   // Android 系统返回键：在报销子页时返回主页（主页时不消费，走默认）
+  // v0.11 修复：仅激活 tab 注册，避免与管理页同时消费返回键（两页常驻挂载）
   useEffect(() => {
+    if (!active) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (page !== 'main') {
         setPage('main');
@@ -177,7 +178,7 @@ export default function StatsScreen({ active }: Props) {
       return false;
     });
     return () => sub.remove();
-  }, [page]);
+  }, [page, active]);
 
   const budgetPercent = budget > 0 ? Math.min(expense / budget, 1) : 0;
   const budgetOver = budget > 0 && expense > budget;

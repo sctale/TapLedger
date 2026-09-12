@@ -4,9 +4,10 @@ import { File } from 'expo-file-system';
 import {
   bulkInsertRecords, replaceAllRecords, saveSetting, addCustomCategory,
   addRecurringRule, setCustomCategoriesCache, getCategoryConfig,
+  clearRecurringAndCategories,
 } from '../database/ledgerDB';
 import { LEDGER_EVENTS, EXPORT_VERSION, setCategoryConfig } from '../constants';
-import { isValidRecord, normalizeRecord } from './exportData';
+import { isValidRecord, normalizeRecord, sanitizeExportSettings } from './exportData';
 import type { CustomCategory, LedgerRecord, RecurringRule } from '../types';
 
 export type ImportStrategy = 'merge' | 'replace';
@@ -72,14 +73,15 @@ function parseJSONBackup(text: string): ParsedBackup {
 async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promise<ImportResult> {
   try {
     let failed = 0;
-    // 1) 记录
+    // 1) 记录（replace 策略同时清空周期规则与自定义分类，v0.11 修复：此前只替换记录导致重复追加）
     if (strategy === 'replace') {
       await replaceAllRecords(data.records);
+      await clearRecurringAndCategories();
     } else {
       await bulkInsertRecords(data.records);
     }
-    // 2) 设置
-    for (const [k, v] of Object.entries(data.settings)) {
+    // 2) 设置（v0.11 安全：剔除 sync.* 私有键，防止导入旧备份覆盖/劫持当前登录态）
+    for (const [k, v] of Object.entries(sanitizeExportSettings(data.settings))) {
       if (typeof v === 'string') await saveSetting(k, v).catch(() => {});
     }
     // 3) 周期规则

@@ -157,9 +157,12 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
           applied++;
         }
       } else {
+        // v0.11 兜底：key 是主键，若与本地另一 uuid 的分类冲突，直接 INSERT 会抛错回滚整轮 pull
+        // 导致同步永久卡死；改为跳过该条（服务端下次 pull 仍会带上，LWW 最终一致）
         await db.runAsync(
           `INSERT INTO custom_categories (key, label, emoji, color, type, created_at, uuid, updated_at, deleted, ledger_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(key) DO NOTHING`,
           [c.key, c.label, c.emoji, c.color, c.type, Date.now(), c.uuid, c.updatedAt, c.deleted, activeLedger]
         );
         applied++;

@@ -3,8 +3,20 @@ import * as Sharing from 'expo-sharing';
 import {
   getAllRecords, getAllSettings, getRecurringRules, getCustomCategories,
 } from '../database/ledgerDB';
-import { EXPORT_VERSION } from '../constants';
+import { EXPORT_VERSION, SETTING_KEYS } from '../constants';
 import type { CustomCategory, ExportData, LedgerRecord, RecurringRule } from '../types';
+
+// v0.11 安全：备份不得携带登录凭证/身份/水位等同步私有键（分享即泄露 token，导入即劫持账号）
+const EXPORT_EXCLUDED_SETTINGS = new Set<string>(Object.values(SETTING_KEYS).filter((k) => k.startsWith('sync.')));
+
+// 过滤 settings：剔除 sync.* 私有键
+export function sanitizeExportSettings(settings: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(settings)) {
+    if (!EXPORT_EXCLUDED_SETTINGS.has(k)) out[k] = v;
+  }
+  return out;
+}
 
 // 导出全部数据为 JSON 文件并分享
 export async function exportLedgerData(): Promise<{ success: boolean; count: number; error?: string }> {
@@ -23,7 +35,7 @@ export async function exportLedgerData(): Promise<{ success: boolean; count: num
         getRecurringRules(),
         getCustomCategories(),
       ]);
-      settings = s;
+      settings = sanitizeExportSettings(s);
       recurring = r;
       customCategories = c;
     } catch {

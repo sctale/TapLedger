@@ -107,7 +107,9 @@ export default function ManageScreen({ active }: Props) {
   }, [loadSummary]);
 
   // Android 系统返回键：子页面时返回主页而非退出 App（主页时不消费，走默认）
+  // v0.11 修复：仅激活 tab 注册，避免与统计页同时消费返回键（两页常驻挂载）
   useEffect(() => {
+    if (!active) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (page !== 'main') {
         setPage('main');
@@ -116,7 +118,7 @@ export default function ManageScreen({ active }: Props) {
       return false;
     });
     return () => sub.remove();
-  }, [page]);
+  }, [page, active]);
 
   // 功能入口列表（iOS 设置风格：图标 + 标题 + 状态摘要副标题）
   const entries: { icon: string; title: string; subtitle: string; target: Exclude<Page, 'main'> }[] = [

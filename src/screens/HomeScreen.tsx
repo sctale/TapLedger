@@ -55,7 +55,7 @@ export default function HomeScreen({ active }: Props) {
   const [amountMap, setAmountMap] = useState<Record<string, number>>({});
 
   const scrollRef = useRef<ScrollView>(null);
-  const today = getToday();
+  // v0.11 修复：today 改为保存时实时计算（此前挂载时定死，跨零点连记会记到昨天）
   const [, setCatTick] = useState(0); // 自定义分类变更 → 触发重渲染刷新分类选择器
 
   // Tab 激活时滚回顶部
@@ -110,18 +110,21 @@ export default function HomeScreen({ active }: Props) {
 
   // 全局事件刷新
   useEffect(() => {
-    // 登录态 / 同步完成 / 切换账本后，刷新账本标识、连记与各分类上次金额
+    // 登录态 / 同步完成 / 切换账本后，刷新账本标识、记账人、连记与各分类上次金额
     const reloadIdentity = async () => {
       try {
-        const [cont, token, display, avatar, ledgerName, amtMapStr] = await Promise.all([
+        const [cont, token, uidStr, display, avatar, ledgerName, amtMapStr] = await Promise.all([
           getSetting(SETTING_KEYS.CONTINUOUS_MODE),
           getSetting(SETTING_KEYS.SYNC_TOKEN),
+          getSetting(SETTING_KEYS.SYNC_USER_ID),
           getSetting(SETTING_KEYS.SYNC_USER_DISPLAY),
           getSetting(SETTING_KEYS.SYNC_USER_AVATAR),
           getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME),
           getSetting(SETTING_KEYS.LAST_AMOUNT_BY_CATEGORY),
         ]);
         const logged = !!token;
+        // 登录后新记录要归属当前用户（v0.11 修复：此前只在挂载时读一次，登录后仍记成 userId=0）
+        setSyncUserId(logged ? Number(uidStr ?? '0') || 0 : 0);
         setContinuous(cont === '1');
         setIdentity({
           logged,
@@ -142,6 +145,18 @@ export default function HomeScreen({ active }: Props) {
     const subs = [
       DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, reloadIdentity),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, reloadIdentity),
+      // 偏好页改「默认记收入」→ 即时应用默认收支类型（v0.11 修复：此前需重启生效）
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SETTINGS_CHANGED, async () => {
+        try {
+          const savedType = await getSetting(SETTING_KEYS.DEFAULT_TYPE);
+          if (savedType === 'income' || savedType === 'expense') {
+            setType(savedType);
+            setCategory(getCategories(savedType)[0]?.key ?? 'food');
+          }
+        } catch {
+          // 静默
+        }
+      }),
       // 自定义分类增删/显隐变更 → 重渲染分类选择器并修正当前选中分类（v0.5.4）
       DeviceEventEmitter.addListener(LEDGER_EVENTS.CATEGORIES_CHANGED, () => {
         setCatTick((t) => t + 1);
@@ -183,6 +198,7 @@ export default function HomeScreen({ active }: Props) {
       return;
     }
     const amount = toAmount(amountStr);
+    const today = getToday();
     try {
       await addRecord(amount, category, type, today, note.trim(), reimbursable, { userId: syncUserId });
       // 记住该分类最近金额，供「上次 ¥x」快捷填入
@@ -203,7 +219,7 @@ export default function HomeScreen({ active }: Props) {
       hapticError();
       showToast('保存失败，请重试', 'error');
     }
-  }, [amountStr, category, type, today, note, reimbursable, showToast, syncUserId, continuous, amountMap]);
+  }, [amountStr, category, type, note, reimbursable, showToast, syncUserId, continuous, amountMap]);
 
   // 连记开关（持久化）
   const toggleContinuous = useCallback(() => {
@@ -330,6 +346,7 @@ export default function HomeScreen({ active }: Props) {
               <Pressable
                 style={[styles.contPill, continuous && styles.contPillOn]}
                 onPress={toggleContinuous}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                 accessibilityRole="button"
                 accessibilityLabel="连记模式"
                 accessibilityState={{ selected: continuous }}
@@ -340,6 +357,7 @@ export default function HomeScreen({ active }: Props) {
                 <Pressable
                   style={[styles.reimburseBtn, reimbursable && styles.reimburseBtnOn]}
                   onPress={() => { setReimbursable((v) => !v); hapticLight(); }}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel="标记待报销"
                   accessibilityState={{ selected: reimbursable }}

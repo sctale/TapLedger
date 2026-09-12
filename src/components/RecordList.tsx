@@ -129,7 +129,7 @@ export const RecordRow = React.memo(function RecordRow({
         <Pressable
           style={styles.deleteBtn}
           onPress={() => onDelete(record)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
           accessibilityRole="button"
           accessibilityLabel={`删除${cat.label}记录${formatMoney(record.amount)}元`}
         >

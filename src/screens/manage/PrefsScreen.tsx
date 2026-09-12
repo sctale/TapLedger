@@ -71,6 +71,7 @@ export default function PrefsScreen() {
   const handleDefaultType = useCallback(async (value: boolean) => {
     setDefaultIncome(value);
     await saveSetting(SETTING_KEYS.DEFAULT_TYPE, value ? 'income' : 'expense');
+    DeviceEventEmitter.emit(LEDGER_EVENTS.SETTINGS_CHANGED); // v0.11：通知首页即时应用默认收支类型
     hapticLight();
   }, []);
 

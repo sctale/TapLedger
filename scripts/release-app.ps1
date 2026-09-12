@@ -95,6 +95,16 @@ try {
   if ($pkgLine -notmatch [regex]::Escape("versionName='$Version'")) { Fail "versionName 校验失败（期望 $Version）" }
   if ($pkgLine -notmatch [regex]::Escape("versionCode='$versionCode'")) { Fail "versionCode 校验失败（期望 $versionCode）" }
 
+  # ---------- 5.5 apksigner 校验签名者（v0.11：禁止 debug 签名的 release 包发布） ----------
+  $apksigner = Get-ChildItem "$env:LOCALAPPDATA\Android\Sdk\build-tools" -Recurse -Filter apksigner.bat -ErrorAction SilentlyContinue |
+               Sort-Object DirectoryName -Descending | Select-Object -First 1 -ExpandProperty FullName
+  if (-not $apksigner) { Fail "未找到 apksigner.bat（Android SDK build-tools），无法校验签名。" }
+  $certOut = & $apksigner verify --print-certs $apkPath 2>&1 | Out-String
+  Write-Host "签名: $(($certOut -split "`n" | Where-Object { $_ -match 'certificate DN' }) -join ' ')" -ForegroundColor Gray
+  if ($certOut -match 'CN=Android Debug') {
+    Fail "APK 使用 debug keystore 签名，禁止发布！请确认 keystore.properties 与 keystore/ 目录存在后重新 prebuild。"
+  }
+
   # ---------- 6. 复制 APK 到根目录 ----------
   $apkDest = Join-Path $root "TapLedger-v$Version.apk"
   Copy-Item $apkPath $apkDest -Force
@@ -115,11 +125,18 @@ try {
   # ---------- 8. GitHub Release + 上传 APK ----------
   Write-Host "==> gh release create v$Version" -ForegroundColor Cyan
   # Release 说明 = CHANGELOG 中本版本条目正文
+  # v0.11 修复：改用 --notes-file（经验教训：--notes 传含 [x] 的内容会被 PowerShell 通配符干扰）
   $pattern = '(?s)## \[' + [regex]::Escape($Version) + '\] - [^\r\n]*\r?\n(.*?)(?=\r?\n## \[|$)'
   $m = [regex]::Match($changelogRaw, $pattern)
   $notes = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "详见 CHANGELOG.md" }
-  & gh release create "v$Version" --repo sctale/TapLedger --title "v$Version" --target main --notes $notes $apkDest
-  if ($LASTEXITCODE -ne 0) { Fail "GitHub Release 创建失败。" }
+  $notesFile = Join-Path ([System.IO.Path]::GetTempPath()) "tapledger-release-notes-$Version.md"
+  [System.IO.File]::WriteAllText($notesFile, $notes, $utf8)
+  try {
+    & gh release create "v$Version" --repo sctale/TapLedger --title "v$Version" --target main --notes-file $notesFile $apkDest
+    if ($LASTEXITCODE -ne 0) { Fail "GitHub Release 创建失败。" }
+  } finally {
+    Remove-Item $notesFile -ErrorAction SilentlyContinue
+  }
 
   Write-Host ""
   Write-Host "发布完成：v$Version" -ForegroundColor Green

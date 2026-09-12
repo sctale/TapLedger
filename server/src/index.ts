@@ -12,6 +12,13 @@ import { startAutoBackup } from './backup';
 const app = express();
 const PORT = Number(process.env.PORT || 8420);
 
+// 反向代理支持（v0.5.2）：经 Nginx/群晖反代部署时设 TRUST_PROXY=1，
+// 否则 req.ip 恒为代理 IP → 限流按代理 IP 聚合，全家共享配额、一人触发全员 429。
+// 直连（局域网 8420）无需设置；设 true 信任链上所有代理，家庭自托管威胁模型可接受。
+if (process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', true);
+}
+
 // 中间件
 app.use(cors()); // 自托管场景：APP 直连，全开
 app.use(express.json({ limit: '10mb' })); // push 全量变更时可能较大

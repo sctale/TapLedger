@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text } from 'react-native';
+import { Animated, Modal as RNModal, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
 
@@ -9,6 +9,7 @@ export interface ToastState {
   visible: boolean;
   message: string;
   type: ToastType;
+  seq?: number; // 每次 showToast 自增，保证同文案也能重置定时器（v0.11）
 }
 
 interface Props {
@@ -45,22 +46,24 @@ export default function Toast({ toast, onHide, duration = 2000 }: Props) {
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast.visible, toast.message]);
+  }, [toast.visible, toast.message, toast.seq]);
 
   if (!toast.visible) return null;
 
   const bgColor =
     toast.type === 'error' ? COLORS.danger : toast.type === 'info' ? COLORS.accent : COLORS.income;
 
+  // v0.11 修复：用透明 RNModal 提升原生层级——
+  // 此前 Toast 画在父页面（ScrollView 内），既会被全屏表单弹窗遮挡（错误提示完全不可见），
+  // 又会跟随 ScrollView 滚动。Modal 根节点 pointerEvents="none" 不拦截任何手势。
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={[styles.container, { opacity, transform: [{ translateY }], top: insets.top + SPACING.sm }]}
-    >
-      <Animated.View style={[styles.bubble, { backgroundColor: bgColor }]}>
-        <Text style={styles.text}>{toast.message}</Text>
-      </Animated.View>
-    </Animated.View>
+    <RNModal visible={toast.visible} transparent statusBarTranslucent animationType="none">
+      <View pointerEvents="none" style={[styles.container, { top: insets.top + SPACING.sm }]}>
+        <Animated.View style={[styles.bubble, { backgroundColor: bgColor, opacity, transform: [{ translateY }] }]}>
+          <Text style={styles.text}>{toast.message}</Text>
+        </Animated.View>
+      </View>
+    </RNModal>
   );
 }
 
