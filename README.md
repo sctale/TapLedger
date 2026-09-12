@@ -88,6 +88,8 @@ docker compose pull && docker compose up -d
 curl http://<服务器IP>:8420/api/health   # 返回 {"ok":true,...} 即部署成功
 ```
 
+完整教程（HTTPS 反代 / TRUST_PROXY / 备份恢复 / FAQ）见 [server/DEPLOY_DOCKER.md](server/DEPLOY_DOCKER.md)。
+
 ### 群晖 NAS（Container Manager 图形化，无命令行）
 
 File Station 在 `docker` 共享文件夹下新建 `tapledger` → 放入上面的 `docker-compose.yml` 与 `.env`（卷路径写绝对路径 `/volume1/docker/tapledger/data:/app/data`）→ Container Manager → 项目 → 新建 → 路径选该文件夹 → 创建，等状态变「运行中」即可。
@@ -199,6 +201,7 @@ server/                 # 自托管后端（NAS Docker，v0.4）
 ├── Dockerfile          # 多阶段 alpine 构建
 ├── docker-compose.yml  # 一键部署（volume 持久化）
 ├── DEPLOY_SYNOLOGY.md  # 群晖 DS224+ 图形化部署教程
+├── DEPLOY_DOCKER.md    # 通用 Docker Compose 部署教程（反代/备份/FAQ）
 └── README.md           # 服务端详情（API / 同步协议 / 本地开发）
 scripts/
 ├── generate-icons.ps1         # 图标生成脚本

@@ -26,6 +26,8 @@ curl http://<NAS_IP>:8420/api/health
 
 > 更新到新版本：`docker compose pull && docker compose up -d` 即可，无需重新编译。
 
+> 部署教程：通用命令行版见 [DEPLOY_DOCKER.md](./DEPLOY_DOCKER.md)（HTTPS 反代 / TRUST_PROXY / 备份恢复 / FAQ），群晖图形化版见 [DEPLOY_SYNOLOGY.md](./DEPLOY_SYNOLOGY.md)。
+
 ### ⚠️ 升级到 v0.4.2+ 注意（重要）
 
 自 v0.4.2 起服务端加了防伪造保护，**首次升级到 v0.4.2/v0.4.3/v0.5.0 前请先确认 `.env`**：
