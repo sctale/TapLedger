@@ -21,14 +21,14 @@ export async function getSyncConfig(): Promise<{ baseUrl: string; token: string 
   return { baseUrl: url.replace(/\/+$/, ''), token };
 }
 
-// 底层请求（10s 超时）
+// 底层请求（默认 10s 超时，可传更短的探测超时）
 async function request<T>(
   baseUrl: string,
   path: string,
-  init: { method: string; body?: unknown; token?: string }
+  init: { method: string; body?: unknown; token?: string; timeoutMs?: number }
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 10_000);
   try {
     const res = await fetch(`${baseUrl}${path}`, {
       method: init.method,
@@ -131,7 +131,7 @@ export async function apiSyncPush(baseUrl: string, token: string, changes: Parti
   });
 }
 
-// 健康检查（配置服务器地址时探测可达性）
-export async function apiHealth(baseUrl: string) {
-  return request<{ ok: boolean }>(baseUrl, '/api/health', { method: 'GET' });
+// 健康检查（配置服务器地址时探测可达性；同步页用它刷新「服务器可达」状态，默认 5s 短超时）
+export async function apiHealth(baseUrl: string, timeoutMs = 5_000) {
+  return request<{ ok: boolean }>(baseUrl, '/api/health', { method: 'GET', timeoutMs });
 }

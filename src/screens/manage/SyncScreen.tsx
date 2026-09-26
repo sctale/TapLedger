@@ -161,6 +161,9 @@ export default function SyncScreen() {
   const [ledgers, setLedgers] = useState<LedgerInfo[]>([]);      // 可用账本（个人+家庭）
   const [activeLedgerId, setActiveLedgerId] = useState(0);
   const [ledgerSwitchBusy, setLedgerSwitchBusy] = useState(false);
+  // 服务器可达性（v0.11.2）：null=未配置或检测中，true=可达，false=不可达
+  // 此前「已连接服务器」仅由本地配置驱动，断网时也常亮绿点，误导用户
+  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
 
   // 读取同步配置（reload 时一并刷新）
   const loadSyncState = useCallback(async () => {
@@ -187,6 +190,15 @@ export default function SyncScreen() {
       const actIdNum = Number(actId ?? '0') || 0;
       setActiveLedgerId(actIdNum);
       setDbActiveLedgerId(actIdNum); // 本地读写作用域与持久化的活动账本保持一致
+      // 可达性探测（异步，不阻塞本页其余加载）：每次进入页面/同步完成/登录态变化都会刷新
+      if (url) {
+        setServerOnline(null);
+        apiHealth(url)
+          .then(() => setServerOnline(true))
+          .catch(() => setServerOnline(false));
+      } else {
+        setServerOnline(null);
+      }
       // 登录后拉取账本列表
       if (url && token) {
         try {
@@ -232,6 +244,7 @@ export default function SyncScreen() {
     if (!url) {
       await saveSetting(SETTING_KEYS.SYNC_SERVER_URL, '');
       setServerUrl('');
+      setServerOnline(null);
       setEditingServer(false);
       hapticLight();
       showToast('已清除服务器地址');
@@ -241,6 +254,7 @@ export default function SyncScreen() {
       await apiHealth(url);
       await saveSetting(SETTING_KEYS.SYNC_SERVER_URL, url);
       setServerUrl(url);
+      setServerOnline(true); // 探测刚成功，直接置「已连接」
       setServerUrlDraft('');
       setEditingServer(false); // 连接成功退出编辑态，地址不再明文展示
       hapticSuccess();
@@ -425,10 +439,24 @@ export default function SyncScreen() {
           ) : null}
         </View>
         {serverUrl && !editingServer ? (
-          // 已连接：仅显示状态，不展示地址明文（截图/演示不泄露内网地址）
+          // 已配置：仅显示状态，不展示地址明文（截图/演示不泄露内网地址）
+          // v0.11.2：绿点「已连接」仅在健康探测成功时显示；断网/服务器宕机显示「不可达」
           <View style={styles.serverStatusRow}>
-            <View style={styles.serverDot} />
-            <Text style={styles.serverStatusText}>已连接服务器</Text>
+            <View
+              style={[
+                styles.serverDot,
+                serverOnline === false && { backgroundColor: COLORS.danger },
+                serverOnline === null && { backgroundColor: COLORS.textTertiary },
+              ]}
+            />
+            <Text style={styles.serverStatusText}>
+              {serverOnline === null ? '正在检测服务器…' : serverOnline ? '已连接服务器' : '服务器不可达'}
+            </Text>
+            {serverOnline === false ? (
+              <Pressable style={styles.serverEditBtn} onPress={loadSyncState} hitSlop={8} accessibilityRole="button" accessibilityLabel="重试连接服务器">
+                <Text style={styles.serverEditText}>重试</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
           <View style={styles.inputRow}>
