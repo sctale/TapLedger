@@ -1,7 +1,8 @@
 {
   "name": "tapledger-server",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "一点账本家庭共享后端（NAS Docker 自托管）",
+  "license": "Apache-2.0",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

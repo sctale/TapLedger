@@ -2,6 +2,8 @@
 
 一款主打"零阻力"的极简记账应用，延续 [TapMood（一点心情）](https://github.com/sctale/TapMood) 的暖色治愈设计风格。
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+
 ## 设计理念
 
 > **3 秒记一笔**：点分类 → 按数字 → 记一笔，全程大按键 + 触感反馈，无需思考。
@@ -222,4 +224,28 @@ scripts/
 
 ## 版本
 
-当前版本：0.11.0
+当前版本：0.11.1
+
+## 开源许可
+
+本项目采用 **Apache License 2.0** 开源，全文见 [LICENSE](./LICENSE)，附属声明见 [NOTICE](./NOTICE)。
+
+```
+Copyright 2026 sctale
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+简单说：你可以自由使用、修改、分发本代码（含商业用途），但需保留 LICENSE 与版权声明，修改过的文件需注明改动；Apache-2.0 同时包含专利授权条款。
+
+> 本仓库自身代码不含第三方 GPL/AGPL 组件；npm 依赖各自遵循其原始许可证（见各包 `license` 字段）。
