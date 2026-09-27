@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { db, getFlag } from '../db';
-import { requireAuth, signToken, ensurePersonalLedger } from '../auth';
+import { requireAuth, signToken, ensurePersonalLedger, makeIpRateLimit } from '../auth';
 import type { AuthUser } from '../types';
 
 const router = Router();
@@ -117,6 +117,69 @@ meRouter.put('/me', requireAuth, (req, res) => {
     'SELECT id, username, display_name, avatar_emoji, family_id, family_role FROM users WHERE id = ?'
   ).get(req.authUser!.id) as Parameters<typeof toAuthUser>[0];
   res.json({ user: toAuthUser(row) });
+});
+
+// DELETE /api/me（注销账号）
+// 审核要求：涉及账号体系必须提供便捷、真实有效的注销通道。密码复核用于防误操作，
+// 除此之外不设额外障碍；JWT 无状态，删除用户行后旧 token 立即失效（requireAuth 查不到用户）。
+const deleteMeSchema = z.object({ password: z.string().min(1, '请输入密码确认注销') });
+const deleteRateLimit = makeIpRateLimit(5, 60_000);
+
+meRouter.delete('/me', requireAuth, deleteRateLimit, (req, res) => {
+  const parsed = deleteMeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? '请输入密码确认注销' });
+    return;
+  }
+  const uid = req.authUser!.id;
+  const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(uid) as
+    | { password_hash: string }
+    | undefined;
+  if (!row || !bcrypt.compareSync(parsed.data.password, row.password_hash)) {
+    res.status(401).json({ error: '密码错误，未执行注销' });
+    return;
+  }
+
+  const me = req.authUser!;
+  const familyId = me.familyId;
+  const personalId = me.personalLedgerId;
+  const isOwner = me.familyRole === 'owner';
+  let dissolvedFamily = false;
+  let unboundMembers = 0;
+
+  const tx = db.transaction(() => {
+    if (familyId != null) {
+      if (isOwner) {
+        // 创建者注销 = 解散其创建的家庭账本：删共享数据，其余成员解绑（本地副本保留但不再同步）
+        const others = db.prepare('SELECT COUNT(*) AS c FROM users WHERE family_id = ? AND id != ?')
+          .get(familyId, uid) as { c: number };
+        unboundMembers = others.c;
+        db.prepare('DELETE FROM records WHERE family_id = ?').run(familyId);
+        db.prepare('DELETE FROM recurring WHERE family_id = ?').run(familyId);
+        db.prepare('DELETE FROM custom_categories WHERE family_id = ?').run(familyId);
+        db.prepare('UPDATE users SET family_id = NULL, family_role = NULL WHERE family_id = ?').run(familyId);
+        db.prepare('DELETE FROM families WHERE id = ?').run(familyId);
+        dissolvedFamily = true;
+      } else {
+        // 普通成员注销：仅解绑，家庭账本与历史记录归创建者所有
+        db.prepare('UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?').run(uid);
+      }
+    }
+    // 个人账本及其全部数据
+    if (personalId != null) {
+      db.prepare('DELETE FROM records WHERE family_id = ?').run(personalId);
+      db.prepare('DELETE FROM recurring WHERE family_id = ?').run(personalId);
+      db.prepare('DELETE FROM custom_categories WHERE family_id = ?').run(personalId);
+      db.prepare('DELETE FROM families WHERE id = ?').run(personalId);
+    }
+    // 残留在他人账本中的记录：记账人归为无主，避免成员列表出现幽灵
+    db.prepare('UPDATE records SET user_id = 0 WHERE user_id = ?').run(uid);
+    db.prepare('UPDATE recurring SET user_id = 0 WHERE user_id = ?').run(uid);
+    db.prepare('DELETE FROM users WHERE id = ?').run(uid);
+  });
+  tx();
+
+  res.json({ ok: true, dissolvedFamily, unboundMembers });
 });
 
 export default router;
