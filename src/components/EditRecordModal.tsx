@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  BackHandler, DeviceEventEmitter, Keyboard, KeyboardAvoidingView, Platform, Pressable,
+  BackHandler, DeviceEventEmitter, Keyboard, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, getCategories } from '../constants';
@@ -35,6 +35,11 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
   const [error, setError] = useState('');
   // 仅用户主动点「＋ 添加备注」才聚焦弹键盘；打开页面时不自动弹
   const [noteFocused, setNoteFocused] = useState(false);
+  // 系统键盘是否弹起：Android 15+ edge-to-edge 下 adjustResize 不再压缩窗口，
+  // 固定数字键盘(约250px)+备注行会整体压在 IME 之下，滚动无法救——改为一抬键盘就收起数字键盘
+  // （随手记同款交互），键盘落下后自动恢复。
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  const [keyboardH, setKeyboardH] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
   // 打开时用记录内容初始化（金额转字符串供键盘继续编辑）
@@ -62,18 +67,30 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
     return () => sub.remove();
   }, [visible, onClose]);
 
-  // 键盘弹起后再滚一次：onFocus 的 scrollToEnd 早于 adjustResize 完成，
-  // 视口还没压缩、备注框仍会被固定数字键盘挡住（v0.11.6）
+  // 备注弹键盘时的"手动 adjustResize"：Android 15+ edge-to-edge 下系统不再压缩窗口，
+  // 改为给滚动内容补 paddingBottom=键盘高度并滚到底，把备注行精确顶到 IME 上沿；
+  // 同时收起自定义数字键盘（其位置正被系统键盘占据）。iOS 同样适用。
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setKeyboardUp(false);
+      setKeyboardH(0);
+      return;
+    }
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const show = Keyboard.addListener('keyboardDidShow', () => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardUp(true);
+      setKeyboardH(e.endCoordinates?.height ?? 0);
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+      timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardUp(false);
+      setKeyboardH(0);
     });
     return () => {
       if (timer) clearTimeout(timer);
       show.remove();
+      hide.remove();
     };
   }, [visible]);
 
@@ -154,7 +171,10 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
           <ScrollView
             ref={scrollRef}
             style={styles.scroll}
-            contentContainerStyle={styles.content}
+            contentContainerStyle={[
+              styles.content,
+              keyboardUp && { paddingBottom: keyboardH + SPACING.sm },
+            ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             bounces={false}
@@ -246,13 +266,12 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
             </View>
           </ScrollView>
 
-          {/* 数字键盘：固定在卡片底部（普通页面流内，触摸与键盘避让与首页一致） */}
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.padDock}
-          >
-            <NumberPad onKey={handleKey} />
-          </KeyboardAvoidingView>
+          {/* 数字键盘：固定在卡片底部；系统键盘弹起时让位（此时正被 IME 占据，收起可让备注行回落到可见区） */}
+          {!keyboardUp ? (
+            <View style={styles.padDock}>
+              <NumberPad onKey={handleKey} />
+            </View>
+          ) : null}
       </View>
     </View>
   );
