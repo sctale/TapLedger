@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  DeviceEventEmitter, KeyboardAvoidingView, Modal as RNModal, Platform, Pressable,
+  DeviceEventEmitter, Keyboard, KeyboardAvoidingView, Modal as RNModal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,6 +31,25 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
   const [reimbursable, setReimbursable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // v0.11.3：RNModal 是独立 Dialog 窗口，不响应 Activity 的 adjustResize——
+  // 键盘弹起会盖住卡底数字键盘与备注框。监听键盘高度给根容器加 paddingBottom，
+  // 强制整卡（含数字键盘）顶到键盘上方（与首页 adjustResize 效果等价）
+  const [keyboardH, setKeyboardH] = useState(0);
+  // 仅用户主动点「＋ 添加备注」才聚焦弹键盘；打开弹窗时不自动弹（此前有备注的记录一进编辑就被键盘盖住）
+  const [noteFocused, setNoteFocused] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardH(e.endCoordinates.height);
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardH(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   // 打开时用记录内容初始化（金额转字符串供键盘继续编辑）
   useEffect(() => {
@@ -40,6 +59,8 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
       setCategory(record.category);
       setNote(record.note);
       setShowNote(!!record.note);
+      setNoteFocused(false);
+      setKeyboardH(0);
       setReimbursable(record.reimbursable);
       setSaving(false);
       setError('');
@@ -91,7 +112,7 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
 
   return (
     <RNModal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <SafeAreaView style={[styles.safe, { paddingBottom: keyboardH }]} edges={['top', 'bottom']}>
         {/* 顶部导航栏：取消 / 标题 / 保存 */}
         <View style={styles.navBar}>
           <Pressable onPress={onClose} hitSlop={8} style={styles.navBtn} accessibilityRole="button" accessibilityLabel="取消编辑">
@@ -116,6 +137,7 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
         {/* 记账卡片结构：上半内容与数字键盘连为一张卡，键盘固定卡底 */}
         <View style={styles.card}>
           <ScrollView
+            ref={scrollRef}
             style={styles.scroll}
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
@@ -177,12 +199,12 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
                   value={note}
                   onChangeText={setNote}
                   maxLength={30}
-                  autoFocus
+                  autoFocus={noteFocused}
                 />
               ) : (
                 <Pressable
                   style={styles.noteToggle}
-                  onPress={() => setShowNote(true)}
+                  onPress={() => { setShowNote(true); setNoteFocused(true); }}
                   accessibilityRole="button"
                   accessibilityLabel="添加备注"
                 >

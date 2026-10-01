@@ -1,10 +1,12 @@
 import type { NextFunction, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { db } from './db';
 import type { AuthUser } from './types';
 
 const DEFAULT_JWT_SECRET = 'tapledger-dev-secret-change-me';
-const JWT_EXPIRES = '7d';
+// 登录态有效期：家庭自托管为可信设备场景，默认 365 天长期有效（v0.5.5，此前 7 天导致频繁失效）；
+// 可通过 .env 的 JWT_EXPIRES 覆盖（如 '30d'）
+const JWT_EXPIRES = (process.env.JWT_EXPIRES || '365d') as SignOptions['expiresIn'];
 
 // 生产环境强制要求安全密钥：缺失/沿用默认值/过短 → 拒绝启动（否则 token 可被任意伪造）
 function loadJwtSecret(): string {

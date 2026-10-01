@@ -28,7 +28,11 @@ async function resolveActiveLedgerId(baseUrl: string, token: string): Promise<nu
   const savedId = Number(saved ?? '0') || 0;
   if (savedId > 0) return savedId;
   const { ledgers } = await apiGetLedgers(baseUrl, token)
-    .catch(() => ({ ledgers: [] as { type: string; id: number }[] }));
+    .catch((e) => {
+      // 凭证失效（401）交给主 catch 清理登录态，不再吞掉
+      if (e instanceof ApiError && e.status === 401) throw e;
+      return { ledgers: [] as { type: string; id: number }[] };
+    });
   const personal = ledgers.find((l) => l.type === 'personal');
   if (personal) {
     await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(personal.id));
@@ -232,6 +236,23 @@ export async function runSync(): Promise<SyncResult> {
 
     return { ok: true, pushed: pushCount, pulled };
   } catch (e) {
+    // 凭证失效（401，如服务端旧版 token 过期）：自动清理登录态并通知 UI，
+    // 避免同步静默失败、用户却以为仍登录（v0.11.3；服务端 0.5.5 起默认 365 天长效）
+    if (e instanceof ApiError && e.status === 401) {
+      await Promise.all([
+        saveSetting(SETTING_KEYS.SYNC_TOKEN, ''),
+        saveSetting(SETTING_KEYS.SYNC_USER_ID, '0'),
+        saveSetting(SETTING_KEYS.SYNC_USER_DISPLAY, ''),
+        saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, ''),
+        saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, ''),
+        saveSetting(SETTING_KEYS.SYNC_MEMBERS_JSON, ''),
+        saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, '0'),
+        saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, ''),
+      ]);
+      setActiveLedgerId(0);
+      DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
+      return { ok: false, pushed: 0, pulled: 0, error: '登录已过期，请到同步页重新登录' };
+    }
     const msg = e instanceof ApiError ? e.message : '同步失败';
     return { ok: false, pushed: 0, pulled: 0, error: msg };
   } finally {
