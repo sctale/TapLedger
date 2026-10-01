@@ -92,7 +92,11 @@ export default function LedgerScreen({ active }: Props) {
 
   // Tab 激活时滚回顶部（按当前模式滚动对应列表，v0.5.4）
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      // 切走本页时收起编辑页，避免回到明细时停留在半开编辑态（v0.11.5）
+      setEditing(null);
+      return;
+    }
     if (mode === 'calendar') calendarScrollRef.current?.scrollTo({ y: 0, animated: false });
     else listScrollRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [active, mode]);
@@ -285,6 +289,8 @@ export default function LedgerScreen({ active }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
+      {/* 列表页与编辑页互斥显示（display 切换，同 App 切 Tab；编辑页为普通页面流，触摸/安全区与首页一致） */}
+      <View style={editing ? styles.pageHidden : styles.page}>
       {mode === 'calendar' ? (
         <ScrollView ref={calendarScrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={styles.titleRow}>
@@ -488,12 +494,15 @@ export default function LedgerScreen({ active }: Props) {
           }
         />
       )}
-      {/* 点击记录编辑（v0.10）：保存后 RECORDED 事件刷新列表并自动同步 */}
-      <EditRecordModal
-        visible={editing !== null}
-        record={editing}
-        onClose={() => setEditing(null)}
-      />
+      </View>
+      <View style={editing ? styles.page : styles.pageHidden}>
+        {/* 点击记录编辑（v0.10）：保存后 RECORDED 事件刷新列表并自动同步 */}
+        <EditRecordModal
+          visible={editing !== null}
+          record={editing}
+          onClose={() => setEditing(null)}
+        />
+      </View>
       <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
   );
@@ -503,6 +512,13 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  page: {
+    flex: 1,
+  },
+  pageHidden: {
+    flex: 1,
+    display: 'none',
   },
   scroll: {
     flex: 1,

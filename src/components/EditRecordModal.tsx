@@ -3,7 +3,6 @@ import {
   BackHandler, DeviceEventEmitter, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, getCategories } from '../constants';
 import { updateRecord } from '../database/ledgerDB';
 import { formatMoney } from '../utils/dateUtils';
@@ -108,29 +107,32 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
 
   if (!visible || !record) return null;
 
+  // v0.11.5 结构修正：不再用"绝对定位覆盖层"（absolute 子级会无视父级 paddingTop 顶进状态栏、
+  // 底部安全区重复计算顶出幽灵空隙，且叠层触摸在部分机型仍不稳）。
+  // 改为与 App.tsx 切 Tab 同款的"并列页 + display 切换"：本组件作为 LedgerScreen 根内的普通页面渲染，
+  // 触摸/安全区行为与首页记账卡完全一致（LedgerScreen 负责两页互斥显示）。
   return (
-    <View style={styles.overlay}>
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
-        {/* 顶部导航栏：取消 / 标题 / 保存 */}
-        <View style={styles.navBar}>
-          <Pressable onPress={onClose} hitSlop={8} style={styles.navBtn} accessibilityRole="button" accessibilityLabel="取消编辑">
-            <Text style={styles.navCancel}>取消</Text>
-          </Pressable>
-          <Text style={styles.navTitle}>编辑记录</Text>
-          <Pressable
-            onPress={handleSave}
-            disabled={!canSave}
-            hitSlop={8}
-            style={styles.navBtn}
-            accessibilityRole="button"
-            accessibilityLabel="保存修改"
-          >
-            <Text style={[styles.navSave, !canSave && styles.navSaveDisabled]}>保存</Text>
-          </Pressable>
-        </View>
+    <View style={styles.page}>
+      {/* 顶部导航栏：取消 / 标题 / 保存 */}
+      <View style={styles.navBar}>
+        <Pressable onPress={onClose} hitSlop={8} style={styles.navBtn} accessibilityRole="button" accessibilityLabel="取消编辑">
+          <Text style={styles.navCancel}>取消</Text>
+        </Pressable>
+        <Text style={styles.navTitle}>编辑记录</Text>
+        <Pressable
+          onPress={handleSave}
+          disabled={!canSave}
+          hitSlop={8}
+          style={styles.navBtn}
+          accessibilityRole="button"
+          accessibilityLabel="保存修改"
+        >
+          <Text style={[styles.navSave, !canSave && styles.navSaveDisabled]}>保存</Text>
+        </Pressable>
+      </View>
 
-        {/* 保存失败提示（页内可见） */}
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {/* 保存失败提示（页内可见） */}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {/* 记账卡片结构：上半内容与数字键盘连为一张卡，键盘固定卡底（与 HomeScreen 一致） */}
         <View style={styles.card}>
@@ -229,29 +231,20 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
             </View>
           </ScrollView>
 
-          {/* 数字键盘：固定在卡片底部（Activity 视图层级内，触摸与键盘避让均正常） */}
+          {/* 数字键盘：固定在卡片底部（普通页面流内，触摸与键盘避让与首页一致） */}
           <View style={styles.padDock}>
             <NumberPad onKey={handleKey} />
           </View>
-        </View>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // 绝对定位覆盖层：填满 LedgerScreen 根容器（父级 SafeAreaView 已处理顶部安全区）
-  overlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 20,
-    backgroundColor: COLORS.background,
-  },
-  safe: {
+  // 普通并列页：由 LedgerScreen 用 display 与列表视图互斥切换（同 App 切 Tab 的做法）
+  page: {
     flex: 1,
+    backgroundColor: COLORS.background,
   },
   navBar: {
     flexDirection: 'row',

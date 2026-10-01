@@ -1,6 +1,6 @@
 {
   "name": "tapledger",
-  "version": "0.11.4",
+  "version": "0.11.5",
   "license": "Apache-2.0",
   "main": "index.ts",
   "dependencies": {
