@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  BackHandler, DeviceEventEmitter, Pressable,
+  BackHandler, DeviceEventEmitter, Keyboard, KeyboardAvoidingView, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, getCategories } from '../constants';
@@ -61,6 +61,21 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
     });
     return () => sub.remove();
   }, [visible, onClose]);
+
+  // 键盘弹起后再滚一次：onFocus 的 scrollToEnd 早于 adjustResize 完成，
+  // 视口还没压缩、备注框仍会被固定数字键盘挡住（v0.11.6）
+  useEffect(() => {
+    if (!visible) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const show = Keyboard.addListener('keyboardDidShow', () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      show.remove();
+    };
+  }, [visible]);
 
   // 切换收支类型：分类切到该类型第一个；待报销仅对支出有意义，切收入时重置
   const handleTypeChange = (next: RecordType) => {
@@ -232,9 +247,12 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
           </ScrollView>
 
           {/* 数字键盘：固定在卡片底部（普通页面流内，触摸与键盘避让与首页一致） */}
-          <View style={styles.padDock}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.padDock}
+          >
             <NumberPad onKey={handleKey} />
-          </View>
+          </KeyboardAvoidingView>
       </View>
     </View>
   );
