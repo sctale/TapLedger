@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  DeviceEventEmitter, Keyboard, KeyboardAvoidingView, Modal as RNModal, Platform, Pressable,
+  BackHandler, DeviceEventEmitter, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,13 +15,16 @@ import type { LedgerRecord, RecordType } from '../types';
 
 interface Props {
   visible: boolean;
-  record: LedgerRecord | null; // 待编辑记录（null 时弹窗不渲染内容）
+  record: LedgerRecord | null; // 待编辑记录（null 时不渲染）
   onClose: () => void;
 }
 
-// 编辑记录全屏弹窗（v0.10：明细页点击记录进入）
-// 布局沿用记账页（上半内容 + 固定底部数字键盘）+ 顶部 取消/标题/保存 导航栏；
-// 保存后 updated_at 变更，经 RECORDED 事件触发列表刷新与 debounce 自动同步（LWW 全家一致）
+// 编辑记录全屏页（v0.10：明细页点击记录进入）
+// v0.11.4 根因修复：弃用 RNModal——Android 上它是独立 Dialog 窗口（RN 内部强制
+// disableEdgeToEdge + 已废弃的 ADJUST_RESIZE），与本项目 edge-to-edge 的 Activity
+// 坐标系不一致，导致卡底数字键盘 Pressable 触摸失灵/被 IME 遮挡（备注靠系统 IME
+// 输入可幸免，金额必须触摸窗内按键故"无法修改"）。改为渲染在 LedgerScreen 的
+// Activity 视图层级内的绝对定位覆盖层：触摸与键盘避让（adjustResize）行为与首页记账卡完全一致。
 export default function EditRecordModal({ visible, record, onClose }: Props) {
   const [type, setType] = useState<RecordType>('expense');
   const [amountStr, setAmountStr] = useState('');
@@ -31,25 +34,9 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
   const [reimbursable, setReimbursable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  // v0.11.3：RNModal 是独立 Dialog 窗口，不响应 Activity 的 adjustResize——
-  // 键盘弹起会盖住卡底数字键盘与备注框。监听键盘高度给根容器加 paddingBottom，
-  // 强制整卡（含数字键盘）顶到键盘上方（与首页 adjustResize 效果等价）
-  const [keyboardH, setKeyboardH] = useState(0);
-  // 仅用户主动点「＋ 添加备注」才聚焦弹键盘；打开弹窗时不自动弹（此前有备注的记录一进编辑就被键盘盖住）
+  // 仅用户主动点「＋ 添加备注」才聚焦弹键盘；打开页面时不自动弹
   const [noteFocused, setNoteFocused] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => {
-      setKeyboardH(e.endCoordinates.height);
-      scrollRef.current?.scrollToEnd({ animated: true });
-    });
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardH(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
 
   // 打开时用记录内容初始化（金额转字符串供键盘继续编辑）
   useEffect(() => {
@@ -60,12 +47,21 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
       setNote(record.note);
       setShowNote(!!record.note);
       setNoteFocused(false);
-      setKeyboardH(0);
       setReimbursable(record.reimbursable);
       setSaving(false);
       setError('');
     }
   }, [visible, record]);
+
+  // 系统返回键：编辑页打开时关闭编辑页（此前由 RNModal onRequestClose 承担）
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
 
   // 切换收支类型：分类切到该类型第一个；待报销仅对支出有意义，切收入时重置
   const handleTypeChange = (next: RecordType) => {
@@ -96,7 +92,7 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
     } catch {
       hapticError();
       setSaving(false);
-      // v0.11 修复：保存失败在弹窗内给出文案提示（此前仅震动，用户以为已保存）
+      // v0.11 修复：保存失败在页内给出文案提示（此前仅震动，用户以为已保存）
       setError('保存失败，请重试');
     }
   };
@@ -110,9 +106,11 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
   const showPreview = hasOperator(amountStr);
   const previewAmount = showPreview ? evaluateAmount(amountStr) : 0;
 
+  if (!visible || !record) return null;
+
   return (
-    <RNModal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={[styles.safe, { paddingBottom: keyboardH }]} edges={['top', 'bottom']}>
+    <View style={styles.overlay}>
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         {/* 顶部导航栏：取消 / 标题 / 保存 */}
         <View style={styles.navBar}>
           <Pressable onPress={onClose} hitSlop={8} style={styles.navBtn} accessibilityRole="button" accessibilityLabel="取消编辑">
@@ -131,10 +129,10 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
           </Pressable>
         </View>
 
-        {/* 保存失败提示（弹窗内可见，Toast 会被本全屏 Modal 遮挡） */}
+        {/* 保存失败提示（页内可见） */}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-        {/* 记账卡片结构：上半内容与数字键盘连为一张卡，键盘固定卡底 */}
+        {/* 记账卡片结构：上半内容与数字键盘连为一张卡，键盘固定卡底（与 HomeScreen 一致） */}
         <View style={styles.card}>
           <ScrollView
             ref={scrollRef}
@@ -200,6 +198,10 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
                   onChangeText={setNote}
                   maxLength={30}
                   autoFocus={noteFocused}
+                  onFocus={() => {
+                    // 与首页一致：聚焦时滚到底，输入框位于系统键盘上方（adjustResize 生效）
+                    scrollRef.current?.scrollToEnd({ animated: true });
+                  }}
                 />
               ) : (
                 <Pressable
@@ -227,23 +229,29 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
             </View>
           </ScrollView>
 
-          {/* 数字键盘：固定卡底 */}
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.padDock}
-          >
+          {/* 数字键盘：固定在卡片底部（Activity 视图层级内，触摸与键盘避让均正常） */}
+          <View style={styles.padDock}>
             <NumberPad onKey={handleKey} />
-          </KeyboardAvoidingView>
+          </View>
         </View>
       </SafeAreaView>
-    </RNModal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // 绝对定位覆盖层：填满 LedgerScreen 根容器（父级 SafeAreaView 已处理顶部安全区）
+  overlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 20,
+    backgroundColor: COLORS.background,
+  },
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
   },
   navBar: {
     flexDirection: 'row',

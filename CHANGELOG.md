@@ -1,5 +1,11 @@
 # 更新日志
 
+## [0.11.4] - 2026-10-01
+
+### Bug 修复
+
+- **编辑记录页无法修改金额（0.11.3 遗留）**：根因不是键盘遮挡——编辑页此前用 RNModal 承载，Android 上它是独立 Dialog 窗口（RN 内部对 Dialog 强制 `disableEdgeToEdge` + 使用已废弃的 `ADJUST_RESIZE`），与 App 的 edge-to-edge Activity 坐标系不一致，卡底数字键盘的 Pressable 触摸不生效；备注之所以能改，是因为它走系统 IME 输入、不依赖窗内触摸。现重构为渲染在明细页 Activity 视图层级内的**绝对定位全屏页**：触摸与键盘避让（adjustResize）行为与首页记账卡完全一致；同时移除 0.11.3 的键盘高度补偿（会覆盖底部安全区，反致键盘行落入导航条触摸区）与 Android 上空操作的 KeyboardAvoidingView；系统返回键改为关闭编辑页。
+
 ## [0.11.3] - 2026-10-01
 
 ### Bug 修复
