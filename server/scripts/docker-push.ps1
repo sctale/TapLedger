@@ -39,26 +39,22 @@ if ($LASTEXITCODE -ne 0) { Fail "gh 未登录，请执行 gh auth login --web �
 # 0.1) 进入 server 目录（$serverDir 已在顶部解析）
   Push-Location $serverDir
 try {
-  # 1) 登录 GHCR（用 gh 生成的临时 token 走 stdin，不落盘）
+  # 1) 登录 GHCR（用 gh 生成的临时 token 走 stdin，凭据文件用后即删）
+  # 修复记录（2026-10-01）：PS5.x 非交互子进程中，管道/BaseStream 向 docker 写 stdin
+  # 会被控制台编码层破坏，GHCR 报 "denied: denied"；改为写临时 ASCII 文件 + cmd 重定向，已实测成功。
   Write-Host "==> docker login ghcr.io（用 gh token）" -ForegroundColor Cyan
   $ghToken = & gh auth token
-  $tokenBytes = [System.Text.Encoding]::UTF8.GetBytes($ghToken)
-  $processInfo = New-Object System.Diagnostics.ProcessStartInfo
-  $processInfo.FileName = 'docker'
-  $processInfo.Arguments = 'login ghcr.io --username sctale --password-stdin'
-  $processInfo.UseShellExecute = $false
-  $processInfo.RedirectStandardInput = $true
-  $processInfo.RedirectStandardOutput = $true
-  $processInfo.RedirectStandardError = $true
-  $process = [System.Diagnostics.Process]::Start($processInfo)
-  $process.StandardInput.BaseStream.Write($tokenBytes, 0, $tokenBytes.Length)
-  $process.StandardInput.Close()
-  $out = $process.StandardOutput.ReadToEnd()
-  $err = $process.StandardError.ReadToEnd()
-  $process.WaitForExit()
-  Write-Host $out
-  if ($err) { Write-Host $err -ForegroundColor Yellow }
-  if ($process.ExitCode -ne 0) { Fail "docker login 失败，请检查网络与 gh 权限。" }
+  if (-not $ghToken) { Fail "gh auth token 返回为空，请先执行 gh auth login --web 登录。" }
+  $tokFile = Join-Path $env:TEMP 'ghcr_login_tok.tmp'
+  try {
+    [System.IO.File]::WriteAllText($tokFile, $ghToken + "`n", [System.Text.Encoding]::ASCII)
+    cmd /c "docker login ghcr.io --username sctale --password-stdin < `"$tokFile`"" 2>&1 | ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0) {
+      Fail "docker login 失败：token 可能缺少 packages 权限，请先执行 gh auth refresh -h github.com -s write:packages 并在浏览器确认授权后重试。"
+    }
+  } finally {
+    Remove-Item $tokFile -Force -ErrorAction SilentlyContinue
+  }
 
   # 2) 构建镜像并打好 GHCR tag
   Write-Host "==> docker build -t $IMAGE ." -ForegroundColor Cyan
