@@ -5,9 +5,9 @@ import { formatMoneyShort, getDaysInMonth, getFirstDayOfMonth, getToday } from '
 
 interface Props {
   year: number;
-  month: number;          // 1-12
+  month: number; // 1-12
   dailyExpense: Record<string, number>; // date -> 支出金额
-  maxExpense: number;     // 当月最大单日支出
+  maxExpense: number; // 当月最大单日支出
   selectedDate: string;
   onSelectDate: (date: string) => void;
 }
@@ -52,7 +52,9 @@ export default function MonthHeatmap({
     <View>
       <View style={styles.weekHeader}>
         {['日', '一', '二', '三', '四', '五', '六'].map((w) => (
-          <Text key={w} style={styles.weekLabel}>{w}</Text>
+          <Text key={w} style={styles.weekLabel}>
+            {w}
+          </Text>
         ))}
       </View>
       <View style={styles.grid}>
@@ -79,11 +81,26 @@ export default function MonthHeatmap({
                   accessibilityState={{ selected: isSelected }}
                   accessibilityLabel={`${month}月${day}日${amount > 0 ? `支出${formatMoneyShort(amount)}元` : '无支出'}`}
                 >
-                  <Text style={[styles.dayText, amount > 0 && styles.dayTextActive, isDeep && !isSelected && styles.dayTextDeep, isSelected && styles.dayTextSelected, isToday && !isSelected && styles.dayTextToday]}>
+                  <Text
+                    style={[
+                      styles.dayText,
+                      amount > 0 && styles.dayTextActive,
+                      isDeep && !isSelected && styles.dayTextDeep,
+                      isSelected && styles.dayTextSelected,
+                      isToday && !isSelected && styles.dayTextToday,
+                    ]}
+                  >
                     {day}
                   </Text>
                   {amount > 0 ? (
-                    <Text style={[styles.amountText, isDeep && !isSelected && styles.amountTextDeep, isSelected && styles.dayTextSelected]} numberOfLines={1}>
+                    <Text
+                      style={[
+                        styles.amountText,
+                        isDeep && !isSelected && styles.amountTextDeep,
+                        isSelected && styles.dayTextSelected,
+                      ]}
+                      numberOfLines={1}
+                    >
                       {formatMoneyShort(amount)}
                     </Text>
                   ) : null}

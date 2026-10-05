@@ -25,7 +25,7 @@ export async function getSyncConfig(): Promise<{ baseUrl: string; token: string 
 async function request<T>(
   baseUrl: string,
   path: string,
-  init: { method: string; body?: unknown; token?: string; timeoutMs?: number }
+  init: { method: string; body?: unknown; token?: string; timeoutMs?: number },
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 10_000);
@@ -58,13 +58,15 @@ async function request<T>(
 
 export async function apiRegister(baseUrl: string, username: string, password: string, displayName?: string) {
   return request<{ token: string; user: AuthUser }>(baseUrl, '/api/auth/register', {
-    method: 'POST', body: { username, password, displayName },
+    method: 'POST',
+    body: { username, password, displayName },
   });
 }
 
 export async function apiLogin(baseUrl: string, username: string, password: string) {
   return request<{ token: string; user: AuthUser }>(baseUrl, '/api/auth/login', {
-    method: 'POST', body: { username, password },
+    method: 'POST',
+    body: { username, password },
   });
 }
 
@@ -76,13 +78,17 @@ export async function apiMe(baseUrl: string, token: string) {
 
 export async function apiCreateFamily(baseUrl: string, token: string, name: string) {
   return request<{ family: FamilyInfo; user: AuthUser }>(baseUrl, '/api/family', {
-    method: 'POST', body: { name }, token,
+    method: 'POST',
+    body: { name },
+    token,
   });
 }
 
 export async function apiJoinFamily(baseUrl: string, token: string, inviteCode: string) {
   return request<{ family: FamilyInfo; user: AuthUser }>(baseUrl, '/api/family/join', {
-    method: 'POST', body: { inviteCode: inviteCode.trim().toUpperCase() }, token,
+    method: 'POST',
+    body: { inviteCode: inviteCode.trim().toUpperCase() },
+    token,
   });
 }
 
@@ -108,14 +114,25 @@ export async function apiRemoveMember(baseUrl: string, token: string, userId: nu
 }
 
 // 修改自己的昵称/头像（v0.5）
-export async function apiUpdateMe(baseUrl: string, token: string, patch: { displayName?: string; avatarEmoji?: string }) {
+export async function apiUpdateMe(
+  baseUrl: string,
+  token: string,
+  patch: { displayName?: string; avatarEmoji?: string },
+) {
   return request<{ user: AuthUser }>(baseUrl, '/api/me', { method: 'PUT', body: patch, token });
 }
 
 // 修改密码（server 0.5.6）：成功返回本端新 token；其它设备的旧 token 因 token_version 递增立即失效
-export async function apiChangePassword(baseUrl: string, token: string, currentPassword: string, newPassword: string) {
+export async function apiChangePassword(
+  baseUrl: string,
+  token: string,
+  currentPassword: string,
+  newPassword: string,
+) {
   return request<{ ok: boolean; token: string }>(baseUrl, '/api/auth/password', {
-    method: 'POST', body: { currentPassword, newPassword }, token,
+    method: 'POST',
+    body: { currentPassword, newPassword },
+    token,
   });
 }
 
@@ -123,7 +140,9 @@ export async function apiChangePassword(baseUrl: string, token: string, currentP
 // 需带当前密码复核；创建者注销=解散家庭账本，普通成员=解绑（本机副本保留）
 export async function apiDeleteAccount(baseUrl: string, token: string, password: string) {
   return request<{ ok: boolean; dissolvedFamily: boolean; unboundMembers: number }>(baseUrl, '/api/me', {
-    method: 'DELETE', body: { password }, token,
+    method: 'DELETE',
+    body: { password },
+    token,
   });
 }
 
@@ -136,13 +155,22 @@ export async function apiGetLedgers(baseUrl: string, token: string) {
 
 export async function apiSyncPull(baseUrl: string, token: string, since: number, ledgerId: number) {
   return request<{ serverTime: number; changes: SyncChanges }>(baseUrl, '/api/sync/pull', {
-    method: 'POST', body: { since, ledgerId }, token,
+    method: 'POST',
+    body: { since, ledgerId },
+    token,
   });
 }
 
-export async function apiSyncPush(baseUrl: string, token: string, changes: Partial<SyncChanges>, ledgerId: number) {
+export async function apiSyncPush(
+  baseUrl: string,
+  token: string,
+  changes: Partial<SyncChanges>,
+  ledgerId: number,
+) {
   return request<PushResult>(baseUrl, '/api/sync/push', {
-    method: 'POST', body: { ...changes, ledgerId }, token,
+    method: 'POST',
+    body: { ...changes, ledgerId },
+    token,
   });
 }
 

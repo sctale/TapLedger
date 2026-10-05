@@ -6,17 +6,17 @@ export type RecordType = 'expense' | 'income';
 export interface SyncRecord {
   uuid: string;
   familyId: number;
-  userId: number;          // 记账人
+  userId: number; // 记账人
   amount: number;
   category: string;
   type: RecordType;
   note: string;
-  date: string;            // YYYY-MM-DD
+  date: string; // YYYY-MM-DD
   timestamp: number;
-  reimbursable: number;    // 0/1
-  reimbursed: number;      // 0/1
+  reimbursable: number; // 0/1
+  reimbursed: number; // 0/1
   updatedAt: number;
-  deleted: number;         // 0/1
+  deleted: number; // 0/1
 }
 
 export interface SyncRecurring {
@@ -27,12 +27,12 @@ export interface SyncRecurring {
   amount: number;
   type: RecordType;
   category: string;
-  frequency: string;       // daily/weekly/monthly/yearly
+  frequency: string; // daily/weekly/monthly/yearly
   dayOfWeek: number;
   dayOfMonth: number;
   monthOfYear: number;
   note: string;
-  enabled: number;         // 0/1
+  enabled: number; // 0/1
   lastGenerated: string;
   updatedAt: number;
   deleted: number;
@@ -57,10 +57,10 @@ export interface AuthUser {
   username: string;
   displayName: string;
   avatarEmoji: string;
-  familyId: number | null;          // 家庭账本（共享）
+  familyId: number | null; // 家庭账本（共享）
   familyRole: 'owner' | 'member' | null;
-  personalLedgerId: number | null;  // 个人账本（注册自动创建）
-  personalLedgerName: string;       // 个人账本名
+  personalLedgerId: number | null; // 个人账本（注册自动创建）
+  personalLedgerName: string; // 个人账本名
 }
 
 export type LedgerType = 'personal' | 'family';

@@ -1,29 +1,36 @@
-import type { CategoryConfig, CategoryConfigItem, CategoryDef, CustomCategory, RecordType, RecurringFrequency } from '../types';
+import type {
+  CategoryConfig,
+  CategoryConfigItem,
+  CategoryDef,
+  CustomCategory,
+  RecordType,
+  RecurringFrequency,
+} from '../types';
 
 // ===== 主题色（延续 TapMood 治愈暖色风格）=====
 export const COLORS = {
-  background: '#F8F6F3',     // 暖米白背景
-  bgAlt: '#F3EFE9',          // 深一档背景
+  background: '#F8F6F3', // 暖米白背景
+  bgAlt: '#F3EFE9', // 深一档背景
   surface: '#FFFFFF',
-  surfaceAlt: '#FFF9F5',     // 暖色卡片底
-  text: '#2D2D2D',           // 深灰主文字
+  surfaceAlt: '#FFF9F5', // 暖色卡片底
+  text: '#2D2D2D', // 深灰主文字
   textSecondary: '#6E6E6E',
-  textTertiary: '#857F78',   // 次次级(对比度 ≥ WCAG AA)
-  border: '#F0EDE8',         // 暖灰边框
+  textTertiary: '#857F78', // 次次级(对比度 ≥ WCAG AA)
+  border: '#F0EDE8', // 暖灰边框
   borderSubtle: '#E8E4DE',
-  accent: '#7986CB',         // 强调靛蓝
+  accent: '#7986CB', // 强调靛蓝
   accentDark: '#5C6BC0',
-  income: '#81C784',         // 收入薄荷绿
-  expense: '#FF8A65',        // 支出暖橙
-  transfer: '#4DB6AC',       // 转账青色
+  income: '#81C784', // 收入薄荷绿
+  expense: '#FF8A65', // 支出暖橙
+  transfer: '#4DB6AC', // 转账青色
   danger: '#E57373',
   white: '#FFFFFF',
-  overlay: 'rgba(45,45,45,0.35)',          // 弹窗遮罩
+  overlay: 'rgba(45,45,45,0.35)', // 弹窗遮罩
   heatmap: ['#FFE0B2', '#FFB74D', '#FF8A65', '#F4511E'], // 热力图 0-3 级（暖橙=消费语义，与选中靛蓝区分）
-  warningBg: '#FFF3E0',      // 待报销底色
+  warningBg: '#FFF3E0', // 待报销底色
   warningBorder: '#FFB74D',
   warningText: '#E65100',
-  incomeBg: '#E8F5E9',       // 收入徽标底色
+  incomeBg: '#E8F5E9', // 收入徽标底色
   incomeText: '#2E7D32',
 };
 
@@ -58,54 +65,84 @@ export const FONT_SIZE = {
   xxl: 28,
   xxxl: 36,
   hero: 48,
-  display: 44,  // 记账页金额大字号
+  display: 44, // 记账页金额大字号
 };
 
 // ===== 自定义分类可选色板 =====
 export const CATEGORY_COLORS = [
-  '#FFB74D', '#7986CB', '#F48FB1', '#4DB6AC', '#A1887F',
-  '#9575CD', '#E57373', '#64B5F6', '#FFD54F', '#90A4AE',
+  '#FFB74D',
+  '#7986CB',
+  '#F48FB1',
+  '#4DB6AC',
+  '#A1887F',
+  '#9575CD',
+  '#E57373',
+  '#64B5F6',
+  '#FFD54F',
+  '#90A4AE',
 ] as const;
 
 // ===== 自定义分类预设图标池（精选常用 30 个，平铺不分支出/收入，点选 + 支持自定义输入）=====
 export const CATEGORY_ICONS: string[] = [
   // 餐饮
-  '🍜', '🍔', '☕', '🍺', '🍰',
+  '🍜',
+  '🍔',
+  '☕',
+  '🍺',
+  '🍰',
   // 交通
-  '🚗', '🚌', '🚇', '✈️',
+  '🚗',
+  '🚌',
+  '🚇',
+  '✈️',
   // 购物
-  '🛍️', '👕', '👟',
+  '🛍️',
+  '👕',
+  '👟',
   // 娱乐
-  '🎮', '🎬', '🎤',
+  '🎮',
+  '🎬',
+  '🎤',
   // 日用/居住
-  '🛒', '🏠', '💡',
+  '🛒',
+  '🏠',
+  '💡',
   // 医疗/教育
-  '💊', '📚',
+  '💊',
+  '📚',
   // 收入
-  '💼', '💰', '🧧', '📈', '🏦',
+  '💼',
+  '💰',
+  '🧧',
+  '📈',
+  '🏦',
   // 其他
-  '🐱', '🌱', '📱', '📌', '🎁',
+  '🐱',
+  '🌱',
+  '📱',
+  '📌',
+  '🎁',
 ];
 
 // ===== 支出分类（内置柔和色系）=====
 export const EXPENSE_CATEGORIES: CategoryDef[] = [
-  { key: 'food',     label: '餐饮',   emoji: '🍜', color: '#FFB74D' },
-  { key: 'transport', label: '交通',  emoji: '🚌', color: '#7986CB' },
-  { key: 'shopping', label: '购物',   emoji: '🛍️', color: '#F48FB1' },
-  { key: 'fun',      label: '娱乐',   emoji: '🎮', color: '#4DB6AC' },
-  { key: 'daily',    label: '日用',   emoji: '🛒', color: '#A1887F' },
-  { key: 'housing',  label: '居住',   emoji: '🏠', color: '#9575CD' },
-  { key: 'medical',  label: '医疗',   emoji: '💊', color: '#E57373' },
-  { key: 'education', label: '教育',  emoji: '📚', color: '#64B5F6' },
-  { key: 'other',    label: '其他',   emoji: '📦', color: '#90A4AE' },
+  { key: 'food', label: '餐饮', emoji: '🍜', color: '#FFB74D' },
+  { key: 'transport', label: '交通', emoji: '🚌', color: '#7986CB' },
+  { key: 'shopping', label: '购物', emoji: '🛍️', color: '#F48FB1' },
+  { key: 'fun', label: '娱乐', emoji: '🎮', color: '#4DB6AC' },
+  { key: 'daily', label: '日用', emoji: '🛒', color: '#A1887F' },
+  { key: 'housing', label: '居住', emoji: '🏠', color: '#9575CD' },
+  { key: 'medical', label: '医疗', emoji: '💊', color: '#E57373' },
+  { key: 'education', label: '教育', emoji: '📚', color: '#64B5F6' },
+  { key: 'other', label: '其他', emoji: '📦', color: '#90A4AE' },
 ];
 
 // ===== 收入分类（内置）=====
 export const INCOME_CATEGORIES: CategoryDef[] = [
-  { key: 'salary', label: '工资',   emoji: '💼', color: '#81C784' },
-  { key: 'bonus',  label: '红包',   emoji: '🧧', color: '#FFD54F' },
-  { key: 'invest', label: '理财',   emoji: '📈', color: '#4DB6AC' },
-  { key: 'other',  label: '其他',   emoji: '💰', color: '#90A4AE' },
+  { key: 'salary', label: '工资', emoji: '💼', color: '#81C784' },
+  { key: 'bonus', label: '红包', emoji: '🧧', color: '#FFD54F' },
+  { key: 'invest', label: '理财', emoji: '📈', color: '#4DB6AC' },
+  { key: 'other', label: '其他', emoji: '💰', color: '#90A4AE' },
 ];
 
 // ===== 自定义分类缓存（启动时从 DB 加载）=====
@@ -129,7 +166,7 @@ export function getCategoryConfig(): CategoryConfig | null {
 // 确保配置覆盖当前所有内置 + 自定义分类（新增分类默认可见并追加到末尾）
 export function ensureFullCategoryConfig(
   custom: CustomCategory[],
-  config: CategoryConfig | null
+  config: CategoryConfig | null,
 ): CategoryConfig {
   const build = (type: RecordType): CategoryConfigItem[] => {
     const builtin = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
@@ -171,7 +208,7 @@ function buildVisibleCategoryList(
   type: RecordType,
   builtin: CategoryDef[],
   custom: CategoryDef[],
-  config: CategoryConfig | null
+  config: CategoryConfig | null,
 ): CategoryDef[] {
   if (!config) {
     return [...builtin, ...custom];
@@ -217,12 +254,14 @@ function buildVisibleCategoryList(
 // 按类型取分类（内置 + 自定义；应用显隐/排序配置）
 export function getCategories(type: RecordType): CategoryDef[] {
   const builtin = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-  const custom = customCategories.filter((c) => c.type === type).map((c) => ({
-    key: c.key,
-    label: c.label,
-    emoji: c.emoji,
-    color: c.color,
-  }));
+  const custom = customCategories
+    .filter((c) => c.type === type)
+    .map((c) => ({
+      key: c.key,
+      label: c.label,
+      emoji: c.emoji,
+      color: c.color,
+    }));
   return buildVisibleCategoryList(type, builtin, custom, categoryConfig);
 }
 
@@ -245,10 +284,10 @@ export function findCategory(key: string, type: RecordType): CategoryDef {
 
 // ===== 周期记账频率 =====
 export const RECURRING_FREQUENCIES: { key: RecurringFrequency; label: string }[] = [
-  { key: 'daily',   label: '每天' },
-  { key: 'weekly',  label: '每周' },
+  { key: 'daily', label: '每天' },
+  { key: 'weekly', label: '每周' },
   { key: 'monthly', label: '每月' },
-  { key: 'yearly',  label: '每年' },
+  { key: 'yearly', label: '每年' },
 ];
 
 export function getFrequencyLabel(f: RecurringFrequency): string {
@@ -260,7 +299,7 @@ export const LEDGER_EVENTS = {
   RECORDED: 'ledger:recorded',
   DATA_IMPORTED: 'ledger:data_imported',
   CATEGORIES_CHANGED: 'ledger:categories_changed',
-  SYNC_DONE: 'ledger:sync_done',       // 一轮同步完成
+  SYNC_DONE: 'ledger:sync_done', // 一轮同步完成
   AUTH_CHANGED: 'ledger:auth_changed', // 登录态变化（登录/退出/加入家庭）
   SETTINGS_CHANGED: 'ledger:settings_changed', // 设置变更（月度预算等，跨页即时生效）
 } as const;
@@ -275,15 +314,15 @@ export const SETTING_KEYS = {
   SYNC_USER_ID: 'sync.user_id',
   SYNC_USER_DISPLAY: 'sync.user_display',
   SYNC_USER_AVATAR: 'sync.user_avatar',
-  SYNC_FAMILY_NAME: 'sync.family_name',       // 家庭名（管理页摘要显示用；空=未入家庭）
-  SYNC_LAST_PULL_AT: 'sync.last_pull_at',   // 服务端时间光标
-  SYNC_LAST_PUSH_AT: 'sync.last_push_at',   // 本地 updated_at 水位
+  SYNC_FAMILY_NAME: 'sync.family_name', // 家庭名（管理页摘要显示用；空=未入家庭）
+  SYNC_LAST_PULL_AT: 'sync.last_pull_at', // 服务端时间光标
+  SYNC_LAST_PUSH_AT: 'sync.last_push_at', // 本地 updated_at 水位
   SYNC_LAST_SYNC_TIME: 'sync.last_sync_time', // 上次同步完成的人类时间戳
-  SYNC_MEMBERS_JSON: 'sync.members_json',   // 家庭成员缓存（v0.5 记账人标识）
-  SYNC_ACTIVE_LEDGER_ID: 'sync.active_ledger_id',   // 当前账本 id（个人/家庭）
+  SYNC_MEMBERS_JSON: 'sync.members_json', // 家庭成员缓存（v0.5 记账人标识）
+  SYNC_ACTIVE_LEDGER_ID: 'sync.active_ledger_id', // 当前账本 id（个人/家庭）
   SYNC_ACTIVE_LEDGER_NAME: 'sync.active_ledger_name', // 当前账本名
   // ===== 快捷记账偏好（v0.9.1，随手记式）=====
-  CONTINUOUS_MODE: 'continuous_mode',               // 连记开关（保存后不弹提示，便于连续补记）
+  CONTINUOUS_MODE: 'continuous_mode', // 连记开关（保存后不弹提示，便于连续补记）
   LAST_AMOUNT_BY_CATEGORY: 'last_amount_by_category', // 各分类最近一次金额（JSON: {categoryKey: number}）
 } as const;
 

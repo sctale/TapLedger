@@ -11,15 +11,21 @@ interface Props {
   onDelete?: (record: LedgerRecord) => void;
   onEdit?: (record: LedgerRecord) => void; // 点击行编辑（v0.10，不传则整行不可点）
   emptyText?: string;
-  showTime?: boolean;      // 显示记录时间（今日明细用）
-  showDate?: boolean;      // 显示记录日期（跨多日列表用，如报销明细）
-  members?: MemberInfo[];  // 家庭成员（显示记账人标识，v0.5）
+  showTime?: boolean; // 显示记录时间（今日明细用）
+  showDate?: boolean; // 显示记录日期（跨多日列表用，如报销明细）
+  members?: MemberInfo[]; // 家庭成员（显示记账人标识，v0.5）
   onToggleReimbursed?: (record: LedgerRecord) => void; // 报销页单条核销/撤销
 }
 
 // 单条记录行（memo：父组件 state 变化时避免整表重渲染；导出供 FlatList 虚拟化列表使用）
 export const RecordRow = React.memo(function RecordRow({
-  record, onDelete, onEdit, showTime, showDate, members, onToggleReimbursed,
+  record,
+  onDelete,
+  onEdit,
+  showTime,
+  showDate,
+  members,
+  onToggleReimbursed,
 }: {
   record: LedgerRecord;
   onDelete?: (record: LedgerRecord) => void;
@@ -43,7 +49,8 @@ export const RecordRow = React.memo(function RecordRow({
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onStartShouldSetPanResponderCapture: () => false,
-        onMoveShouldSetPanResponder: (_, g) => !!onDelete && g.dx < -8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        onMoveShouldSetPanResponder: (_, g) =>
+          !!onDelete && g.dx < -8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
         onPanResponderMove: (_, g) => {
           if (g.dx < 0) translateX.setValue(Math.max(g.dx, -96));
         },
@@ -54,7 +61,7 @@ export const RecordRow = React.memo(function RecordRow({
         onPanResponderTerminate: () =>
           Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8 }).start(),
       }),
-    [onDelete, record, translateX]
+    [onDelete, record, translateX],
   );
 
   return (
@@ -68,90 +75,104 @@ export const RecordRow = React.memo(function RecordRow({
         style={swipeable ? { transform: [{ translateX }] } : undefined}
         {...(swipeable ? panResponder.panHandlers : {})}
       >
-      <View style={styles.row}>
-    {/* 整行可点击编辑（v0.10）：左滑删除手势仅横向拖动接管，不与点击冲突。
+        <View style={styles.row}>
+          {/* 整行可点击编辑（v0.10）：左滑删除手势仅横向拖动接管，不与点击冲突。
         v0.11.8：编辑热区改为「图标+信息」这一块，不再把核销/删除按钮包在里面 ——
         嵌套 Pressable 手指能点（内层优先），但 TalkBack 会把外层标签下的子树合并成
         一个节点，导致核销和删除对读屏完全不可达。布局不变（外层 row 仍是 flex row，
         热区 flex:1 撑到原来 info 的右边界）。 */}
-    <Pressable
-      style={styles.rowContent}
-      onPress={() => onEdit?.(record)}
-      disabled={!onEdit}
-      accessibilityRole={onEdit ? 'button' : undefined}
-      accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
-    >
-      <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
-        <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>{cat.emoji}</Text>
-      </View>
-      <View style={styles.info}>
-        <View style={styles.catRow}>
-          <Text style={styles.catLabel}>{cat.label}</Text>
-          {member ? (
-            <View style={[styles.memberTag, { backgroundColor: `${memberColor(member.id)}22` }]}>
-              <Text style={styles.memberEmoji}>{member.avatarEmoji}</Text>
-              <Text style={[styles.memberName, { color: memberColor(member.id) }]} numberOfLines={1}>
-                {member.displayName}
+          <Pressable
+            style={styles.rowContent}
+            onPress={() => onEdit?.(record)}
+            disabled={!onEdit}
+            accessibilityRole={onEdit ? 'button' : undefined}
+            accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
+          >
+            <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
+              <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>
+                {cat.emoji}
               </Text>
             </View>
-          ) : null}
-          {record.reimbursable ? (
-            <View style={[styles.badge, record.reimbursed ? styles.badgeDone : styles.badgePending]}>
-              <Text style={[styles.badgeText, record.reimbursed && styles.badgeTextDone]}>
-                {record.reimbursed ? '已报销' : '待报销'}
-              </Text>
+            <View style={styles.info}>
+              <View style={styles.catRow}>
+                <Text style={styles.catLabel}>{cat.label}</Text>
+                {member ? (
+                  <View style={[styles.memberTag, { backgroundColor: `${memberColor(member.id)}22` }]}>
+                    <Text style={styles.memberEmoji}>{member.avatarEmoji}</Text>
+                    <Text style={[styles.memberName, { color: memberColor(member.id) }]} numberOfLines={1}>
+                      {member.displayName}
+                    </Text>
+                  </View>
+                ) : null}
+                {record.reimbursable ? (
+                  <View style={[styles.badge, record.reimbursed ? styles.badgeDone : styles.badgePending]}>
+                    <Text style={[styles.badgeText, record.reimbursed && styles.badgeTextDone]}>
+                      {record.reimbursed ? '已报销' : '待报销'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.subRow}>
+                {showDate ? <Text style={styles.dateTag}>{record.date}</Text> : null}
+                {showTime ? (
+                  <Text style={styles.timeTag}>{new Date(record.timestamp).toTimeString().slice(0, 5)}</Text>
+                ) : null}
+                {record.note ? (
+                  <Text style={styles.note} numberOfLines={1}>
+                    {record.note}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-          ) : null}
+          </Pressable>
+          <View style={styles.rowActions}>
+            {onToggleReimbursed && record.reimbursable ? (
+              <Pressable
+                style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
+                onPress={() => onToggleReimbursed(record)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={record.reimbursed ? '撤销核销' : '核销报销'}
+              >
+                <Text style={styles.reimburseToggleText}>{record.reimbursed ? '撤销' : '核销'}</Text>
+              </Pressable>
+            ) : null}
+            <Text
+              style={[styles.amount, { color: isExpense ? COLORS.expense : COLORS.income }]}
+              accessibilityLabel={`${isExpense ? '支出' : '收入'}${formatMoney(record.amount)}元`}
+            >
+              {isExpense ? '-' : '+'}
+              {formatMoney(record.amount)}
+            </Text>
+            {onDelete ? (
+              <Pressable
+                style={styles.deleteBtn}
+                onPress={() => onDelete(record)}
+                hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={`删除${cat.label}记录${formatMoney(record.amount)}元`}
+              >
+                <Text style={styles.deleteText}>✕</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-        <View style={styles.subRow}>
-          {showDate ? (
-            <Text style={styles.dateTag}>{record.date}</Text>
-          ) : null}
-          {showTime ? (
-            <Text style={styles.timeTag}>{new Date(record.timestamp).toTimeString().slice(0, 5)}</Text>
-          ) : null}
-          {record.note ? <Text style={styles.note} numberOfLines={1}>{record.note}</Text> : null}
-        </View>
-      </View>
-    </Pressable>
-    <View style={styles.rowActions}>
-      {onToggleReimbursed && record.reimbursable ? (
-        <Pressable
-          style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
-          onPress={() => onToggleReimbursed(record)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel={record.reimbursed ? '撤销核销' : '核销报销'}
-        >
-          <Text style={styles.reimburseToggleText}>{record.reimbursed ? '撤销' : '核销'}</Text>
-        </Pressable>
-      ) : null}
-      <Text
-        style={[styles.amount, { color: isExpense ? COLORS.expense : COLORS.income }]}
-        accessibilityLabel={`${isExpense ? '支出' : '收入'}${formatMoney(record.amount)}元`}
-      >
-        {isExpense ? '-' : '+'}{formatMoney(record.amount)}
-      </Text>
-      {onDelete ? (
-        <Pressable
-          style={styles.deleteBtn}
-          onPress={() => onDelete(record)}
-          hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-          accessibilityRole="button"
-          accessibilityLabel={`删除${cat.label}记录${formatMoney(record.amount)}元`}
-        >
-          <Text style={styles.deleteText}>✕</Text>
-        </Pressable>
-      ) : null}
-    </View>
-      </View>
       </Animated.View>
     </View>
   );
 });
 
 // 记录列表（暖色卡片风格）
-function RecordList({ records, onDelete, onEdit, emptyText = '还没有记录，记一笔吧 ✨', showTime, showDate, members, onToggleReimbursed }: Props) {
+function RecordList({
+  records,
+  onDelete,
+  onEdit,
+  emptyText = '还没有记录，记一笔吧 ✨',
+  showTime,
+  showDate,
+  members,
+  onToggleReimbursed,
+}: Props) {
   if (records.length === 0) {
     return (
       <View style={styles.empty}>

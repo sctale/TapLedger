@@ -1,6 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  DeviceEventEmitter,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { COLORS, LEDGER_EVENTS, SETTING_KEYS } from '../../constants';
 import { getSetting, saveSetting } from '../../database/ledgerDB';
@@ -76,12 +85,15 @@ export default function PrefsScreen() {
 
   return (
     // 键盘避让：键盘弹出时内容上移，预算保存按钮不被遮挡（v0.5.7）
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.kavContainer}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.kavContainer}
+    >
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"  /* 键盘弹出时点击保存按钮不被吞掉（v0.5.7） */
+        keyboardShouldPersistTaps="handled" /* 键盘弹出时点击保存按钮不被吞掉（v0.5.7） */
       >
         {/* ===== 偏好设置 ===== */}
         <Text style={styles.sectionTitle}>偏好设置</Text>
@@ -117,7 +129,6 @@ export default function PrefsScreen() {
             />
           </View>
         </View>
-
       </ScrollView>
     </KeyboardAvoidingView>
   );

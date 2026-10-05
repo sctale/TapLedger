@@ -1,9 +1,21 @@
 // 周期记账二级页面（顶栏返回按钮由外层 ManageScreen 渲染，本组件不含顶栏）
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  Alert,
+  DeviceEventEmitter,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { COLORS, LEDGER_EVENTS, RECURRING_FREQUENCIES, SPACING, findCategory } from '../../constants';
 import {
-  addRecurringRule, deleteRecurringRule, getRecurringRules, updateRecurringRule,
+  addRecurringRule,
+  deleteRecurringRule,
+  getRecurringRules,
+  updateRecurringRule,
   type RecurringRuleInput,
 } from '../../database/ledgerDB';
 import { formatMoney } from '../../utils/dateUtils';
@@ -52,65 +64,79 @@ export default function RecurringScreen() {
   }, [reload]);
 
   // ===== 保存（新增/编辑） =====
-  const handleSubmit = useCallback(async (values: RecurringRuleInput, editing: RecurringRule | null) => {
-    if (!values.name.trim()) {
-      hapticError();
-      showToast('请输入名称', 'error');
-      return;
-    }
-    if (!(values.amount > 0)) {
-      hapticError();
-      showToast('请输入有效金额', 'error');
-      return;
-    }
-    try {
-      if (editing) {
-        // 编辑：合并原规则（保留 id/lastGenerated 等），enabled 以原规则为准
-        await updateRecurringRule({ ...editing, ...values, name: values.name.trim(), enabled: editing.enabled });
-        showToast('周期记账已更新');
-      } else {
-        await addRecurringRule({ ...values, name: values.name.trim(), lastGenerated: '' });
-        showToast('周期记账已添加');
+  const handleSubmit = useCallback(
+    async (values: RecurringRuleInput, editing: RecurringRule | null) => {
+      if (!values.name.trim()) {
+        hapticError();
+        showToast('请输入名称', 'error');
+        return;
       }
-      hapticSuccess();
-      setRuleModal(false);
-      await reload();
-    } catch {
-      hapticError();
-      showToast(editing ? '保存失败' : '添加失败', 'error');
-    }
-  }, [reload, showToast]);
+      if (!(values.amount > 0)) {
+        hapticError();
+        showToast('请输入有效金额', 'error');
+        return;
+      }
+      try {
+        if (editing) {
+          // 编辑：合并原规则（保留 id/lastGenerated 等），enabled 以原规则为准
+          await updateRecurringRule({
+            ...editing,
+            ...values,
+            name: values.name.trim(),
+            enabled: editing.enabled,
+          });
+          showToast('周期记账已更新');
+        } else {
+          await addRecurringRule({ ...values, name: values.name.trim(), lastGenerated: '' });
+          showToast('周期记账已添加');
+        }
+        hapticSuccess();
+        setRuleModal(false);
+        await reload();
+      } catch {
+        hapticError();
+        showToast(editing ? '保存失败' : '添加失败', 'error');
+      }
+    },
+    [reload, showToast],
+  );
 
   // ===== 启用开关 =====
-  const handleToggleRule = useCallback(async (rule: RecurringRule) => {
-    try {
-      await updateRecurringRule({ ...rule, enabled: !rule.enabled });
-      hapticLight();
-      await reload();
-    } catch {
-      hapticError();
-    }
-  }, [reload]);
+  const handleToggleRule = useCallback(
+    async (rule: RecurringRule) => {
+      try {
+        await updateRecurringRule({ ...rule, enabled: !rule.enabled });
+        hapticLight();
+        await reload();
+      } catch {
+        hapticError();
+      }
+    },
+    [reload],
+  );
 
   // ===== 删除（二次确认） =====
-  const handleDeleteRule = useCallback((rule: RecurringRule) => {
-    Alert.alert('删除周期记账', `删除「${rule.name}」？`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteRecurringRule(rule.id);
-            hapticSuccess();
-            await reload();
-          } catch {
-            hapticError();
-          }
+  const handleDeleteRule = useCallback(
+    (rule: RecurringRule) => {
+      Alert.alert('删除周期记账', `删除「${rule.name}」？`, [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteRecurringRule(rule.id);
+              hapticSuccess();
+              await reload();
+            } catch {
+              hapticError();
+            }
+          },
         },
-      },
-    ]);
-  }, [reload]);
+      ]);
+    },
+    [reload],
+  );
 
   // 打开新增弹窗
   const openAdd = () => {
@@ -137,7 +163,8 @@ export default function RecurringScreen() {
           ) : (
             rules.map((rule) => {
               const cat = findCategory(rule.category, rule.type);
-              const freqLabel = RECURRING_FREQUENCIES.find((f) => f.key === rule.frequency)?.label ?? rule.frequency;
+              const freqLabel =
+                RECURRING_FREQUENCIES.find((f) => f.key === rule.frequency)?.label ?? rule.frequency;
               return (
                 <View key={rule.id} style={styles.ruleRow}>
                   {/* 行主体可点击 → 打开编辑弹窗；开关与删除在 Pressable 之外，保留独立行为 */}
@@ -152,10 +179,18 @@ export default function RecurringScreen() {
                     </View>
                     <View style={styles.accInfo}>
                       <Text style={styles.accName}>{rule.name}</Text>
-                      <Text style={styles.accType}>{freqLabel} · {cat.label}</Text>
+                      <Text style={styles.accType}>
+                        {freqLabel} · {cat.label}
+                      </Text>
                     </View>
-                    <Text style={[styles.accBalance, { color: rule.type === 'expense' ? COLORS.expense : COLORS.income }]}>
-                      {rule.type === 'expense' ? '-' : '+'}{formatMoney(rule.amount)}
+                    <Text
+                      style={[
+                        styles.accBalance,
+                        { color: rule.type === 'expense' ? COLORS.expense : COLORS.income },
+                      ]}
+                    >
+                      {rule.type === 'expense' ? '-' : '+'}
+                      {formatMoney(rule.amount)}
                     </Text>
                   </Pressable>
                   <Switch
@@ -165,14 +200,24 @@ export default function RecurringScreen() {
                     thumbColor={COLORS.white}
                     style={{ transform: [{ scale: 0.8 }] }}
                   />
-                  <Pressable onPress={() => handleDeleteRule(rule)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`删除周期规则${rule.name}`}>
+                  <Pressable
+                    onPress={() => handleDeleteRule(rule)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`删除周期规则${rule.name}`}
+                  >
                     <Text style={styles.accDeleteText}>✕</Text>
                   </Pressable>
                 </View>
               );
             })
           )}
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={openAdd} accessibilityRole="button" accessibilityLabel="添加周期记账">
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: COLORS.accent }]}
+            onPress={openAdd}
+            accessibilityRole="button"
+            accessibilityLabel="添加周期记账"
+          >
             <Text style={styles.actionBtnText}>＋ 添加周期记账</Text>
           </Pressable>
         </View>

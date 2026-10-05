@@ -1,17 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  BackHandler, DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View,
+  BackHandler,
+  DeviceEventEmitter,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING,
-} from '../constants';
-import {
-  getCustomCategories, getRecurringRules,
-  getSetting,
-} from '../database/ledgerDB';
+import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING } from '../constants';
+import { getCustomCategories, getRecurringRules, getSetting } from '../database/ledgerDB';
 import { useToast } from '../hooks/useToast';
 import { getSyncConfig } from '../sync/apiClient';
 import RecurringScreen from './manage/RecurringScreen';
@@ -36,7 +39,7 @@ const PAGE_TITLES: Record<Exclude<Page, 'main'>, string> = {
 };
 
 interface Props {
-  active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
+  active: boolean; // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
 }
 
 export default function ManageScreen({ active }: Props) {
@@ -44,10 +47,10 @@ export default function ManageScreen({ active }: Props) {
   const [page, setPage] = useState<Page>('main');
 
   // ===== 主页数据：各板块摘要 =====
-  const [ruleCount, setRuleCount] = useState(0);          // 周期记账规则数
-  const [catCount, setCatCount] = useState(0);             // 自定义分类数
-  const [budgetStr, setBudgetStr] = useState('');          // 月度预算（原始字符串）
-  const [syncSummary, setSyncSummary] = useState('');      // 家庭同步状态摘要
+  const [ruleCount, setRuleCount] = useState(0); // 周期记账规则数
+  const [catCount, setCatCount] = useState(0); // 自定义分类数
+  const [budgetStr, setBudgetStr] = useState(''); // 月度预算（原始字符串）
+  const [syncSummary, setSyncSummary] = useState(''); // 家庭同步状态摘要
 
   const { showToast } = useToast();
 
@@ -58,10 +61,10 @@ export default function ManageScreen({ active }: Props) {
         getRecurringRules(),
         getCustomCategories(),
         getSetting(SETTING_KEYS.MONTHLY_BUDGET),
-        getSyncConfig(),                                  // serverUrl + token 均存在 → 已连接且已登录
-        getSetting(SETTING_KEYS.SYNC_USER_DISPLAY),       // 登录昵称（摘要显示用）
-        getSetting(SETTING_KEYS.SYNC_FAMILY_NAME),          // 家庭名（摘要显示用）
-        getSetting(SETTING_KEYS.SYNC_SERVER_URL),         // 区分「已连接未登录」与「未配置」
+        getSyncConfig(), // serverUrl + token 均存在 → 已连接且已登录
+        getSetting(SETTING_KEYS.SYNC_USER_DISPLAY), // 登录昵称（摘要显示用）
+        getSetting(SETTING_KEYS.SYNC_FAMILY_NAME), // 家庭名（摘要显示用）
+        getSetting(SETTING_KEYS.SYNC_SERVER_URL), // 区分「已连接未登录」与「未配置」
       ]);
       setRuleCount(rules.length);
       setCatCount(cats.length);
@@ -124,7 +127,12 @@ export default function ManageScreen({ active }: Props) {
     { icon: '🔁', title: '周期记账', subtitle: `${ruleCount} 条规则`, target: 'recurring' },
     { icon: '🏷️', title: '分类管理', subtitle: `${catCount} 个`, target: 'categories' },
     { icon: '👨‍👩‍👧', title: '家庭同步', subtitle: syncSummary, target: 'sync' },
-    { icon: '⚙️', title: '偏好设置', subtitle: budgetStr ? `月度预算 ¥${budgetStr}` : '未设置', target: 'prefs' },
+    {
+      icon: '⚙️',
+      title: '偏好设置',
+      subtitle: budgetStr ? `月度预算 ¥${budgetStr}` : '未设置',
+      target: 'prefs',
+    },
     { icon: '💾', title: '数据管理', subtitle: '导出/导入/重置', target: 'backup' },
   ];
 
@@ -133,13 +141,16 @@ export default function ManageScreen({ active }: Props) {
       <StatusBar style="dark" />
       {page === 'main' ? (
         /* ===== 主页 ===== */
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.kavContainer}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.kavContainer}
+        >
           <ScrollView
             ref={scrollRef}
             style={styles.scroll}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"  /* 键盘弹出时点击弹窗内按钮不被吞掉 */
+            keyboardShouldPersistTaps="handled" /* 键盘弹出时点击弹窗内按钮不被吞掉 */
           >
             <Text style={styles.pageTitle}>管理</Text>
 
@@ -159,7 +170,9 @@ export default function ManageScreen({ active }: Props) {
                   </View>
                   <View style={styles.accInfo}>
                     <Text style={styles.accName}>{e.title}</Text>
-                    <Text style={styles.accType} numberOfLines={1}>{e.subtitle}</Text>
+                    <Text style={styles.accType} numberOfLines={1}>
+                      {e.subtitle}
+                    </Text>
                   </View>
                   <Text style={styles.entryArrow}>›</Text>
                 </Pressable>
@@ -173,7 +186,10 @@ export default function ManageScreen({ active }: Props) {
                 <Text style={styles.aboutName}>一点账本</Text>
                 <Text style={styles.aboutVersion}>v{APP_VERSION}</Text>
               </View>
-              <Text style={styles.hint}>极简记账 · 3 秒记一笔 · 数据默认保存在本地；家庭同步为可选功能，仅在你自行部署并登录后才上传到你的服务器</Text>
+              <Text style={styles.hint}>
+                极简记账 · 3 秒记一笔 ·
+                数据默认保存在本地；家庭同步为可选功能，仅在你自行部署并登录后才上传到你的服务器
+              </Text>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -181,7 +197,12 @@ export default function ManageScreen({ active }: Props) {
         /* ===== 子页面：顶栏返回 + 对应二级页（切换 page 时组件自然挂载自加载） ===== */
         <View style={styles.subPage}>
           <View style={styles.navBar}>
-            <Pressable hitSlop={8} onPress={() => setPage('main')} accessibilityRole="button" accessibilityLabel="返回管理首页">
+            <Pressable
+              hitSlop={8}
+              onPress={() => setPage('main')}
+              accessibilityRole="button"
+              accessibilityLabel="返回管理首页"
+            >
               <Text style={styles.navBack}>‹ 返回</Text>
             </Pressable>
             <Text style={styles.navTitle}>{PAGE_TITLES[page]}</Text>
@@ -199,7 +220,6 @@ export default function ManageScreen({ active }: Props) {
           )}
         </View>
       )}
-
     </SafeAreaView>
   );
 }

@@ -65,15 +65,10 @@ export async function runRecurringCheck(): Promise<number> {
     // 服务端按 uuid 做 LWW upsert 只会留一条（此前 last_generated 是设备本地状态，
     // 两台设备都在同步前生成 → 房租这类订阅会被记两次）。
     const deterministic = rule.uuid.length <= 52 ? `${rule.uuid}@${dueStr}` : '';
-    await addRecord(
-      rule.amount,
-      rule.category,
-      rule.type,
-      dueStr,
-      rule.note || rule.name,
-      false,
-      { userId: syncUserId, ...(deterministic ? { uuid: deterministic } : {}) }
-    );
+    await addRecord(rule.amount, rule.category, rule.type, dueStr, rule.note || rule.name, false, {
+      userId: syncUserId,
+      ...(deterministic ? { uuid: deterministic } : {}),
+    });
     await setRecurringLastGenerated(rule.id, dueStr);
     generated++;
   }

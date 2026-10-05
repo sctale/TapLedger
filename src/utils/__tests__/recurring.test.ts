@@ -12,7 +12,7 @@ vi.mock('../../database/ledgerDB', () => ({
 }));
 
 const rule = (patch: Partial<RecurringRule>): RecurringRule =>
-  ({ frequency: 'monthly', dayOfMonth: 1, dayOfWeek: 0, monthOfYear: 1, ...patch } as RecurringRule);
+  ({ frequency: 'monthly', dayOfMonth: 1, dayOfWeek: 0, monthOfYear: 1, ...patch }) as RecurringRule;
 
 describe('isDueOn 周期规则到期判断', () => {
   it('daily 恒为真', () => {
@@ -39,13 +39,17 @@ describe('isDueOn 周期规则到期判断', () => {
   });
 
   it('yearly 需同时匹配月份与日', () => {
-    expect(isDueOn(rule({ frequency: 'yearly', monthOfYear: 3, dayOfMonth: 31 }), new Date(2026, 2, 31))).toBe(true);
-    expect(isDueOn(rule({ frequency: 'yearly', monthOfYear: 4, dayOfMonth: 31 }), new Date(2026, 2, 31))).toBe(false);
+    expect(
+      isDueOn(rule({ frequency: 'yearly', monthOfYear: 3, dayOfMonth: 31 }), new Date(2026, 2, 31)),
+    ).toBe(true);
+    expect(
+      isDueOn(rule({ frequency: 'yearly', monthOfYear: 4, dayOfMonth: 31 }), new Date(2026, 2, 31)),
+    ).toBe(false);
   });
 
   it('未知频率返回 false', () => {
-    expect(isDueOn(rule({ frequency: 'hourly' as unknown as RecurringRule['frequency'] }), new Date(2026, 0, 1))).toBe(
-      false
-    );
+    expect(
+      isDueOn(rule({ frequency: 'hourly' as unknown as RecurringRule['frequency'] }), new Date(2026, 0, 1)),
+    ).toBe(false);
   });
 });

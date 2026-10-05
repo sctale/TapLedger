@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, DeviceEventEmitter, Pressable, ScrollView, Text, View } from 'react-native';
 import { LEDGER_EVENTS } from '../../constants';
 import {
-  getReimbursableRecords, getReimbursableSummary, markAllReimbursed, setReimbursed,
+  getReimbursableRecords,
+  getReimbursableSummary,
+  markAllReimbursed,
+  setReimbursed,
 } from '../../database/ledgerDB';
 import { formatMoney } from '../../utils/dateUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
@@ -20,10 +23,7 @@ export default function ReimburseScreen() {
 
   const reload = useCallback(async () => {
     try {
-      const [rsSum, rsRec] = await Promise.all([
-        getReimbursableSummary(),
-        getReimbursableRecords(),
-      ]);
+      const [rsSum, rsRec] = await Promise.all([getReimbursableSummary(), getReimbursableRecords()]);
       setReimburseSummary(rsSum);
       setReimburseRecords(rsRec);
     } catch {
@@ -110,22 +110,21 @@ export default function ReimburseScreen() {
             <Text style={styles.reimburseCount}>{reimburseSummary.count} 笔待核销</Text>
           </View>
           {reimburseSummary.count > 0 ? (
-            <Pressable style={styles.reimburseBtn} onPress={handleMarkAllReimbursed} accessibilityRole="button">
+            <Pressable
+              style={styles.reimburseBtn}
+              onPress={handleMarkAllReimbursed}
+              accessibilityRole="button"
+            >
               <Text style={styles.reimburseBtnText}>一键全部核销</Text>
             </Pressable>
           ) : null}
         </View>
         {reimburseRecords.length > 0 ? (
-          <RecordList
-            records={reimburseRecords}
-            showDate
-            onToggleReimbursed={handleToggleReimbursed}
-          />
+          <RecordList records={reimburseRecords} showDate onToggleReimbursed={handleToggleReimbursed} />
         ) : (
           <Text style={styles.emptyText}>暂无报销记录</Text>
         )}
       </View>
-
     </ScrollView>
   );
 }

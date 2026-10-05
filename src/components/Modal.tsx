@@ -1,6 +1,13 @@
 import React, { useCallback } from 'react';
 import {
-  KeyboardAvoidingView, Modal as RNModal, Platform, Pressable, ScrollView, StyleSheet, Text, View,
+  KeyboardAvoidingView,
+  Modal as RNModal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, SPACING } from '../constants';
@@ -15,12 +22,20 @@ interface Props {
   // 所有含输入框的表单弹窗统一走全屏，符合 iOS/Android 主流「新建页」交互。
   // （此前的底部 sheet 分支在 v0.7.1 全面转全屏后已无调用方，v0.11.8 删除；
   // 顺带去掉了 sheet 的「轻扫即关」——表单填一半时被误滑直接丢弃，且没有二次确认）
-  saveLabel?: string;    // 右上角保存按钮文字（默认「保存」）
-  onSave?: () => void;   // 存在则右上角显示保存按钮
+  saveLabel?: string; // 右上角保存按钮文字（默认「保存」）
+  onSave?: () => void; // 存在则右上角显示保存按钮
   saveDisabled?: boolean;
 }
 
-export default function Modal({ visible, title, onClose, children, saveLabel = '保存', onSave, saveDisabled }: Props) {
+export default function Modal({
+  visible,
+  title,
+  onClose,
+  children,
+  saveLabel = '保存',
+  onSave,
+  saveDisabled,
+}: Props) {
   const close = useCallback(() => {
     onClose();
   }, [onClose]);
@@ -29,16 +44,24 @@ export default function Modal({ visible, title, onClose, children, saveLabel = '
     <RNModal
       visible={visible}
       transparent
-      animationType="slide"   // 系统级滑入/滑出动画（Android Dialog 原生支持）
+      animationType="slide" // 系统级滑入/滑出动画（Android Dialog 原生支持）
       onRequestClose={close}
     >
       <SafeAreaView style={styles.fullRoot} edges={['top', 'bottom']}>
         {/* 顶部导航栏：左取消 / 中标题 / 右保存（可选） */}
         <View style={styles.fullHeader}>
-          <Pressable onPress={close} hitSlop={8} style={styles.fullHeaderBtn} accessibilityRole="button" accessibilityLabel="取消">
+          <Pressable
+            onPress={close}
+            hitSlop={8}
+            style={styles.fullHeaderBtn}
+            accessibilityRole="button"
+            accessibilityLabel="取消"
+          >
             <Text style={styles.fullCancel}>取消</Text>
           </Pressable>
-          <Text style={styles.fullTitle} numberOfLines={1}>{title}</Text>
+          <Text style={styles.fullTitle} numberOfLines={1}>
+            {title}
+          </Text>
           {onSave ? (
             <Pressable
               onPress={onSave}
@@ -55,7 +78,10 @@ export default function Modal({ visible, title, onClose, children, saveLabel = '
             <View style={styles.fullHeaderBtn} />
           )}
         </View>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fullBody}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.fullBody}
+        >
           <ScrollView
             style={styles.fullScroll}
             contentContainerStyle={styles.fullContent}

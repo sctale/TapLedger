@@ -101,13 +101,14 @@ db.exec(`
 
 // ===== 运维开关 =====
 export function getFlag(key: string, fallback = '1'): string {
-  const row = db.prepare('SELECT value FROM app_flags WHERE key = ?').get(key) as { value: string } | undefined;
+  const row = db.prepare('SELECT value FROM app_flags WHERE key = ?').get(key) as
+    { value: string } | undefined;
   return row?.value ?? fallback;
 }
 
 export function setFlag(key: string, value: string): void {
   db.prepare(
-    'INSERT INTO app_flags (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+    'INSERT INTO app_flags (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
   ).run(key, value);
 }
 
@@ -120,13 +121,15 @@ function hasColumn(table: string, column: string): boolean {
 if (hasColumn('families', 'type')) {
   // 已存在则跳过
 } else {
-  db.exec("ALTER TABLE families ADD COLUMN type TEXT NOT NULL DEFAULT 'family' CHECK(type IN ('personal', 'family'))");
+  db.exec(
+    "ALTER TABLE families ADD COLUMN type TEXT NOT NULL DEFAULT 'family' CHECK(type IN ('personal', 'family'))",
+  );
 }
 if (!hasColumn('users', 'personal_family_id')) {
   db.exec('ALTER TABLE users ADD COLUMN personal_family_id INTEGER');
 }
 if (!hasColumn('users', 'token_version')) {
-  db.exec("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0");
+  db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0');
 }
 
 // 生成 6 位大写字母数字邀请码（避开易混淆字符；CSPRNG，公网可达时抗预测/爆破）

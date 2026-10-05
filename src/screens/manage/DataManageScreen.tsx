@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, DeviceEventEmitter, Platform, Pressable, ScrollView, Text, TextInput, View,
+  Alert,
+  DeviceEventEmitter,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { COLORS, LEDGER_EVENTS, SPACING } from '../../constants';
 import { getAllRecords, getTotalCount, resetPersonalLedger } from '../../database/ledgerDB';
@@ -74,30 +81,33 @@ export default function DataManageScreen() {
     }
   }, [showToast]);
 
-  const doImport = useCallback(async (strategy: ImportStrategy) => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    try {
-      // pickAndImportData 内部成功后会 emit DATA_IMPORTED（含跨页刷新链）
-      const result = await pickAndImportData(strategy);
-      if (result.cancelled) return;
-      if (result.success) {
-        hapticSuccess();
-        let msg = `已导入 ${result.imported} 条记录`;
-        const extras: string[] = [];
-        if (result.skipped > 0) extras.push(`跳过 ${result.skipped} 条无效`);
-        if ((result.failed ?? 0) > 0) extras.push(`${result.failed} 项附属数据失败`);
-        if (extras.length > 0) msg += `（${extras.join('，')}）`;
-        showToast(msg, (result.failed ?? 0) > 0 ? 'info' : 'success');
-        await reload();
-      } else {
-        hapticError();
-        showToast(result.error ?? '导入失败', 'error');
+  const doImport = useCallback(
+    async (strategy: ImportStrategy) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      try {
+        // pickAndImportData 内部成功后会 emit DATA_IMPORTED（含跨页刷新链）
+        const result = await pickAndImportData(strategy);
+        if (result.cancelled) return;
+        if (result.success) {
+          hapticSuccess();
+          let msg = `已导入 ${result.imported} 条记录`;
+          const extras: string[] = [];
+          if (result.skipped > 0) extras.push(`跳过 ${result.skipped} 条无效`);
+          if ((result.failed ?? 0) > 0) extras.push(`${result.failed} 项附属数据失败`);
+          if (extras.length > 0) msg += `（${extras.join('，')}）`;
+          showToast(msg, (result.failed ?? 0) > 0 ? 'info' : 'success');
+          await reload();
+        } else {
+          hapticError();
+          showToast(result.error ?? '导入失败', 'error');
+        }
+      } finally {
+        busyRef.current = false;
       }
-    } finally {
-      busyRef.current = false;
-    }
-  }, [reload, showToast]);
+    },
+    [reload, showToast],
+  );
 
   const confirmImport = useCallback(() => {
     Alert.alert('导入数据', '选择导入方式', [
@@ -165,13 +175,25 @@ export default function DataManageScreen() {
           <Text style={styles.dataCount}>{totalCount} 条</Text>
         </View>
         <View style={styles.btnRow}>
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={handleExport} accessibilityRole="button">
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: COLORS.accent }]}
+            onPress={handleExport}
+            accessibilityRole="button"
+          >
             <Text style={styles.actionBtnText}>导出 JSON</Text>
           </Pressable>
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.income }]} onPress={handleExportCSV} accessibilityRole="button">
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: COLORS.income }]}
+            onPress={handleExportCSV}
+            accessibilityRole="button"
+          >
             <Text style={styles.actionBtnText}>导出 Excel</Text>
           </Pressable>
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.bgAlt }]} onPress={confirmImport} accessibilityRole="button">
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: COLORS.bgAlt }]}
+            onPress={confirmImport}
+            accessibilityRole="button"
+          >
             <Text style={[styles.actionBtnText, { color: COLORS.text }]}>导入数据</Text>
           </Pressable>
         </View>
@@ -184,19 +206,26 @@ export default function DataManageScreen() {
         <View style={styles.dataRow}>
           <Text style={styles.label}>重置当前账本</Text>
         </View>
-        <Text style={styles.hint}>清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复；若已登录，删除会同步到你的服务器（家人端也会移除）。</Text>
+        <Text style={styles.hint}>
+          清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复；若已登录，删除会同步到你的服务器（家人端也会移除）。
+        </Text>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: COLORS.danger }]}
-          onPress={() => Alert.alert('重置当前账本', '此操作将清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复。确定继续吗？', [
-            { text: '取消', style: 'cancel' },
-            { text: '继续', style: 'destructive', onPress: confirmReset },
-          ])}
+          onPress={() =>
+            Alert.alert(
+              '重置当前账本',
+              '此操作将清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复。确定继续吗？',
+              [
+                { text: '取消', style: 'cancel' },
+                { text: '继续', style: 'destructive', onPress: confirmReset },
+              ],
+            )
+          }
           accessibilityRole="button"
         >
           <Text style={styles.actionBtnText}>重置当前账本</Text>
         </Pressable>
       </View>
-
 
       {/* ===== Android 二次确认弹窗 ===== */}
       <Modal
@@ -207,7 +236,9 @@ export default function DataManageScreen() {
         onSave={handleResetModalConfirm}
       >
         <Text style={styles.hint}>请输入「重置」二字以确认操作</Text>
-        <Text style={[styles.hint, { marginTop: SPACING.xs }]}>清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复。</Text>
+        <Text style={[styles.hint, { marginTop: SPACING.xs }]}>
+          清空当前账本的所有记账记录、周期规则、自定义分类，数据不可恢复。
+        </Text>
         <TextInput
           style={[styles.input, { marginTop: SPACING.md, fontSize: 18, paddingVertical: 14 }]}
           placeholder="重置"

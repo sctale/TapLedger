@@ -5,9 +5,7 @@
 // - 整串长度上限，避免溢出显示
 
 export type PadKey =
-  | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0'
-  | '.' | 'backspace'
-  | '+' | '-' | '*' | '/';
+  '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' | '.' | 'backspace' | '+' | '-' | '*' | '/';
 
 const MAX_EXPR_LEN = 30; // 表达式整体长度上限
 
@@ -33,7 +31,7 @@ export function appendKey(current: string, key: string): string {
     if (current === '') return current; // 不能以运算符开头
     const last = current[current.length - 1];
     if (isOperator(last)) return current.slice(0, -1) + key; // 连续运算符 → 替换
-    if (last === '.') return current.slice(0, -1) + key;      // 末尾裸小数点 → 替换
+    if (last === '.') return current.slice(0, -1) + key; // 末尾裸小数点 → 替换
     if (current.length >= MAX_EXPR_LEN) return current;
     return current + key;
   }
@@ -54,7 +52,7 @@ export function appendKey(current: string, key: string): string {
     return current + key;
   }
   if (seg === '0') return current.slice(0, -1) + key; // 前导 0 被替换
-  if (seg.length >= 7) return current;                 // 单个操作数整数最多 7 位
+  if (seg.length >= 7) return current; // 单个操作数整数最多 7 位
   if (current.length >= MAX_EXPR_LEN) return current;
   return current + key;
 }

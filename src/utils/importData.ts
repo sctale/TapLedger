@@ -2,12 +2,25 @@ import * as DocumentPicker from 'expo-document-picker';
 import { DeviceEventEmitter } from 'react-native';
 import { File } from 'expo-file-system';
 import {
-  bulkInsertRecords, replaceRecordsByIdentity, replaceRecurringRulesByIdentity,
-  replaceCustomCategoriesByIdentity, saveSetting, addCustomCategory,
-  addRecurringRule, setCustomCategoriesCache, getCategoryConfig,
+  bulkInsertRecords,
+  replaceRecordsByIdentity,
+  replaceRecurringRulesByIdentity,
+  replaceCustomCategoriesByIdentity,
+  saveSetting,
+  addCustomCategory,
+  addRecurringRule,
+  setCustomCategoriesCache,
+  getCategoryConfig,
 } from '../database/ledgerDB';
 import { LEDGER_EVENTS, EXPORT_VERSION, setCategoryConfig } from '../constants';
-import { isValidRecord, normalizeRecord, sanitizeExportSettings, clip, normUuid, SERVER_LIMITS } from './exportData';
+import {
+  isValidRecord,
+  normalizeRecord,
+  sanitizeExportSettings,
+  clip,
+  normUuid,
+  SERVER_LIMITS,
+} from './exportData';
 import type { CustomCategory, LedgerRecord, RecurringRule } from '../types';
 
 export type ImportStrategy = 'merge' | 'replace';
@@ -46,7 +59,9 @@ function normalizeRecurring(r: RecurringRule): RecurringRule {
     name: clip(String(r.name ?? ''), SERVER_LIMITS.name) || '订阅',
     amount: Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : 0,
     category: clip(String(r.category ?? ''), SERVER_LIMITS.category) || 'other',
-    frequency: (['daily', 'weekly', 'monthly', 'yearly'] as const).includes(r.frequency) ? r.frequency : 'monthly',
+    frequency: (['daily', 'weekly', 'monthly', 'yearly'] as const).includes(r.frequency)
+      ? r.frequency
+      : 'monthly',
     dayOfWeek: clampInt(r.dayOfWeek, 0, 6, 0),
     dayOfMonth: clampInt(r.dayOfMonth, 1, 31, 1),
     monthOfYear: clampInt(r.monthOfYear, 1, 12, 1),
@@ -110,7 +125,10 @@ function parseJSONBackup(text: string): ParsedBackup {
   const validRecurring = recurring.filter((r) => r.amount > 0);
   return {
     records,
-    settings: (obj.settings && typeof obj.settings === 'object' ? obj.settings : {}) as Record<string, string>,
+    settings: (obj.settings && typeof obj.settings === 'object' ? obj.settings : {}) as Record<
+      string,
+      string
+    >,
     recurring: validRecurring,
     customCategories: categoriesRaw.map(normalizeCategory),
     skipped: skipped + (recurring.length - validRecurring.length),
@@ -135,11 +153,19 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
       for (const r of data.recurring) {
         try {
           await addRecurringRule({
-            name: r.name, amount: r.amount, type: r.type, category: r.category,
-            frequency: r.frequency, dayOfWeek: r.dayOfWeek,
-            dayOfMonth: r.dayOfMonth, monthOfYear: r.monthOfYear, note: r.note,
-            enabled: r.enabled, lastGenerated: r.lastGenerated,
-            uuid: r.uuid || undefined, updatedAt: r.updatedAt || undefined,
+            name: r.name,
+            amount: r.amount,
+            type: r.type,
+            category: r.category,
+            frequency: r.frequency,
+            dayOfWeek: r.dayOfWeek,
+            dayOfMonth: r.dayOfMonth,
+            monthOfYear: r.monthOfYear,
+            note: r.note,
+            enabled: r.enabled,
+            lastGenerated: r.lastGenerated,
+            uuid: r.uuid || undefined,
+            updatedAt: r.updatedAt || undefined,
             userId: r.userId || undefined,
           });
         } catch {
@@ -150,8 +176,13 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
       for (const c of data.customCategories) {
         try {
           await addCustomCategory({
-            key: c.key, label: c.label, emoji: c.emoji, color: c.color, type: c.type,
-            uuid: c.uuid || undefined, updatedAt: c.updatedAt || undefined,
+            key: c.key,
+            label: c.label,
+            emoji: c.emoji,
+            color: c.color,
+            type: c.type,
+            uuid: c.uuid || undefined,
+            updatedAt: c.updatedAt || undefined,
           });
         } catch {
           failed++;

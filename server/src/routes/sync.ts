@@ -114,15 +114,21 @@ router.post('/pull', (req, res) => {
   }
 
   const changes: SyncChanges = {
-    records: db.prepare(
-      'SELECT uuid, family_id as familyId, user_id as userId, amount, category, type, note, date, timestamp, reimbursable, reimbursed, updated_at as updatedAt, deleted FROM records WHERE family_id = ? AND updated_at > ?'
-    ).all(ledgerId, since) as never,
-    recurring: db.prepare(
-      'SELECT uuid, family_id as familyId, user_id as userId, name, amount, type, category, frequency, day_of_week as dayOfWeek, day_of_month as dayOfMonth, month_of_year as monthOfYear, note, enabled, last_generated as lastGenerated, updated_at as updatedAt, deleted FROM recurring WHERE family_id = ? AND updated_at > ?'
-    ).all(ledgerId, since) as never,
-    customCategories: db.prepare(
-      'SELECT uuid, family_id as familyId, key, label, emoji, color, type, updated_at as updatedAt, deleted FROM custom_categories WHERE family_id = ? AND updated_at > ?'
-    ).all(ledgerId, since) as never,
+    records: db
+      .prepare(
+        'SELECT uuid, family_id as familyId, user_id as userId, amount, category, type, note, date, timestamp, reimbursable, reimbursed, updated_at as updatedAt, deleted FROM records WHERE family_id = ? AND updated_at > ?',
+      )
+      .all(ledgerId, since) as never,
+    recurring: db
+      .prepare(
+        'SELECT uuid, family_id as familyId, user_id as userId, name, amount, type, category, frequency, day_of_week as dayOfWeek, day_of_month as dayOfMonth, month_of_year as monthOfYear, note, enabled, last_generated as lastGenerated, updated_at as updatedAt, deleted FROM recurring WHERE family_id = ? AND updated_at > ?',
+      )
+      .all(ledgerId, since) as never,
+    customCategories: db
+      .prepare(
+        'SELECT uuid, family_id as familyId, key, label, emoji, color, type, updated_at as updatedAt, deleted FROM custom_categories WHERE family_id = ? AND updated_at > ?',
+      )
+      .all(ledgerId, since) as never,
   };
   res.json({ serverTime: Date.now(), changes });
 });
@@ -146,12 +152,13 @@ router.post('/push', (req, res) => {
   const serverNow = Date.now();
 
   let applied = 0;
-  let skipped = 0;              // 版本不比服务端新 / uuid 属于别的账本：正常幂等丢弃
+  let skipped = 0; // 版本不比服务端新 / uuid 属于别的账本：正常幂等丢弃
   const invalidIds: string[] = []; // 字段不合法：必须让用户知道，否则本地有、服务端永远没有
   const invalidCounts: Record<string, number> = {};
 
   const tally = (kind: 'records' | 'recurring' | 'customCategories', raw: unknown) => {
-    const schema = kind === 'records' ? recordSchema : kind === 'recurring' ? recurringSchema : customCategorySchema;
+    const schema =
+      kind === 'records' ? recordSchema : kind === 'recurring' ? recurringSchema : customCategorySchema;
     const p = schema.safeParse(raw);
     if (!p.success) {
       const id = typeof (raw as { uuid?: unknown })?.uuid === 'string' ? (raw as { uuid: string }).uuid : '?';
@@ -174,7 +181,8 @@ router.post('/push', (req, res) => {
   const run = db.transaction(() => {
     for (const raw of Array.isArray(body.records) ? body.records : []) tally('records', raw);
     for (const raw of Array.isArray(body.recurring) ? body.recurring : []) tally('recurring', raw);
-    for (const raw of Array.isArray(body.customCategories) ? body.customCategories : []) tally('customCategories', raw);
+    for (const raw of Array.isArray(body.customCategories) ? body.customCategories : [])
+      tally('customCategories', raw);
   });
   run();
 

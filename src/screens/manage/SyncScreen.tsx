@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Alert,
+  DeviceEventEmitter,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING } from '../../constants';
 import { getSetting, saveSetting, setActiveLedgerId as setDbActiveLedgerId } from '../../database/ledgerDB';
@@ -10,7 +17,13 @@ import LoginModal from '../../components/LoginModal';
 import FamilyModal from '../../components/FamilyModal';
 import Modal from '../../components/Modal';
 import { runSync, claimLocalRecordsAsUser, isSyncing } from '../../sync/syncEngine';
-import { apiHealth, apiGetFamily, apiGetLedgers, apiChangePassword, apiDeleteAccount } from '../../sync/apiClient';
+import {
+  apiHealth,
+  apiGetFamily,
+  apiGetLedgers,
+  apiChangePassword,
+  apiDeleteAccount,
+} from '../../sync/apiClient';
 import type { LedgerInfo } from '../../sync/serverTypes';
 import { manageStyles } from './sharedStyles';
 
@@ -163,7 +176,7 @@ export default function SyncScreen() {
   const [familyModal, setFamilyModal] = useState(false);
 
   // ===== 家庭同步状态 =====
-  const [serverUrl, setServerUrl] = useState('');          // 已保存的服务器地址（不展示明文）
+  const [serverUrl, setServerUrl] = useState(''); // 已保存的服务器地址（不展示明文）
   const [serverUrlDraft, setServerUrlDraft] = useState(''); // 输入中的地址（仅在编辑态使用）
   const [editingServer, setEditingServer] = useState(false); // 修改地址编辑态（已连接时不显示明文）
   const [syncToken, setSyncToken] = useState('');
@@ -173,7 +186,7 @@ export default function SyncScreen() {
   const [lastSyncTime, setLastSyncTime] = useState(0);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncUid, setSyncUid] = useState(0);
-  const [ledgers, setLedgers] = useState<LedgerInfo[]>([]);      // 可用账本（个人+家庭）
+  const [ledgers, setLedgers] = useState<LedgerInfo[]>([]); // 可用账本（个人+家庭）
   const [activeLedgerId, setActiveLedgerId] = useState(0);
   const [ledgerSwitchBusy, setLedgerSwitchBusy] = useState(false);
   // 服务器可达性（v0.11.2）：null=未配置或检测中，true=可达，false=不可达
@@ -185,7 +198,12 @@ export default function SyncScreen() {
   // 避免「后回来的旧响应覆盖新结果」和对已卸载组件 setState
   const mountedRef = useRef(true);
   const healthSeq = useRef(0);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   const loadSyncState = useCallback(async () => {
     try {
@@ -217,8 +235,12 @@ export default function SyncScreen() {
         const seq = ++healthSeq.current;
         setServerOnline(null);
         apiHealth(url)
-          .then(() => { if (mountedRef.current && seq === healthSeq.current) setServerOnline(true); })
-          .catch(() => { if (mountedRef.current && seq === healthSeq.current) setServerOnline(false); });
+          .then(() => {
+            if (mountedRef.current && seq === healthSeq.current) setServerOnline(true);
+          })
+          .catch(() => {
+            if (mountedRef.current && seq === healthSeq.current) setServerOnline(false);
+          });
       } else {
         setServerOnline(null);
       }
@@ -290,39 +312,45 @@ export default function SyncScreen() {
   }, [serverUrlDraft, showToast]);
 
   // 登录/注册成功
-  const handleAuthed = useCallback(async (token: string, user: { id: number; displayName: string; avatarEmoji: string; familyId: number | null }) => {
-    await Promise.all([
-      saveSetting(SETTING_KEYS.SYNC_TOKEN, token),
-      saveSetting(SETTING_KEYS.SYNC_USER_ID, String(user.id)),
-      saveSetting(SETTING_KEYS.SYNC_USER_DISPLAY, user.displayName),
-      saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, user.avatarEmoji),
-    ]);
-    // 本地历史记录归属当前用户
-    await claimLocalRecordsAsUser(user.id);
-    setSyncToken(token);
-    setLoggedName(user.displayName);
-    setLoggedAvatar(user.avatarEmoji);
-    setLoginModal(false);
-    hapticSuccess();
-    showToast(`欢迎，${user.displayName}`);
-    DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
-    // 查询家庭名（服务器地址用已保存值，编辑态草稿不再回填明文）
-    try {
-      const { family } = await apiGetFamily(serverUrl, token);
-      await saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, family?.name ?? '');
-      setFamilyName(family?.name ?? '');
-      if (family) {
-        // 已入家庭 → 首次同步（推送本地存量 + 拉取家人数据）
-        setSyncBusy(true);
-        const res = await runSync();
-        setSyncBusy(false);
-        if (res.ok) showToast(`已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条`);
+  const handleAuthed = useCallback(
+    async (
+      token: string,
+      user: { id: number; displayName: string; avatarEmoji: string; familyId: number | null },
+    ) => {
+      await Promise.all([
+        saveSetting(SETTING_KEYS.SYNC_TOKEN, token),
+        saveSetting(SETTING_KEYS.SYNC_USER_ID, String(user.id)),
+        saveSetting(SETTING_KEYS.SYNC_USER_DISPLAY, user.displayName),
+        saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, user.avatarEmoji),
+      ]);
+      // 本地历史记录归属当前用户
+      await claimLocalRecordsAsUser(user.id);
+      setSyncToken(token);
+      setLoggedName(user.displayName);
+      setLoggedAvatar(user.avatarEmoji);
+      setLoginModal(false);
+      hapticSuccess();
+      showToast(`欢迎，${user.displayName}`);
+      DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
+      // 查询家庭名（服务器地址用已保存值，编辑态草稿不再回填明文）
+      try {
+        const { family } = await apiGetFamily(serverUrl, token);
+        await saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, family?.name ?? '');
+        setFamilyName(family?.name ?? '');
+        if (family) {
+          // 已入家庭 → 首次同步（推送本地存量 + 拉取家人数据）
+          setSyncBusy(true);
+          const res = await runSync();
+          setSyncBusy(false);
+          if (res.ok) showToast(`已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条`);
+        }
+      } catch {
+        // 家庭信息查询失败不阻断
       }
-    } catch {
-      // 家庭信息查询失败不阻断
-    }
-    loadSyncState();
-  }, [serverUrl, showToast, loadSyncState]);
+      loadSyncState();
+    },
+    [serverUrl, showToast, loadSyncState],
+  );
 
   // 家庭变化（创建/加入/退出/资料修改）
   const handleFamilyChanged = useCallback(async () => {
@@ -377,7 +405,9 @@ export default function SyncScreen() {
         showToast(
           res.invalid
             ? `已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条；${res.invalid} 条超出字段限制未上传`
-            : res.pushed + res.pulled > 0 ? `已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条` : '已是最新',
+            : res.pushed + res.pulled > 0
+              ? `已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条`
+              : '已是最新',
           res.invalid ? 'error' : 'success',
         );
       } else {
@@ -393,33 +423,38 @@ export default function SyncScreen() {
   }, [serverUrl, syncToken, syncBusy, showToast, loadSyncState]);
 
   // 切换当前账本（个人/家庭）
-  const handleSwitchLedger = useCallback(async (target: LedgerInfo) => {
-    if (!serverUrl || !syncToken || target.id === activeLedgerId) return;
-    if (ledgerSwitchBusy || syncBusy) return;
-    setLedgerSwitchBusy(true);
-    try {
-      await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(target.id));
-      await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, target.name);
-      setActiveLedgerId(target.id);
-      setDbActiveLedgerId(target.id); // 立即切换本地读写作用域
-      // 切账本后拉取该账本数据到本地展示
-      const res = await runSync();
-      if (res.ok) {
-        hapticSuccess();
-        showToast(`已切换到「${target.name}」${res.pushed + res.pulled > 0 ? `，上传 ${res.pushed} / 下载 ${res.pulled}` : ''}`);
-      } else {
-        showToast(res.error ?? '同步失败', 'error');
+  const handleSwitchLedger = useCallback(
+    async (target: LedgerInfo) => {
+      if (!serverUrl || !syncToken || target.id === activeLedgerId) return;
+      if (ledgerSwitchBusy || syncBusy) return;
+      setLedgerSwitchBusy(true);
+      try {
+        await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(target.id));
+        await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, target.name);
+        setActiveLedgerId(target.id);
+        setDbActiveLedgerId(target.id); // 立即切换本地读写作用域
+        // 切账本后拉取该账本数据到本地展示
+        const res = await runSync();
+        if (res.ok) {
+          hapticSuccess();
+          showToast(
+            `已切换到「${target.name}」${res.pushed + res.pulled > 0 ? `，上传 ${res.pushed} / 下载 ${res.pulled}` : ''}`,
+          );
+        } else {
+          showToast(res.error ?? '同步失败', 'error');
+        }
+        // 活动账本已变，展示的数据集整体切换；无论是否拉到数据都通知各页重新查询
+        DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
+      } catch (e) {
+        hapticError();
+        showToast(e instanceof Error ? e.message : '切换失败', 'error');
+      } finally {
+        setLedgerSwitchBusy(false);
+        loadSyncState();
       }
-      // 活动账本已变，展示的数据集整体切换；无论是否拉到数据都通知各页重新查询
-      DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
-    } catch (e) {
-      hapticError();
-      showToast(e instanceof Error ? e.message : '切换失败', 'error');
-    } finally {
-      setLedgerSwitchBusy(false);
-      loadSyncState();
-    }
-  }, [serverUrl, syncToken, activeLedgerId, ledgerSwitchBusy, syncBusy, showToast, loadSyncState]);
+    },
+    [serverUrl, syncToken, activeLedgerId, ledgerSwitchBusy, syncBusy, showToast, loadSyncState],
+  );
 
   // 清掉本地登录态（服务器地址保留）——退出登录与注销账号共用
   const clearLoginState = useCallback(async () => {
@@ -528,7 +563,10 @@ export default function SyncScreen() {
           {serverUrl && !editingServer ? (
             <Pressable
               style={styles.serverEditBtn}
-              onPress={() => { setEditingServer(true); setServerUrlDraft(''); }}
+              onPress={() => {
+                setEditingServer(true);
+                setServerUrlDraft('');
+              }}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="修改服务器地址"
@@ -552,7 +590,13 @@ export default function SyncScreen() {
               {serverOnline === null ? '正在检测服务器…' : serverOnline ? '已连接服务器' : '服务器不可达'}
             </Text>
             {serverOnline === false ? (
-              <Pressable style={styles.serverEditBtn} onPress={loadSyncState} hitSlop={8} accessibilityRole="button" accessibilityLabel="重试连接服务器">
+              <Pressable
+                style={styles.serverEditBtn}
+                onPress={loadSyncState}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="重试连接服务器"
+              >
                 <Text style={styles.serverEditText}>重试</Text>
               </Pressable>
             ) : null}
@@ -574,7 +618,10 @@ export default function SyncScreen() {
             {serverUrl && editingServer ? (
               <Pressable
                 style={styles.serverCancelBtn}
-                onPress={() => { setEditingServer(false); setServerUrlDraft(''); }}
+                onPress={() => {
+                  setEditingServer(false);
+                  setServerUrlDraft('');
+                }}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="取消修改服务器地址"
@@ -624,9 +671,7 @@ export default function SyncScreen() {
                       );
                     })}
                   </View>
-                  {ledgerSwitchBusy ? (
-                    <Text style={styles.hint}>正在切换账本并拉取数据…</Text>
-                  ) : null}
+                  {ledgerSwitchBusy ? <Text style={styles.hint}>正在切换账本并拉取数据…</Text> : null}
                 </>
               ) : null}
               <View style={styles.btnRow}>
@@ -638,13 +683,19 @@ export default function SyncScreen() {
                 >
                   <Text style={styles.actionBtnText}>{syncBusy ? '同步中…' : '🔄 立即同步'}</Text>
                 </Pressable>
-                <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.transfer }]} onPress={() => setFamilyModal(true)} accessibilityRole="button">
+                <Pressable
+                  style={[styles.actionBtn, { backgroundColor: COLORS.transfer }]}
+                  onPress={() => setFamilyModal(true)}
+                  accessibilityRole="button"
+                >
                   <Text style={styles.actionBtnText}>👨‍👩‍👧 家庭管理</Text>
                 </Pressable>
               </View>
               {familyName ? (
                 <Text style={styles.hint}>
-                  {lastSyncTime > 0 ? `上次同步：${formatSyncTime(lastSyncTime)}` : '尚未同步过，点击「立即同步」开始'}
+                  {lastSyncTime > 0
+                    ? `上次同步：${formatSyncTime(lastSyncTime)}`
+                    : '尚未同步过，点击「立即同步」开始'}
                 </Text>
               ) : null}
               <View style={styles.accountRow}>
@@ -667,15 +718,27 @@ export default function SyncScreen() {
                   <Text style={styles.logoutText}>注销账号</Text>
                 </Pressable>
               </View>
-              <Pressable style={styles.logoutRow} onPress={handleLogout} hitSlop={8} accessibilityRole="button" accessibilityLabel="退出登录">
+              <Pressable
+                style={styles.logoutRow}
+                onPress={handleLogout}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="退出登录"
+              >
                 <Text style={styles.logoutText}>退出登录</Text>
               </Pressable>
             </>
           ) : (
             <>
               {/* 未登录 */}
-              <Text style={styles.hint}>连接自建服务端后，可与家人共享一本账（可选功能，不登录则纯本地使用）</Text>
-              <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={() => setLoginModal(true)} accessibilityRole="button">
+              <Text style={styles.hint}>
+                连接自建服务端后，可与家人共享一本账（可选功能，不登录则纯本地使用）
+              </Text>
+              <Pressable
+                style={[styles.actionBtn, { backgroundColor: COLORS.accent }]}
+                onPress={() => setLoginModal(true)}
+                accessibilityRole="button"
+              >
                 <Text style={styles.actionBtnText}>🔑 登录 / 注册</Text>
               </Pressable>
             </>
@@ -747,7 +810,6 @@ export default function SyncScreen() {
           </View>
         ) : null}
       </Modal>
-
     </ScrollView>
   );
 }

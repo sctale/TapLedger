@@ -48,25 +48,26 @@ export default function CategoryPieChart({ data, type, height = 180 }: Props) {
   const radius = Math.max((height - strokeWidth) / 2 - 4, 30);
   const circumference = 2 * Math.PI * radius;
 
-  const arcs = slices
-    .reduce<{ arcs: (Slice & { start: number; fraction: number })[]; last: number }>(
-      (acc, slice) => {
-        const fraction = total > 0 ? slice.total / total : 0;
-        return {
-          arcs: [...acc.arcs, { ...slice, start: acc.last, fraction }],
-          last: acc.last + fraction,
-        };
-      },
-      { arcs: [], last: 0 }
-    )
-    .arcs;
+  const arcs = slices.reduce<{ arcs: (Slice & { start: number; fraction: number })[]; last: number }>(
+    (acc, slice) => {
+      const fraction = total > 0 ? slice.total / total : 0;
+      return {
+        arcs: [...acc.arcs, { ...slice, start: acc.last, fraction }],
+        last: acc.last + fraction,
+      };
+    },
+    { arcs: [], last: 0 },
+  ).arcs;
 
   return (
     <View
       style={styles.container}
       accessible
       accessibilityRole="image"
-      accessibilityLabel={`分类占比图，合计 ${Math.round(total)} 元；${slices.slice(0, 4).map((s) => `${s.label} ${Math.round(s.total)} 元`).join('，')}`}
+      accessibilityLabel={`分类占比图，合计 ${Math.round(total)} 元；${slices
+        .slice(0, 4)
+        .map((s) => `${s.label} ${Math.round(s.total)} 元`)
+        .join('，')}`}
     >
       <View style={{ width: height, height }}>
         <Svg width={height} height={height} viewBox={`0 0 ${height} ${height}`}>

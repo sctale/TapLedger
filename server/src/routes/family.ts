@@ -27,19 +27,29 @@ router.post('/', requireAuth, (req, res) => {
   }
   const code = genUniqueInviteCode();
   const tx = db.transaction(() => {
-    const info = db.prepare(
-      'INSERT INTO families (name, invite_code, owner_id, created_at) VALUES (?, ?, ?, ?)'
-    ).run(parsed.data.name, code, req.authUser!.id, Date.now());
-    db.prepare("UPDATE users SET family_id = ?, family_role = 'owner' WHERE id = ?")
-      .run(info.lastInsertRowid, req.authUser!.id);
+    const info = db
+      .prepare('INSERT INTO families (name, invite_code, owner_id, created_at) VALUES (?, ?, ?, ?)')
+      .run(parsed.data.name, code, req.authUser!.id, Date.now());
+    db.prepare("UPDATE users SET family_id = ?, family_role = 'owner' WHERE id = ?").run(
+      info.lastInsertRowid,
+      req.authUser!.id,
+    );
     return info.lastInsertRowid as number;
   });
   const familyId = tx();
-  const family = db.prepare('SELECT id, name, invite_code, owner_id FROM families WHERE id = ?').get(familyId) as {
-    id: number; name: string; invite_code: string; owner_id: number;
+  const family = db
+    .prepare('SELECT id, name, invite_code, owner_id FROM families WHERE id = ?')
+    .get(familyId) as {
+    id: number;
+    name: string;
+    invite_code: string;
+    owner_id: number;
   };
   const info: FamilyInfo = {
-    id: family.id, name: family.name, inviteCode: family.invite_code, ownerId: family.owner_id,
+    id: family.id,
+    name: family.name,
+    inviteCode: family.invite_code,
+    ownerId: family.owner_id,
   };
   res.json({ family: info, user: { ...req.authUser!, familyId: familyId, familyRole: 'owner' } });
 });
@@ -78,7 +88,8 @@ router.post('/join', joinRateLimit, requireAuth, (req, res) => {
     res.status(429).json({ error: '该邀请码尝试次数过多，已临时锁定，请 10 分钟后再试' });
     return;
   }
-  const family = db.prepare('SELECT id, name, invite_code, owner_id FROM families WHERE invite_code = ?')
+  const family = db
+    .prepare('SELECT id, name, invite_code, owner_id FROM families WHERE invite_code = ?')
     .get(code) as { id: number; name: string; invite_code: string; owner_id: number } | undefined;
   if (!family) {
     let rec = joinFailures.get(code);
@@ -94,10 +105,15 @@ router.post('/join', joinRateLimit, requireAuth, (req, res) => {
     return;
   }
   joinFailures.delete(code);
-  db.prepare("UPDATE users SET family_id = ?, family_role = 'member' WHERE id = ?")
-    .run(family.id, req.authUser!.id);
+  db.prepare("UPDATE users SET family_id = ?, family_role = 'member' WHERE id = ?").run(
+    family.id,
+    req.authUser!.id,
+  );
   const info: FamilyInfo = {
-    id: family.id, name: family.name, inviteCode: family.invite_code, ownerId: family.owner_id,
+    id: family.id,
+    name: family.name,
+    inviteCode: family.invite_code,
+    ownerId: family.owner_id,
   };
   res.json({ family: info, user: { ...req.authUser!, familyId: family.id, familyRole: 'member' } });
 });
@@ -108,14 +124,18 @@ router.get('/', requireAuth, (req, res) => {
     res.json({ family: null });
     return;
   }
-  const family = db.prepare('SELECT id, name, invite_code, owner_id FROM families WHERE id = ?')
+  const family = db
+    .prepare('SELECT id, name, invite_code, owner_id FROM families WHERE id = ?')
     .get(req.authUser!.familyId) as { id: number; name: string; invite_code: string; owner_id: number };
   if (!family) {
     res.json({ family: null });
     return;
   }
   const info: FamilyInfo = {
-    id: family.id, name: family.name, inviteCode: family.invite_code, ownerId: family.owner_id,
+    id: family.id,
+    name: family.name,
+    inviteCode: family.invite_code,
+    ownerId: family.owner_id,
   };
   res.json({ family: info });
 });
@@ -126,11 +146,16 @@ router.get('/members', requireAuth, (req, res) => {
     res.status(403).json({ error: '请先创建或加入家庭' });
     return;
   }
-  const rows = db.prepare(
-    `SELECT id, display_name, avatar_emoji, family_role FROM users
-     WHERE family_id = ? ORDER BY (family_role = 'owner') DESC, id ASC`
-  ).all(req.authUser!.familyId) as {
-    id: number; display_name: string; avatar_emoji: string; family_role: 'owner' | 'member';
+  const rows = db
+    .prepare(
+      `SELECT id, display_name, avatar_emoji, family_role FROM users
+     WHERE family_id = ? ORDER BY (family_role = 'owner') DESC, id ASC`,
+    )
+    .all(req.authUser!.familyId) as {
+    id: number;
+    display_name: string;
+    avatar_emoji: string;
+    family_role: 'owner' | 'member';
   }[];
   const members: FamilyMember[] = rows.map((r) => ({
     id: r.id,
@@ -169,13 +194,12 @@ router.delete('/members/:userId', requireAuth, (req, res) => {
     return;
   }
   const target = db.prepare('SELECT id, family_id FROM users WHERE id = ?').get(targetId) as
-    | { id: number; family_id: number | null }
-    | undefined;
+    { id: number; family_id: number | null } | undefined;
   if (!target || target.family_id !== me.familyId) {
     res.status(404).json({ error: '该成员不存在或不属于此家庭' });
     return;
   }
-  db.prepare("UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?").run(targetId);
+  db.prepare('UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?').run(targetId);
   res.json({ ok: true });
 });
 
@@ -187,7 +211,9 @@ router.post('/leave', requireAuth, (req, res) => {
   }
   const familyId = req.authUser!.familyId;
   if (req.authUser!.familyRole === 'owner') {
-    const members = db.prepare('SELECT COUNT(*) as c FROM users WHERE family_id = ?').get(familyId) as { c: number };
+    const members = db.prepare('SELECT COUNT(*) as c FROM users WHERE family_id = ?').get(familyId) as {
+      c: number;
+    };
     if (members.c > 1) {
       res.status(409).json({ error: '家庭还有其他成员，创建者不能直接退出' });
       return;
@@ -197,12 +223,12 @@ router.post('/leave', requireAuth, (req, res) => {
       db.prepare('DELETE FROM records WHERE family_id = ?').run(familyId);
       db.prepare('DELETE FROM recurring WHERE family_id = ?').run(familyId);
       db.prepare('DELETE FROM custom_categories WHERE family_id = ?').run(familyId);
-      db.prepare("UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?").run(req.authUser!.id);
+      db.prepare('UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?').run(req.authUser!.id);
       db.prepare('DELETE FROM families WHERE id = ?').run(familyId);
     });
     tx();
   } else {
-    db.prepare("UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?").run(req.authUser!.id);
+    db.prepare('UPDATE users SET family_id = NULL, family_role = NULL WHERE id = ?').run(req.authUser!.id);
   }
   res.json({ ok: true });
 });

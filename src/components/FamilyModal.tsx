@@ -9,14 +9,22 @@ interface Props {
   visible: boolean;
   baseUrl: string;
   token: string;
-  currentUserId: number;       // 当前登录用户 id（判断是否 owner）
+  currentUserId: number; // 当前登录用户 id（判断是否 owner）
   onClose: () => void;
-  onFamilyChanged: () => void;   // 创建/加入/退出后刷新外层状态
+  onFamilyChanged: () => void; // 创建/加入/退出后刷新外层状态
   onError: (msg: string) => void;
 }
 
 // 家庭弹窗：未入家（创建/邀请码加入）｜已入家（成员列表 + 邀请码管理 + 退出）
-export default function FamilyModal({ visible, baseUrl, token, currentUserId, onClose, onFamilyChanged, onError }: Props) {
+export default function FamilyModal({
+  visible,
+  baseUrl,
+  token,
+  currentUserId,
+  onClose,
+  onFamilyChanged,
+  onError,
+}: Props) {
   const [family, setFamily] = useState<FamilyInfo | null>(null);
   // 首次回读没落地前先显示加载态：否则已有家庭的成员打开弹窗会闪一下「创建新家庭」，
   // 看起来像家庭凭空消失了
@@ -156,34 +164,30 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
             }
           },
         },
-      ]
+      ],
     );
   };
 
   // owner 移除成员（v0.5；不可移除自己）
   const removeMember = (m: FamilyMember) => {
-    Alert.alert(
-      '移除成员',
-      `确定将「${m.displayName}」移出家庭？其历史记录保留在账本中。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '移除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { apiRemoveMember } = await import('../sync/apiClient');
-              await apiRemoveMember(baseUrl, token, m.id);
-              hapticLight();
-              reload();
-            } catch (e) {
-              hapticError();
-              onError(e instanceof Error ? e.message : '移除失败');
-            }
-          },
+    Alert.alert('移除成员', `确定将「${m.displayName}」移出家庭？其历史记录保留在账本中。`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '移除',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const { apiRemoveMember } = await import('../sync/apiClient');
+            await apiRemoveMember(baseUrl, token, m.id);
+            hapticLight();
+            reload();
+          } catch (e) {
+            hapticError();
+            onError(e instanceof Error ? e.message : '移除失败');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   // 修改自己的昵称/头像（v0.5）
@@ -212,148 +216,171 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
 
   return (
     <Modal visible={visible} title="家庭账本" onClose={onClose}>
-        {!loaded ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="small" color={COLORS.accent} />
-            <Text style={styles.loadingText}>正在读取家庭信息…</Text>
-          </View>
-        ) : family ? (
-          <>
-            {/* 家庭信息 */}
-            <View style={styles.formGroup}>
-              <Text style={styles.familyName}>🏠 {family.name}</Text>
-              <Pressable
-                style={styles.inviteRow}
-                accessibilityRole="button"
-                accessibilityLabel={`邀请码${family.inviteCode}，点击查看`}
-                onPress={() => {
+      {!loaded ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="small" color={COLORS.accent} />
+          <Text style={styles.loadingText}>正在读取家庭信息…</Text>
+        </View>
+      ) : family ? (
+        <>
+          {/* 家庭信息 */}
+          <View style={styles.formGroup}>
+            <Text style={styles.familyName}>🏠 {family.name}</Text>
+            <Pressable
+              style={styles.inviteRow}
+              accessibilityRole="button"
+              accessibilityLabel={`邀请码${family.inviteCode}，点击查看`}
+              onPress={() => {
                 // 复制邀请码（长按复制体验的轻量替代：点击提示）
                 Alert.alert('邀请码', `把邀请码告诉家人：${family.inviteCode}`);
-              }}>
-                <Text style={styles.inviteLabel}>邀请码</Text>
-                <Text style={styles.inviteCode}>{family.inviteCode}</Text>
-              </Pressable>
-              {isOwner ? (
-                <Pressable onPress={regenerate} hitSlop={8} accessibilityRole="button">
-                  <Text style={styles.linkText}>重置邀请码</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            {/* 成员列表 */}
-            <View style={styles.formGroup}>
-              <Text style={styles.fieldLabel}>成员（{members.length}）</Text>
-              {members.map((m) => (
-                <View key={m.id} style={styles.memberRow}>
-                  <View style={styles.memberAvatar}>
-                    <Text style={styles.memberEmoji}>{m.avatarEmoji}</Text>
-                  </View>
-                  <Text style={styles.memberName}>{m.displayName}</Text>
-                  <View style={[styles.roleBadge, m.role === 'owner' && styles.roleBadgeOwner]}>
-                    <Text style={styles.roleText}>{m.role === 'owner' ? '创建者' : '成员'}</Text>
-                  </View>
-                  {/* owner 可移除其他成员（v0.5） */}
-                  {isOwner && m.id !== currentUserId ? (
-                    <Pressable
-                      style={styles.removeBtn}
-                      onPress={() => removeMember(m)}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={`移除成员${m.displayName}`}
-                    >
-                      <Text style={styles.removeText}>移除</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ))}
-
-              {/* 修改自己的资料（v0.5） */}
-              {editingProfile ? (
-                <View style={styles.profileEdit}>
-                  <Text style={styles.fieldLabel}>我的昵称</Text>
-                  <TextInput
-                    style={styles.inlineInputFull}
-                    value={profileName}
-                    onChangeText={setProfileName}
-                    maxLength={12}
-                    placeholder="昵称（最多 12 字）"
-                    placeholderTextColor={COLORS.textTertiary}
-                  />
-                  <Text style={[styles.fieldLabel, { marginTop: SPACING.sm }]}>我的头像</Text>
-                  <View style={styles.avatarGrid}>
-                    {AVATARS.map((a) => (
-                      <Pressable
-                        key={a}
-                        style={[styles.avatarCell, profileEmoji === a && styles.avatarCellActive]}
-                        onPress={() => { setProfileEmoji(a); hapticLight(); }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`选择头像${a}`}
-                        accessibilityState={{ selected: profileEmoji === a }}
-                      >
-                        <Text style={styles.avatarCellEmoji}>{a}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                  <View style={styles.profileBtnRow}>
-                    <Pressable style={styles.cancelBtn} onPress={() => setEditingProfile(false)} accessibilityRole="button">
-                      <Text style={styles.cancelText}>取消</Text>
-                    </Pressable>
-                    <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={saveProfile} disabled={busy} accessibilityRole="button">
-                      <Text style={styles.inlineBtnText}>保存</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : (
-                <Pressable onPress={() => setEditingProfile(true)} hitSlop={8} accessibilityRole="button">
-                  <Text style={styles.linkText}>✏️ 修改我的昵称 / 头像</Text>
-                </Pressable>
-              )}
-            </View>
-
-            <Pressable style={[styles.leaveBtn]} onPress={leaveFamily} accessibilityRole="button">
-              <Text style={styles.leaveText}>{isOwner ? '解散家庭' : '退出家庭'}</Text>
+              }}
+            >
+              <Text style={styles.inviteLabel}>邀请码</Text>
+              <Text style={styles.inviteCode}>{family.inviteCode}</Text>
             </Pressable>
-          </>
-        ) : (
-          <>
-            {/* 创建家庭 */}
-            <View style={styles.formGroup}>
-              <Text style={styles.fieldLabel}>创建新家庭（你是创建者）</Text>
-              <View style={styles.inlineRow}>
-                <TextInput
-                  style={styles.inlineInput}
-                  placeholder="家庭名称，如 我们家"
-                  placeholderTextColor={COLORS.textTertiary}
-                  value={name}
-                  onChangeText={setName}
-                  maxLength={20}
-                />
-                <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={createFamily} disabled={busy} accessibilityRole="button">
-                  <Text style={styles.inlineBtnText}>创建</Text>
-                </Pressable>
-              </View>
-            </View>
+            {isOwner ? (
+              <Pressable onPress={regenerate} hitSlop={8} accessibilityRole="button">
+                <Text style={styles.linkText}>重置邀请码</Text>
+              </Pressable>
+            ) : null}
+          </View>
 
-            {/* 邀请码加入 */}
-            <View style={styles.formGroup}>
-              <Text style={styles.fieldLabel}>或用家人分享的邀请码加入</Text>
-              <View style={styles.inlineRow}>
-                <TextInput
-                  style={styles.inlineInput}
-                  placeholder="6 位邀请码"
-                  placeholderTextColor={COLORS.textTertiary}
-                  value={inviteCode}
-                  onChangeText={(t) => setInviteCode(t.toUpperCase())}
-                  maxLength={6}
-                  autoCapitalize="characters"
-                />
-                <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={joinFamily} disabled={busy} accessibilityRole="button">
-                  <Text style={styles.inlineBtnText}>加入</Text>
-                </Pressable>
+          {/* 成员列表 */}
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>成员（{members.length}）</Text>
+            {members.map((m) => (
+              <View key={m.id} style={styles.memberRow}>
+                <View style={styles.memberAvatar}>
+                  <Text style={styles.memberEmoji}>{m.avatarEmoji}</Text>
+                </View>
+                <Text style={styles.memberName}>{m.displayName}</Text>
+                <View style={[styles.roleBadge, m.role === 'owner' && styles.roleBadgeOwner]}>
+                  <Text style={styles.roleText}>{m.role === 'owner' ? '创建者' : '成员'}</Text>
+                </View>
+                {/* owner 可移除其他成员（v0.5） */}
+                {isOwner && m.id !== currentUserId ? (
+                  <Pressable
+                    style={styles.removeBtn}
+                    onPress={() => removeMember(m)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`移除成员${m.displayName}`}
+                  >
+                    <Text style={styles.removeText}>移除</Text>
+                  </Pressable>
+                ) : null}
               </View>
+            ))}
+
+            {/* 修改自己的资料（v0.5） */}
+            {editingProfile ? (
+              <View style={styles.profileEdit}>
+                <Text style={styles.fieldLabel}>我的昵称</Text>
+                <TextInput
+                  style={styles.inlineInputFull}
+                  value={profileName}
+                  onChangeText={setProfileName}
+                  maxLength={12}
+                  placeholder="昵称（最多 12 字）"
+                  placeholderTextColor={COLORS.textTertiary}
+                />
+                <Text style={[styles.fieldLabel, { marginTop: SPACING.sm }]}>我的头像</Text>
+                <View style={styles.avatarGrid}>
+                  {AVATARS.map((a) => (
+                    <Pressable
+                      key={a}
+                      style={[styles.avatarCell, profileEmoji === a && styles.avatarCellActive]}
+                      onPress={() => {
+                        setProfileEmoji(a);
+                        hapticLight();
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`选择头像${a}`}
+                      accessibilityState={{ selected: profileEmoji === a }}
+                    >
+                      <Text style={styles.avatarCellEmoji}>{a}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.profileBtnRow}>
+                  <Pressable
+                    style={styles.cancelBtn}
+                    onPress={() => setEditingProfile(false)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.cancelText}>取消</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.inlineBtn, busy && styles.btnDisabled]}
+                    onPress={saveProfile}
+                    disabled={busy}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.inlineBtnText}>保存</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <Pressable onPress={() => setEditingProfile(true)} hitSlop={8} accessibilityRole="button">
+                <Text style={styles.linkText}>✏️ 修改我的昵称 / 头像</Text>
+              </Pressable>
+            )}
+          </View>
+
+          <Pressable style={[styles.leaveBtn]} onPress={leaveFamily} accessibilityRole="button">
+            <Text style={styles.leaveText}>{isOwner ? '解散家庭' : '退出家庭'}</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          {/* 创建家庭 */}
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>创建新家庭（你是创建者）</Text>
+            <View style={styles.inlineRow}>
+              <TextInput
+                style={styles.inlineInput}
+                placeholder="家庭名称，如 我们家"
+                placeholderTextColor={COLORS.textTertiary}
+                value={name}
+                onChangeText={setName}
+                maxLength={20}
+              />
+              <Pressable
+                style={[styles.inlineBtn, busy && styles.btnDisabled]}
+                onPress={createFamily}
+                disabled={busy}
+                accessibilityRole="button"
+              >
+                <Text style={styles.inlineBtnText}>创建</Text>
+              </Pressable>
             </View>
-          </>
-        )}
+          </View>
+
+          {/* 邀请码加入 */}
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>或用家人分享的邀请码加入</Text>
+            <View style={styles.inlineRow}>
+              <TextInput
+                style={styles.inlineInput}
+                placeholder="6 位邀请码"
+                placeholderTextColor={COLORS.textTertiary}
+                value={inviteCode}
+                onChangeText={(t) => setInviteCode(t.toUpperCase())}
+                maxLength={6}
+                autoCapitalize="characters"
+              />
+              <Pressable
+                style={[styles.inlineBtn, busy && styles.btnDisabled]}
+                onPress={joinFamily}
+                disabled={busy}
+                accessibilityRole="button"
+              >
+                <Text style={styles.inlineBtnText}>加入</Text>
+              </Pressable>
+            </View>
+          </View>
+        </>
+      )}
     </Modal>
   );
 }

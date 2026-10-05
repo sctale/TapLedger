@@ -65,177 +65,196 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
   const submit = () => {
     onSubmit(
       {
-        name, amount: parseFloat(amount) || 0, type, category,
-        frequency, dayOfWeek, dayOfMonth, monthOfYear, note,
+        name,
+        amount: parseFloat(amount) || 0,
+        type,
+        category,
+        frequency,
+        dayOfWeek,
+        dayOfMonth,
+        monthOfYear,
+        note,
         // 编辑时保留原规则的启用状态与最近生成日期，由调用方合并
         enabled: initialRule ? initialRule.enabled : true,
         lastGenerated: initialRule?.lastGenerated ?? '',
       },
-      initialRule
+      initialRule,
     );
   };
 
   return (
-    <Modal visible={visible} title={isEditing ? "编辑周期记账" : "添加周期记账"} saveLabel={isEditing ? '保存修改' : '保存'} onClose={onClose} onSave={submit}>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>名称</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="如 工资 / 房租 / 会员订阅"
-            placeholderTextColor={COLORS.textTertiary}
-            value={name}
-            onChangeText={setName}
-            maxLength={12}
-            returnKeyType="done"
-          />
+    <Modal
+      visible={visible}
+      title={isEditing ? '编辑周期记账' : '添加周期记账'}
+      saveLabel={isEditing ? '保存修改' : '保存'}
+      onClose={onClose}
+      onSave={submit}
+    >
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>名称</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="如 工资 / 房租 / 会员订阅"
+          placeholderTextColor={COLORS.textTertiary}
+          value={name}
+          onChangeText={setName}
+          maxLength={12}
+          returnKeyType="done"
+        />
+      </View>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>金额（元）</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="0.00"
+          placeholderTextColor={COLORS.textTertiary}
+          keyboardType="decimal-pad"
+          returnKeyType="done"
+          value={amount}
+          onChangeText={(t) => {
+            // v0.11 修复：只保留第一个小数点，"1.2.3" 归一为 "1.23"（此前 parseFloat 静默截为 1.2）
+            let v = t.replace(/[^0-9.]/g, '');
+            const i = v.indexOf('.');
+            if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '');
+            setAmount(v);
+          }}
+          maxLength={9}
+        />
+      </View>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>收支类型</Text>
+        <View style={styles.typeSwitch}>
+          {(['expense', 'income'] as RecordType[]).map((t) => (
+            <Pressable
+              key={t}
+              style={[
+                styles.typeBtn,
+                type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome),
+              ]}
+              onPress={() => {
+                setType(t);
+                // 原来只硬编码 food/housing 两个 key：自定义分类或第 7 个之后的分类
+                // 切类型后会「选中但看不见」，保存下来仍是另一个类型的分类
+                const next = getCategories(t);
+                if (!next.some((c) => c.key === category)) setCategory(next[0]?.key ?? 'other');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t === 'expense' ? '支出' : '收入'}
+              accessibilityState={{ selected: type === t }}
+            >
+              <Text style={[styles.typeText, type === t && styles.typeTextActive]}>
+                {t === 'expense' ? '支出' : '收入'}
+              </Text>
+            </Pressable>
+          ))}
         </View>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>金额（元）</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="0.00"
-            placeholderTextColor={COLORS.textTertiary}
-            keyboardType="decimal-pad"
-            returnKeyType="done"
-            value={amount}
-            onChangeText={(t) => {
-              // v0.11 修复：只保留第一个小数点，"1.2.3" 归一为 "1.23"（此前 parseFloat 静默截为 1.2）
-              let v = t.replace(/[^0-9.]/g, '');
-              const i = v.indexOf('.');
-              if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '');
-              setAmount(v);
-            }}
-            maxLength={9}
-          />
-        </View>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>收支类型</Text>
-          <View style={styles.typeSwitch}>
-            {(['expense', 'income'] as RecordType[]).map((t) => (
+      </View>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>分类</Text>
+        <View style={styles.catWrap}>
+          {(() => {
+            const all = getCategories(type);
+            const chips = all.slice(0, 6);
+            const selected = all.find((c) => c.key === category);
+            // 编辑已有规则时选中的分类可能排在 6 个之后 → 用最后一格顶出来，保证看得见当前值
+            if (selected && !chips.some((c) => c.key === selected.key)) chips[5] = selected;
+            return chips.map((c) => (
               <Pressable
-                key={t}
-                style={[styles.typeBtn, type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome)]}
-                onPress={() => {
-                  setType(t);
-                  // 原来只硬编码 food/housing 两个 key：自定义分类或第 7 个之后的分类
-                  // 切类型后会「选中但看不见」，保存下来仍是另一个类型的分类
-                  const next = getCategories(t);
-                  if (!next.some((c) => c.key === category)) setCategory(next[0]?.key ?? 'other');
-                }}
+                key={c.key}
+                style={[
+                  styles.pickChip,
+                  category === c.key && { backgroundColor: c.color, borderColor: c.color },
+                ]}
+                onPress={() => setCategory(c.key)}
                 accessibilityRole="button"
-                accessibilityLabel={t === 'expense' ? '支出' : '收入'}
-                accessibilityState={{ selected: type === t }}
+                accessibilityLabel={c.label}
+                accessibilityState={{ selected: category === c.key }}
               >
-                <Text style={[styles.typeText, type === t && styles.typeTextActive]}>
-                  {t === 'expense' ? '支出' : '收入'}
-                </Text>
+                <Text style={styles.pickEmoji}>{c.emoji}</Text>
+                <Text style={[styles.pickName, category === c.key && styles.pickNameOn]}>{c.label}</Text>
+              </Pressable>
+            ));
+          })()}
+        </View>
+      </View>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>频率</Text>
+        <View style={styles.catWrap}>
+          {RECURRING_FREQUENCIES.map((f) => (
+            <Pressable
+              key={f.key}
+              style={[styles.pickChip, frequency === f.key && localStyles.pickChipOn]}
+              onPress={() => setFrequency(f.key)}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.pickName, frequency === f.key && styles.pickNameOn]}>{f.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+      {frequency === 'weekly' ? (
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>每周几</Text>
+          <View style={styles.catWrap}>
+            {['日', '一', '二', '三', '四', '五', '六'].map((w, i) => (
+              <Pressable
+                key={w}
+                style={[styles.pickChip, dayOfWeek === i && localStyles.pickChipOn]}
+                onPress={() => setDayOfWeek(i)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.pickName, dayOfWeek === i && styles.pickNameOn]}>周{w}</Text>
               </Pressable>
             ))}
           </View>
         </View>
+      ) : null}
+      {frequency === 'monthly' || frequency === 'yearly' ? (
         <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>分类</Text>
+          <Text style={styles.fieldLabel}>{frequency === 'monthly' ? '每月几号' : '每年几月几号'}</Text>
           <View style={styles.catWrap}>
-            {(() => {
-              const all = getCategories(type);
-              const chips = all.slice(0, 6);
-              const selected = all.find((c) => c.key === category);
-              // 编辑已有规则时选中的分类可能排在 6 个之后 → 用最后一格顶出来，保证看得见当前值
-              if (selected && !chips.some((c) => c.key === selected.key)) chips[5] = selected;
-              return chips.map((c) => (
-                <Pressable
-                  key={c.key}
-                  style={[styles.pickChip, category === c.key && { backgroundColor: c.color, borderColor: c.color }]}
-                  onPress={() => setCategory(c.key)}
-                  accessibilityRole="button"
-                  accessibilityLabel={c.label}
-                  accessibilityState={{ selected: category === c.key }}
-                >
-                  <Text style={styles.pickEmoji}>{c.emoji}</Text>
-                  <Text style={[styles.pickName, category === c.key && styles.pickNameOn]}>{c.label}</Text>
-                </Pressable>
-              ));
-            })()}
-          </View>
-        </View>
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>频率</Text>
-          <View style={styles.catWrap}>
-            {RECURRING_FREQUENCIES.map((f) => (
+            {[1, 5, 10, 15, 20, 25, 28, 31].map((d) => (
               <Pressable
-                key={f.key}
-                style={[styles.pickChip, frequency === f.key && localStyles.pickChipOn]}
-                onPress={() => setFrequency(f.key)}
+                key={d}
+                style={[styles.pickChip, dayOfMonth === d && localStyles.pickChipOn]}
+                onPress={() => setDayOfMonth(d)}
                 accessibilityRole="button"
               >
-                <Text style={[styles.pickName, frequency === f.key && styles.pickNameOn]}>{f.label}</Text>
+                <Text style={[styles.pickName, dayOfMonth === d && styles.pickNameOn]}>{d}号</Text>
               </Pressable>
             ))}
           </View>
         </View>
-        {frequency === 'weekly' ? (
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>每周几</Text>
-            <View style={styles.catWrap}>
-              {['日', '一', '二', '三', '四', '五', '六'].map((w, i) => (
-                <Pressable
-                  key={w}
-                  style={[styles.pickChip, dayOfWeek === i && localStyles.pickChipOn]}
-                  onPress={() => setDayOfWeek(i)}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.pickName, dayOfWeek === i && styles.pickNameOn]}>周{w}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
-        {frequency === 'monthly' || frequency === 'yearly' ? (
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>{frequency === 'monthly' ? '每月几号' : '每年几月几号'}</Text>
-            <View style={styles.catWrap}>
-              {[1, 5, 10, 15, 20, 25, 28, 31].map((d) => (
-                <Pressable
-                  key={d}
-                  style={[styles.pickChip, dayOfMonth === d && localStyles.pickChipOn]}
-                  onPress={() => setDayOfMonth(d)}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.pickName, dayOfMonth === d && styles.pickNameOn]}>{d}号</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
-        {frequency === 'yearly' ? (
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>月份</Text>
-            <View style={styles.catWrap}>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
-                <Pressable
-                  key={m}
-                  style={[styles.pickChip, monthOfYear === m && localStyles.pickChipOn]}
-                  onPress={() => setMonthOfYear(m)}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.pickName, monthOfYear === m && styles.pickNameOn]}>{m}月</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
+      ) : null}
+      {frequency === 'yearly' ? (
         <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>备注（可选，作为记录备注）</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="如 每月工资"
-            placeholderTextColor={COLORS.textTertiary}
-            value={note}
-            onChangeText={setNote}
-            maxLength={20}
-            returnKeyType="done"
-          />
+          <Text style={styles.fieldLabel}>月份</Text>
+          <View style={styles.catWrap}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
+              <Pressable
+                key={m}
+                style={[styles.pickChip, monthOfYear === m && localStyles.pickChipOn]}
+                onPress={() => setMonthOfYear(m)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.pickName, monthOfYear === m && styles.pickNameOn]}>{m}月</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
+      ) : null}
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>备注（可选，作为记录备注）</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="如 每月工资"
+          placeholderTextColor={COLORS.textTertiary}
+          value={note}
+          onChangeText={setNote}
+          maxLength={20}
+          returnKeyType="done"
+        />
+      </View>
     </Modal>
   );
 }

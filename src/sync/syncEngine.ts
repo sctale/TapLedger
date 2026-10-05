@@ -2,12 +2,16 @@
 // 流程：push 本地水位后的变更 → pull 服务端变更 → 本地 upsert（LWW）→ 更新水位
 import { DeviceEventEmitter } from 'react-native';
 import { LEDGER_EVENTS, SETTING_KEYS } from '../constants';
-import { getDB, saveSetting, getSetting, getActiveLedgerId, setActiveLedgerId, adoptUnassignedRowsIntoLedger } from '../database/ledgerDB';
+import {
+  getDB,
+  saveSetting,
+  getSetting,
+  getActiveLedgerId,
+  setActiveLedgerId,
+  adoptUnassignedRowsIntoLedger,
+} from '../database/ledgerDB';
 import { apiSyncPull, apiSyncPush, apiGetLedgers, getSyncConfig, ApiError } from './apiClient';
-import type {
-  SyncChanges, SyncCustomCategoryDTO, SyncRecordDTO,
-  SyncRecurringDTO,
-} from './serverTypes';
+import type { SyncChanges, SyncCustomCategoryDTO, SyncRecordDTO, SyncRecurringDTO } from './serverTypes';
 
 export interface SyncResult {
   ok: boolean;
@@ -30,12 +34,11 @@ async function resolveActiveLedgerId(baseUrl: string, token: string): Promise<nu
   const saved = await getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID);
   const savedId = Number(saved ?? '0') || 0;
   if (savedId > 0) return savedId;
-  const { ledgers } = await apiGetLedgers(baseUrl, token)
-    .catch((e) => {
-      // 凭证失效（401）交给主 catch 清理登录态，不再吞掉
-      if (e instanceof ApiError && e.status === 401) throw e;
-      return { ledgers: [] as { type: string; id: number }[] };
-    });
+  const { ledgers } = await apiGetLedgers(baseUrl, token).catch((e) => {
+    // 凭证失效（401）交给主 catch 清理登录态，不再吞掉
+    if (e instanceof ApiError && e.status === 401) throw e;
+    return { ledgers: [] as { type: string; id: number }[] };
+  });
   const personal = ledgers.find((l) => l.type === 'personal');
   if (personal) {
     await saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, String(personal.id));
@@ -50,7 +53,9 @@ function watermarkKey(base: string, ledgerId: number): string {
 
 // ===== push：收集本地 updated_at > 水位 的变更 =====
 
-async function collectPushChanges(sinceTs: number): Promise<{ changes: Partial<SyncChanges>; maxLocalTs: number }> {
+async function collectPushChanges(
+  sinceTs: number,
+): Promise<{ changes: Partial<SyncChanges>; maxLocalTs: number }> {
   const db = await getDB();
   const ledgerId = getActiveLedgerId();
 
@@ -58,7 +63,7 @@ async function collectPushChanges(sinceTs: number): Promise<{ changes: Partial<S
     `SELECT uuid, user_id as userId, amount, category, type, note, date, timestamp,
             reimbursable, reimbursed, updated_at as updatedAt, deleted
      FROM ledger_records WHERE updated_at > ? AND uuid != '' AND ledger_id = ? ORDER BY updated_at ASC`,
-    [sinceTs, ledgerId]
+    [sinceTs, ledgerId],
   );
 
   const recurring = await db.getAllAsync<SyncRecurringDTO & { user_id: number }>(
@@ -66,13 +71,13 @@ async function collectPushChanges(sinceTs: number): Promise<{ changes: Partial<S
             frequency, day_of_week as dayOfWeek, day_of_month as dayOfMonth, month_of_year as monthOfYear,
             note, enabled, last_generated as lastGenerated, updated_at as updatedAt, deleted
      FROM recurring_rules WHERE updated_at > ? AND uuid != '' AND ledger_id = ? ORDER BY updated_at ASC`,
-    [sinceTs, ledgerId]
+    [sinceTs, ledgerId],
   );
 
   const customCategories = await db.getAllAsync<SyncCustomCategoryDTO>(
     `SELECT uuid, key, label, emoji, color, type, updated_at as updatedAt, deleted
      FROM custom_categories WHERE updated_at > ? AND uuid != '' AND ledger_id = ? ORDER BY updated_at ASC`,
-    [sinceTs, ledgerId]
+    [sinceTs, ledgerId],
   );
 
   // 水位推进：本次推送行中的最大 updated_at
@@ -101,7 +106,8 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
     // 1) 记录
     for (const r of changes.records) {
       const local = await db.getFirstAsync<{ id: number; updated_at: number }>(
-        'SELECT id, updated_at FROM ledger_records WHERE uuid = ? AND ledger_id = ?', [r.uuid, activeLedger]
+        'SELECT id, updated_at FROM ledger_records WHERE uuid = ? AND ledger_id = ?',
+        [r.uuid, activeLedger],
       );
       if (local) {
         if (r.updatedAt > local.updated_at) {
@@ -109,8 +115,20 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
             `UPDATE ledger_records SET amount = ?, category = ?, type = ?, note = ?, date = ?, timestamp = ?,
              reimbursable = ?, reimbursed = ?, user_id = ?, updated_at = ?, deleted = ?
              WHERE id = ?`,
-            [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
-             r.reimbursable, r.reimbursed, r.userId, r.updatedAt, r.deleted, local.id]
+            [
+              r.amount,
+              r.category,
+              r.type,
+              r.note,
+              r.date,
+              r.timestamp,
+              r.reimbursable,
+              r.reimbursed,
+              r.userId,
+              r.updatedAt,
+              r.deleted,
+              local.id,
+            ],
           );
           applied++;
         }
@@ -118,8 +136,21 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
         await db.runAsync(
           `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, ledger_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
-           r.reimbursable, r.reimbursed, r.uuid, r.userId, r.updatedAt, r.deleted, activeLedger]
+          [
+            r.amount,
+            r.category,
+            r.type,
+            r.note,
+            r.date,
+            r.timestamp,
+            r.reimbursable,
+            r.reimbursed,
+            r.uuid,
+            r.userId,
+            r.updatedAt,
+            r.deleted,
+            activeLedger,
+          ],
         );
         applied++;
       }
@@ -128,7 +159,8 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
     // 2) 周期规则
     for (const r of changes.recurring) {
       const local = await db.getFirstAsync<{ id: number; updated_at: number }>(
-        'SELECT id, updated_at FROM recurring_rules WHERE uuid = ? AND ledger_id = ?', [r.uuid, activeLedger]
+        'SELECT id, updated_at FROM recurring_rules WHERE uuid = ? AND ledger_id = ?',
+        [r.uuid, activeLedger],
       );
       if (local) {
         if (r.updatedAt > local.updated_at) {
@@ -136,8 +168,23 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
             `UPDATE recurring_rules SET name = ?, amount = ?, type = ?, category = ?,
              frequency = ?, day_of_week = ?, day_of_month = ?, month_of_year = ?, note = ?, enabled = ?,
              last_generated = ?, user_id = ?, updated_at = ?, deleted = ? WHERE id = ?`,
-            [r.name, r.amount, r.type, r.category, r.frequency,
-             r.dayOfWeek, r.dayOfMonth, r.monthOfYear, r.note, r.enabled, r.lastGenerated, r.userId, r.updatedAt, r.deleted, local.id]
+            [
+              r.name,
+              r.amount,
+              r.type,
+              r.category,
+              r.frequency,
+              r.dayOfWeek,
+              r.dayOfMonth,
+              r.monthOfYear,
+              r.note,
+              r.enabled,
+              r.lastGenerated,
+              r.userId,
+              r.updatedAt,
+              r.deleted,
+              local.id,
+            ],
           );
           applied++;
         }
@@ -145,8 +192,25 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
         await db.runAsync(
           `INSERT INTO recurring_rules (name, amount, type, category, frequency, day_of_week, day_of_month, month_of_year, note, enabled, last_generated, created_at, uuid, user_id, updated_at, deleted, ledger_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [r.name, r.amount, r.type, r.category, r.frequency, r.dayOfWeek, r.dayOfMonth,
-           r.monthOfYear, r.note, r.enabled, r.lastGenerated, Date.now(), r.uuid, r.userId, r.updatedAt, r.deleted, activeLedger]
+          [
+            r.name,
+            r.amount,
+            r.type,
+            r.category,
+            r.frequency,
+            r.dayOfWeek,
+            r.dayOfMonth,
+            r.monthOfYear,
+            r.note,
+            r.enabled,
+            r.lastGenerated,
+            Date.now(),
+            r.uuid,
+            r.userId,
+            r.updatedAt,
+            r.deleted,
+            activeLedger,
+          ],
         );
         applied++;
       }
@@ -158,7 +222,7 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
     for (const c of changes.customCategories) {
       const renamed = await db.getFirstAsync<{ rowid: number; updated_at: number }>(
         'SELECT rowid, updated_at FROM custom_categories WHERE uuid = ? AND key <> ? AND ledger_id = ?',
-        [c.uuid, c.key, activeLedger]
+        [c.uuid, c.key, activeLedger],
       );
       if (renamed && c.updatedAt > renamed.updated_at) {
         await db.runAsync('DELETE FROM custom_categories WHERE rowid = ?', [renamed.rowid]);
@@ -171,7 +235,7 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
            uuid = excluded.uuid, label = excluded.label, emoji = excluded.emoji, color = excluded.color,
            type = excluded.type, updated_at = excluded.updated_at, deleted = excluded.deleted
          WHERE excluded.updated_at > custom_categories.updated_at`,
-        [c.key, c.uuid, activeLedger, c.label, c.emoji, c.color, c.type, Date.now(), c.updatedAt, c.deleted]
+        [c.key, c.uuid, activeLedger, c.label, c.emoji, c.color, c.type, Date.now(), c.updatedAt, c.deleted],
       );
       if (res.changes > 0) applied++;
     }
@@ -281,7 +345,7 @@ export async function claimLocalRecordsAsUser(userId: number): Promise<void> {
   const db = await getDB();
   await db.runAsync(
     'UPDATE ledger_records SET user_id = ? WHERE user_id = 0 AND deleted = 0 AND ledger_id = 0',
-    [userId]
+    [userId],
   );
 }
 

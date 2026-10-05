@@ -1,15 +1,39 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, useWindowDimensions, View,
+  Alert,
+  DeviceEventEmitter,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import {
-  CATEGORY_COLORS, CATEGORY_ICONS, COLORS, EXPENSE_CATEGORIES, FONT_SIZE, INCOME_CATEGORIES, LEDGER_EVENTS, RADIUS, SPACING,
-  ensureFullCategoryConfig, setCategoryConfig,
+  CATEGORY_COLORS,
+  CATEGORY_ICONS,
+  COLORS,
+  EXPENSE_CATEGORIES,
+  FONT_SIZE,
+  INCOME_CATEGORIES,
+  LEDGER_EVENTS,
+  RADIUS,
+  SPACING,
+  ensureFullCategoryConfig,
+  setCategoryConfig,
 } from '../../constants';
 import {
-  addCustomCategory, deleteCustomCategory, getCategoryConfig as getCategoryConfigDB,
-  getCustomCategories as getCustomCategoriesDB, saveCategoryConfig as saveCategoryConfigDB,
-  setCustomCategoriesCache, updateCustomCategory,
+  addCustomCategory,
+  deleteCustomCategory,
+  getCategoryConfig as getCategoryConfigDB,
+  getCustomCategories as getCustomCategoriesDB,
+  saveCategoryConfig as saveCategoryConfigDB,
+  setCustomCategoriesCache,
+  updateCustomCategory,
 } from '../../database/ledgerDB';
 import { hapticError, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
@@ -37,7 +61,7 @@ export default function CategoriesScreen() {
 
   const fullConfig = useMemo(
     () => ensureFullCategoryConfig(customCategories, categoryConfig),
-    [customCategories, categoryConfig]
+    [customCategories, categoryConfig],
   );
 
   const displayGroups = useMemo(() => {
@@ -49,7 +73,12 @@ export default function CategoriesScreen() {
       return items.map((item) => {
         const isCustom = customMap.has(item.key);
         const def = isCustom
-          ? { key: customMap.get(item.key)!.key, label: customMap.get(item.key)!.label, emoji: customMap.get(item.key)!.emoji, color: customMap.get(item.key)!.color }
+          ? {
+              key: customMap.get(item.key)!.key,
+              label: customMap.get(item.key)!.label,
+              emoji: customMap.get(item.key)!.emoji,
+              color: customMap.get(item.key)!.color,
+            }
           : builtin.find((c) => c.key === item.key)!;
         return { def, type, isCustom, visible: item.visible };
       });
@@ -97,127 +126,142 @@ export default function CategoriesScreen() {
   }, [reload]);
 
   // ===== 显隐切换 =====
-  const handleToggleVisible = useCallback(async (type: RecordType, key: string) => {
-    const next = {
-      expense: fullConfig.expense.map((i) => ({ ...i })),
-      income: fullConfig.income.map((i) => ({ ...i })),
-    };
-    const list = type === 'expense' ? next.expense : next.income;
-    const idx = list.findIndex((i) => i.key === key);
-    if (idx >= 0) {
-      list[idx] = { ...list[idx], visible: !list[idx].visible };
-      await persistConfig(next);
-    }
-  }, [fullConfig, persistConfig]);
+  const handleToggleVisible = useCallback(
+    async (type: RecordType, key: string) => {
+      const next = {
+        expense: fullConfig.expense.map((i) => ({ ...i })),
+        income: fullConfig.income.map((i) => ({ ...i })),
+      };
+      const list = type === 'expense' ? next.expense : next.income;
+      const idx = list.findIndex((i) => i.key === key);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], visible: !list[idx].visible };
+        await persistConfig(next);
+      }
+    },
+    [fullConfig, persistConfig],
+  );
 
   // ===== 排序 =====
-  const handleMove = useCallback(async (type: RecordType, key: string, direction: -1 | 1) => {
-    const next = {
-      expense: fullConfig.expense.map((i) => ({ ...i })),
-      income: fullConfig.income.map((i) => ({ ...i })),
-    };
-    const list = type === 'expense' ? next.expense : next.income;
-    const idx = list.findIndex((i) => i.key === key);
-    const newIdx = idx + direction;
-    if (idx >= 0 && newIdx >= 0 && newIdx < list.length) {
-      [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
-      await persistConfig(next);
-    }
-  }, [fullConfig, persistConfig]);
+  const handleMove = useCallback(
+    async (type: RecordType, key: string, direction: -1 | 1) => {
+      const next = {
+        expense: fullConfig.expense.map((i) => ({ ...i })),
+        income: fullConfig.income.map((i) => ({ ...i })),
+      };
+      const list = type === 'expense' ? next.expense : next.income;
+      const idx = list.findIndex((i) => i.key === key);
+      const newIdx = idx + direction;
+      if (idx >= 0 && newIdx >= 0 && newIdx < list.length) {
+        [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
+        await persistConfig(next);
+      }
+    },
+    [fullConfig, persistConfig],
+  );
 
   // ===== 自定义分类操作 =====
-  const handleAddCategory = useCallback(async (label: string, emoji: string, color: string, type: RecordType) => {
-    if (!label.trim()) {
-      hapticError();
-      showToast('请输入分类名称', 'error');
-      return false;
-    }
-    try {
-      const key = `custom_${Date.now()}`;
-      await addCustomCategory({ key, label: label.trim(), emoji: emoji || '📌', color, type });
-      await setCustomCategoriesCache();
-      hapticSuccess();
-      showToast('分类已添加');
-      DeviceEventEmitter.emit(LEDGER_EVENTS.CATEGORIES_CHANGED);
-      await reload();
-      return true;
-    } catch {
-      hapticError();
-      showToast('添加失败', 'error');
-      return false;
-    }
-  }, [reload, showToast]);
-
-  const handleUpdateCategory = useCallback(async (
-    original: CustomCategory,
-    label: string,
-    emoji: string,
-    color: string,
-    type: RecordType
-  ) => {
-    if (!label.trim()) {
-      hapticError();
-      showToast('请输入分类名称', 'error');
-      return false;
-    }
-    try {
-      await updateCustomCategory({ key: original.key, label: label.trim(), emoji: emoji || '📌', color, type });
-
-      if (type !== original.type && categoryConfig) {
-        const next: CategoryConfig = {
-          expense: categoryConfig.expense.filter((i) => i.key !== original.key).map((i) => ({ ...i })),
-          income: categoryConfig.income.filter((i) => i.key !== original.key).map((i) => ({ ...i })),
-        };
-        next[type].push({ key: original.key, visible: true });
-        await saveCategoryConfigDB(next);
-        setCategoryConfig(next);
-        setCategoryConfigState(next);
+  const handleAddCategory = useCallback(
+    async (label: string, emoji: string, color: string, type: RecordType) => {
+      if (!label.trim()) {
+        hapticError();
+        showToast('请输入分类名称', 'error');
+        return false;
       }
+      try {
+        const key = `custom_${Date.now()}`;
+        await addCustomCategory({ key, label: label.trim(), emoji: emoji || '📌', color, type });
+        await setCustomCategoriesCache();
+        hapticSuccess();
+        showToast('分类已添加');
+        DeviceEventEmitter.emit(LEDGER_EVENTS.CATEGORIES_CHANGED);
+        await reload();
+        return true;
+      } catch {
+        hapticError();
+        showToast('添加失败', 'error');
+        return false;
+      }
+    },
+    [reload, showToast],
+  );
 
-      await setCustomCategoriesCache();
-      hapticSuccess();
-      showToast('分类已更新');
-      DeviceEventEmitter.emit(LEDGER_EVENTS.CATEGORIES_CHANGED);
-      await reload();
-      return true;
-    } catch {
-      hapticError();
-      showToast('更新失败', 'error');
-      return false;
-    }
-  }, [categoryConfig, reload, showToast]);
+  const handleUpdateCategory = useCallback(
+    async (original: CustomCategory, label: string, emoji: string, color: string, type: RecordType) => {
+      if (!label.trim()) {
+        hapticError();
+        showToast('请输入分类名称', 'error');
+        return false;
+      }
+      try {
+        await updateCustomCategory({
+          key: original.key,
+          label: label.trim(),
+          emoji: emoji || '📌',
+          color,
+          type,
+        });
 
-  const handleDeleteCategory = useCallback((cat: CustomCategory) => {
-    Alert.alert('删除分类', `删除「${cat.label}」？已使用该分类的记录不受影响。`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteCustomCategory(cat.key);
-            const nextCfg = categoryConfig
-              ? {
-                  expense: categoryConfig.expense.filter((i) => i.key !== cat.key),
-                  income: categoryConfig.income.filter((i) => i.key !== cat.key),
-                }
-              : null;
-            if (nextCfg) {
-              await saveCategoryConfigDB(nextCfg);
-              setCategoryConfig(nextCfg);
-              setCategoryConfigState(nextCfg);
+        if (type !== original.type && categoryConfig) {
+          const next: CategoryConfig = {
+            expense: categoryConfig.expense.filter((i) => i.key !== original.key).map((i) => ({ ...i })),
+            income: categoryConfig.income.filter((i) => i.key !== original.key).map((i) => ({ ...i })),
+          };
+          next[type].push({ key: original.key, visible: true });
+          await saveCategoryConfigDB(next);
+          setCategoryConfig(next);
+          setCategoryConfigState(next);
+        }
+
+        await setCustomCategoriesCache();
+        hapticSuccess();
+        showToast('分类已更新');
+        DeviceEventEmitter.emit(LEDGER_EVENTS.CATEGORIES_CHANGED);
+        await reload();
+        return true;
+      } catch {
+        hapticError();
+        showToast('更新失败', 'error');
+        return false;
+      }
+    },
+    [categoryConfig, reload, showToast],
+  );
+
+  const handleDeleteCategory = useCallback(
+    (cat: CustomCategory) => {
+      Alert.alert('删除分类', `删除「${cat.label}」？已使用该分类的记录不受影响。`, [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCustomCategory(cat.key);
+              const nextCfg = categoryConfig
+                ? {
+                    expense: categoryConfig.expense.filter((i) => i.key !== cat.key),
+                    income: categoryConfig.income.filter((i) => i.key !== cat.key),
+                  }
+                : null;
+              if (nextCfg) {
+                await saveCategoryConfigDB(nextCfg);
+                setCategoryConfig(nextCfg);
+                setCategoryConfigState(nextCfg);
+              }
+              await setCustomCategoriesCache();
+              hapticSuccess();
+              DeviceEventEmitter.emit(LEDGER_EVENTS.CATEGORIES_CHANGED);
+              await reload();
+            } catch {
+              hapticError();
             }
-            await setCustomCategoriesCache();
-            hapticSuccess();
-            DeviceEventEmitter.emit(LEDGER_EVENTS.CATEGORIES_CHANGED);
-            await reload();
-          } catch {
-            hapticError();
-          }
+          },
         },
-      },
-    ]);
-  }, [categoryConfig, reload]);
+      ]);
+    },
+    [categoryConfig, reload],
+  );
 
   const openAdd = useCallback(() => {
     setEditingCategory(null);
@@ -242,10 +286,7 @@ export default function CategoriesScreen() {
           <Text style={styles.emptyText}>暂无分类</Text>
         ) : (
           items.map((item, idx) => (
-            <View
-              key={item.def.key}
-              style={[localStyles.catRow, !item.visible && localStyles.catRowHidden]}
-            >
+            <View key={item.def.key} style={[localStyles.catRow, !item.visible && localStyles.catRowHidden]}>
               <View style={[styles.accIcon, { backgroundColor: `${item.def.color}22` }]}>
                 <Text style={styles.accEmoji}>{item.def.emoji}</Text>
               </View>
@@ -297,7 +338,9 @@ export default function CategoriesScreen() {
                       <Text style={localStyles.editText}>编辑</Text>
                     </Pressable>
                     <Pressable
-                      onPress={() => handleDeleteCategory(customCategories.find((c) => c.key === item.def.key)!)}
+                      onPress={() =>
+                        handleDeleteCategory(customCategories.find((c) => c.key === item.def.key)!)
+                      }
                       hitSlop={8}
                       accessibilityRole="button"
                       accessibilityLabel={`删除分类${item.def.label}`}
@@ -329,10 +372,13 @@ export default function CategoriesScreen() {
           {renderGroup('支出分类', 'expense', displayGroups.expense)}
           {renderGroup('收入分类', 'income', displayGroups.income)}
 
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={openAdd} accessibilityRole="button">
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: COLORS.accent }]}
+            onPress={openAdd}
+            accessibilityRole="button"
+          >
             <Text style={styles.actionBtnText}>＋ 添加分类</Text>
           </Pressable>
-
         </ScrollView>
       ) : (
         <CategoryForm
@@ -364,7 +410,7 @@ function CategoryForm({
     label: string,
     emoji: string,
     color: string,
-    type: RecordType
+    type: RecordType,
   ) => Promise<boolean>;
 }) {
   const [label, setLabel] = useState('');
@@ -466,7 +512,10 @@ function CategoryForm({
               {(['expense', 'income'] as RecordType[]).map((t) => (
                 <Pressable
                   key={t}
-                  style={[styles.typeBtn, type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome)]}
+                  style={[
+                    styles.typeBtn,
+                    type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome),
+                  ]}
                   onPress={() => setType(t)}
                   accessibilityRole="button"
                 >
@@ -492,7 +541,11 @@ function CategoryForm({
           </View>
 
           <Pressable
-            style={[styles.submitBtn, { backgroundColor: COLORS.accent }, loading && localStyles.submitBtnDisabled]}
+            style={[
+              styles.submitBtn,
+              { backgroundColor: COLORS.accent },
+              loading && localStyles.submitBtnDisabled,
+            ]}
             onPress={submit}
             disabled={loading}
             accessibilityRole="button"

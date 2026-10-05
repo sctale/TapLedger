@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BackHandler, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, findCategory, SETTING_KEYS } from '../constants';
 import {
-  COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, findCategory, SETTING_KEYS,
-} from '../constants';
-import {
-  getCategorySummary, getRangeSummary, getDaySummaries, getSetting, getMemberExpenseSummary,
+  getCategorySummary,
+  getRangeSummary,
+  getDaySummaries,
+  getSetting,
+  getMemberExpenseSummary,
   getReimbursableSummary,
 } from '../database/ledgerDB';
 import { formatMoney, getLastNDates, getMonthRange, getToday } from '../utils/dateUtils';
@@ -20,7 +22,7 @@ type RangeKey = 'week' | 'month' | 'year';
 type Page = 'main' | 'reimburse';
 
 interface Props {
-  active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
+  active: boolean; // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
 }
 
 export default function StatsScreen({ active }: Props) {
@@ -33,8 +35,8 @@ export default function StatsScreen({ active }: Props) {
   const [trendLabels, setTrendLabels] = useState<string[]>([]);
   const [budget, setBudget] = useState(0);
   const [tick, setTick] = useState(0);
-  const [members, setMembers] = useState<MemberInfo[]>([]);   // 家庭成员缓存（v0.5）
-  const [memberFilter, setMemberFilter] = useState(0);        // 0=全部成员
+  const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5）
+  const [memberFilter, setMemberFilter] = useState(0); // 0=全部成员
   const [memberStats, setMemberStats] = useState<{ userId: number; total: number; count: number }[]>([]);
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
 
@@ -71,7 +73,9 @@ export default function StatsScreen({ active }: Props) {
   const loadMembers = useCallback(async () => {
     setMembers(await getCachedMembers());
   }, []);
-  useEffect(() => { loadMembers(); }, [loadMembers]);
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
 
   // 当前范围
   const { rangeLabel, start, end, trendDates } = useMemo(() => {
@@ -139,16 +143,18 @@ export default function StatsScreen({ active }: Props) {
             trendDates.map((d) => {
               const dt = new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
               return range === 'week'
-                ? ['日', '一', '二', '三', '四', '五', '六'][dt.getDay()] ?? ''
+                ? (['日', '一', '二', '三', '四', '五', '六'][dt.getDay()] ?? '')
                 : `${dt.getDate()}`; // 本月视图只显示「日」，图内自动抽样不拥挤
-            })
+            }),
           );
         }
       } catch {
         showToast('统计数据加载失败', 'error');
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [start, end, range, trendDates, tick, memberFilter, showToast]);
 
   // 全局刷新（含登录态/同步事件 → 更新成员缓存，v0.5）
@@ -219,19 +225,31 @@ export default function StatsScreen({ active }: Props) {
       });
   }, [multiMember, memberStats, members]);
 
-  const reimburseStatusText = reimburseSummary.count > 0
-    ? `¥${formatMoney(reimburseSummary.total)} · ${reimburseSummary.count} 笔待核销`
-    : '暂无待核销';
+  const reimburseStatusText =
+    reimburseSummary.count > 0
+      ? `¥${formatMoney(reimburseSummary.total)} · ${reimburseSummary.count} 笔待核销`
+      : '暂无待核销';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
       {page === 'main' ? (
-        <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.titleRow}>
             <Text style={styles.pageTitle}>统计</Text>
             <View style={styles.rangeSwitch}>
-              {([['week', '近7天'], ['month', '本月'], ['year', '年度']] as [RangeKey, string][]).map(([r, label]) => (
+              {(
+                [
+                  ['week', '近7天'],
+                  ['month', '本月'],
+                  ['year', '年度'],
+                ] as [RangeKey, string][]
+              ).map(([r, label]) => (
                 <Pressable
                   key={r}
                   style={[styles.rangeBtn, range === r && styles.rangeBtnActive]}
@@ -326,12 +344,16 @@ export default function StatsScreen({ active }: Props) {
                 <View
                   style={[
                     styles.budgetFill,
-                    { width: `${Math.round(budgetPercent * 100)}%`, backgroundColor: budgetOver ? COLORS.danger : COLORS.accent },
+                    {
+                      width: `${Math.round(budgetPercent * 100)}%`,
+                      backgroundColor: budgetOver ? COLORS.danger : COLORS.accent,
+                    },
                   ]}
                 />
               </View>
               <Text style={styles.budgetHint}>
-                已用 ¥{formatMoney(expense)} / 预算 ¥{formatMoney(budget)} · 剩余 ¥{formatMoney(Math.max(budget - expense, 0))}
+                已用 ¥{formatMoney(expense)} / 预算 ¥{formatMoney(budget)} · 剩余 ¥
+                {formatMoney(Math.max(budget - expense, 0))}
               </Text>
             </View>
           ) : null}
@@ -349,7 +371,9 @@ export default function StatsScreen({ active }: Props) {
               </View>
               <View style={styles.reimburseInfo}>
                 <Text style={styles.reimburseTitle}>待报销</Text>
-                <Text style={styles.reimburseStatus} numberOfLines={1}>{reimburseStatusText}</Text>
+                <Text style={styles.reimburseStatus} numberOfLines={1}>
+                  {reimburseStatusText}
+                </Text>
               </View>
               <Text style={styles.reimburseArrow}>›</Text>
             </View>
@@ -384,10 +408,17 @@ export default function StatsScreen({ active }: Props) {
                       <View style={styles.rankInfo}>
                         <View style={styles.rankHead}>
                           <Text style={styles.rankLabel}>{c.def.label}</Text>
-                          <Text style={styles.rankAmount}>¥{formatMoney(c.total)} · {pct.toFixed(1)}%</Text>
+                          <Text style={styles.rankAmount}>
+                            ¥{formatMoney(c.total)} · {pct.toFixed(1)}%
+                          </Text>
                         </View>
                         <View style={styles.rankTrack}>
-                          <View style={[styles.rankFill, { width: `${Math.round(barPct)}%`, backgroundColor: c.def.color }]} />
+                          <View
+                            style={[
+                              styles.rankFill,
+                              { width: `${Math.round(barPct)}%`, backgroundColor: c.def.color },
+                            ]}
+                          />
                         </View>
                       </View>
                     </View>
@@ -422,7 +453,10 @@ export default function StatsScreen({ active }: Props) {
                       </View>
                       <View style={styles.memberTrack}>
                         <View
-                          style={[styles.memberFill, { width: `${Math.round(m.barPct)}%`, backgroundColor: memberColor(m.userId) }]}
+                          style={[
+                            styles.memberFill,
+                            { width: `${Math.round(m.barPct)}%`, backgroundColor: memberColor(m.userId) },
+                          ]}
                         />
                       </View>
                     </View>
@@ -440,11 +474,7 @@ export default function StatsScreen({ active }: Props) {
                 <Text style={styles.emptyText}>这个时间段还没有支出记录</Text>
               </View>
             ) : (
-              <TrendBarChart
-                values={trendValues}
-                labels={trendLabels}
-                color={COLORS.expense}
-              />
+              <TrendBarChart values={trendValues} labels={trendLabels} color={COLORS.expense} />
             )}
           </View>
         </ScrollView>

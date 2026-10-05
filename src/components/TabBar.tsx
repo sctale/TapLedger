@@ -35,9 +35,7 @@ export default function TabBar({ current, onChange }: Props) {
               accessibilityLabel={tab.label}
               accessibilityState={{ selected: active }}
             >
-              <Text style={[styles.emoji, active && { transform: [{ scale: 1.12 }] }]}>
-                {tab.emoji}
-              </Text>
+              <Text style={[styles.emoji, active && { transform: [{ scale: 1.12 }] }]}>{tab.emoji}</Text>
               <Text style={[styles.label, active && styles.labelActive]}>{tab.label}</Text>
               {active ? <View style={styles.dot} /> : null}
             </Pressable>

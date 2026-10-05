@@ -8,7 +8,10 @@ interface Props {
   visible: boolean;
   baseUrl: string; // 已填的服务器地址（注册成功后写设置）
   onClose: () => void;
-  onAuthed: (token: string, user: { id: number; displayName: string; avatarEmoji: string; familyId: number | null }) => void;
+  onAuthed: (
+    token: string,
+    user: { id: number; displayName: string; avatarEmoji: string; familyId: number | null },
+  ) => void;
   onError: (msg: string) => void;
 }
 
@@ -52,9 +55,10 @@ export default function LoginModal({ visible, baseUrl, onClose, onAuthed, onErro
     setBusy(true);
     try {
       const { apiRegister, apiLogin } = await import('../sync/apiClient');
-      const res = mode === 'register'
-        ? await apiRegister(baseUrl, username.trim(), password, displayName.trim() || undefined)
-        : await apiLogin(baseUrl, username.trim(), password);
+      const res =
+        mode === 'register'
+          ? await apiRegister(baseUrl, username.trim(), password, displayName.trim() || undefined)
+          : await apiLogin(baseUrl, username.trim(), password);
       hapticLight();
       onAuthed(res.token, res.user);
     } catch (e) {
@@ -66,63 +70,74 @@ export default function LoginModal({ visible, baseUrl, onClose, onAuthed, onErro
   };
 
   return (
-    <Modal visible={visible} title={mode === 'login' ? '登录' : '注册'} saveLabel={mode === 'login' ? '登录' : '注册并登录'} onSave={submit} saveDisabled={busy} onClose={onClose}>
+    <Modal
+      visible={visible}
+      title={mode === 'login' ? '登录' : '注册'}
+      saveLabel={mode === 'login' ? '登录' : '注册并登录'}
+      onSave={submit}
+      saveDisabled={busy}
+      onClose={onClose}
+    >
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>用户名（中英文/数字/下划线）</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="如 dad / 妈妈"
+          placeholderTextColor={COLORS.textTertiary}
+          value={username}
+          onChangeText={setUsername}
+          maxLength={20}
+          autoCapitalize="none"
+        />
+      </View>
+      {mode === 'register' ? (
         <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>用户名（中英文/数字/下划线）</Text>
+          <Text style={styles.fieldLabel}>昵称（家庭成员列表中显示）</Text>
           <TextInput
             style={styles.input}
-            placeholder="如 dad / 妈妈"
+            placeholder="如 爸爸"
             placeholderTextColor={COLORS.textTertiary}
-            value={username}
-            onChangeText={setUsername}
-            maxLength={20}
-            autoCapitalize="none"
+            value={displayName}
+            onChangeText={setDisplayName}
+            maxLength={12}
           />
         </View>
-        {mode === 'register' ? (
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>昵称（家庭成员列表中显示）</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="如 爸爸"
-              placeholderTextColor={COLORS.textTertiary}
-              value={displayName}
-              onChangeText={setDisplayName}
-              maxLength={12}
-            />
-          </View>
-        ) : null}
+      ) : null}
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>密码</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="至少 6 位"
+          placeholderTextColor={COLORS.textTertiary}
+          value={password}
+          onChangeText={setPassword}
+          maxLength={64}
+          secureTextEntry
+        />
+      </View>
+      {mode === 'register' ? (
         <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>密码</Text>
+          <Text style={styles.fieldLabel}>确认密码</Text>
           <TextInput
             style={styles.input}
-            placeholder="至少 6 位"
+            placeholder="再输入一次"
             placeholderTextColor={COLORS.textTertiary}
-            value={password}
-            onChangeText={setPassword}
+            value={confirm}
+            onChangeText={setConfirm}
             maxLength={64}
             secureTextEntry
           />
         </View>
-        {mode === 'register' ? (
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>确认密码</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="再输入一次"
-              placeholderTextColor={COLORS.textTertiary}
-              value={confirm}
-              onChangeText={setConfirm}
-              maxLength={64}
-              secureTextEntry
-            />
-          </View>
-        ) : null}
-        <Pressable style={styles.switchRow} onPress={() => setMode(mode === 'login' ? 'register' : 'login')} accessibilityRole="button">
-          <Text style={styles.switchText}>
-            {mode === 'login' ? '没有账号？注册一个' : '已有账号？直接登录'}
-          </Text>
-        </Pressable>
+      ) : null}
+      <Pressable
+        style={styles.switchRow}
+        onPress={() => setMode(mode === 'login' ? 'register' : 'login')}
+        accessibilityRole="button"
+      >
+        <Text style={styles.switchText}>
+          {mode === 'login' ? '没有账号？注册一个' : '已有账号？直接登录'}
+        </Text>
+      </Pressable>
     </Modal>
   );
 }

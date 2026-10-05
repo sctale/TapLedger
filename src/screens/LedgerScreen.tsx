@@ -1,13 +1,32 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DeviceEventEmitter, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  DeviceEventEmitter,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, findCategory } from '../constants';
 import {
-  getDaySummaries, getMaxDailyExpense,
-  getRecordsByDate, getRecordsByRange,
+  getDaySummaries,
+  getMaxDailyExpense,
+  getRecordsByDate,
+  getRecordsByRange,
 } from '../database/ledgerDB';
-import { formatMoney, getMonthRange, getToday, parseDate, addMonths, getMonthName, getDaysInMonth } from '../utils/dateUtils';
+import {
+  formatMoney,
+  getMonthRange,
+  getToday,
+  parseDate,
+  addMonths,
+  getMonthName,
+  getDaysInMonth,
+} from '../utils/dateUtils';
 import { hapticLight } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
 import { confirmDeleteRecord } from '../hooks/useDeleteRecord';
@@ -20,12 +39,10 @@ import type { LedgerRecord, RecordType } from '../types';
 type FilterType = 'all' | RecordType;
 
 // 流水模式拍平后的列表项（虚拟化渲染；按收支记录分组）
-type FlowItem =
-  | { kind: 'header'; date: string; count: number }
-  | { kind: 'record'; record: LedgerRecord };
+type FlowItem = { kind: 'header'; date: string; count: number } | { kind: 'record'; record: LedgerRecord };
 
 interface Props {
-  active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
+  active: boolean; // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
 }
 
 export default function LedgerScreen({ active }: Props) {
@@ -57,7 +74,12 @@ export default function LedgerScreen({ active }: Props) {
   const mountedRef = useRef(true);
   const monthSeq = useRef(0);
   const daySeq = useRef(0);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   const loadMonth = useCallback(async () => {
     const seq = ++monthSeq.current;
@@ -144,21 +166,29 @@ export default function LedgerScreen({ active }: Props) {
 
   // 切月：选中日同步到目标月同日（超出月末则 clamp，与系统日历一致）
   // 不在 setViewDate 的 updater 里再调 setSelectedDate —— updater 必须纯（StrictMode 会双调用）
-  const changeMonth = useCallback((delta: number) => {
-    const next = addMonths(viewDate, delta);
-    const [y, m, d] = selectedDate.split('-').map(Number);
-    // 目标月与当前选中日同月才需要同步（跨月选中日始终在 viewDate 月内）
-    const sameMonth = y === viewDate.getFullYear() && m === viewDate.getMonth() + 1;
-    setViewDate(next);
-    if (sameMonth) {
-      const day = Math.min(d, getDaysInMonth(next.getFullYear(), next.getMonth() + 1));
-      setSelectedDate(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-    }
-  }, [viewDate, selectedDate]);
+  const changeMonth = useCallback(
+    (delta: number) => {
+      const next = addMonths(viewDate, delta);
+      const [y, m, d] = selectedDate.split('-').map(Number);
+      // 目标月与当前选中日同月才需要同步（跨月选中日始终在 viewDate 月内）
+      const sameMonth = y === viewDate.getFullYear() && m === viewDate.getMonth() + 1;
+      setViewDate(next);
+      if (sameMonth) {
+        const day = Math.min(d, getDaysInMonth(next.getFullYear(), next.getMonth() + 1));
+        setSelectedDate(
+          `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+        );
+      }
+    },
+    [viewDate, selectedDate],
+  );
 
-  const handleDelete = useCallback((record: LedgerRecord) => {
-    confirmDeleteRecord(record.id, (msg, isError) => showToast(msg, isError ? 'error' : 'success'));
-  }, [showToast]);
+  const handleDelete = useCallback(
+    (record: LedgerRecord) => {
+      confirmDeleteRecord(record.id, (msg, isError) => showToast(msg, isError ? 'error' : 'success'));
+    },
+    [showToast],
+  );
 
   // 流水筛选（records 按记账人 / 类型 / 关键词）
   const filteredRecords = useMemo(() => {
@@ -184,7 +214,7 @@ export default function LedgerScreen({ active }: Props) {
   // 日历模式：当日记录按记账人筛选 + 当日收支小计（与筛选一致）
   const visibleDayRecords = useMemo(
     () => (memberFilter === 0 ? dayRecords : dayRecords.filter((r) => r.userId === memberFilter)),
-    [dayRecords, memberFilter]
+    [dayRecords, memberFilter],
   );
   const dayTotals = useMemo(() => {
     let exp = 0;
@@ -200,7 +230,8 @@ export default function LedgerScreen({ active }: Props) {
   const flowItems = useMemo<FlowItem[]>(() => {
     type Mixed = { date: string; timestamp: number; item: FlowItem };
     const mixed: Mixed[] = [];
-    for (const r of filteredRecords) mixed.push({ date: r.date, timestamp: r.timestamp, item: { kind: 'record', record: r } });
+    for (const r of filteredRecords)
+      mixed.push({ date: r.date, timestamp: r.timestamp, item: { kind: 'record', record: r } });
     mixed.sort((a, b) => (a.date === b.date ? b.timestamp - a.timestamp : b.date < a.date ? -1 : 1));
 
     const items: FlowItem[] = [];
@@ -247,21 +278,24 @@ export default function LedgerScreen({ active }: Props) {
     return `${selectedDate} ${week}`;
   }, [selectedDate]);
 
-  const renderFlowItem = useCallback(({ item }: { item: FlowItem }) => {
-    if (item.kind === 'header') {
+  const renderFlowItem = useCallback(
+    ({ item }: { item: FlowItem }) => {
+      if (item.kind === 'header') {
+        return (
+          <View style={styles.groupHeader}>
+            <Text style={styles.groupDate}>{item.date}</Text>
+            <Text style={styles.groupCount}>{item.count} 笔</Text>
+          </View>
+        );
+      }
       return (
-        <View style={styles.groupHeader}>
-          <Text style={styles.groupDate}>{item.date}</Text>
-          <Text style={styles.groupCount}>{item.count} 笔</Text>
+        <View style={styles.flowRecordWrap}>
+          <RecordRow record={item.record} onDelete={handleDelete} onEdit={setEditing} members={members} />
         </View>
       );
-    }
-    return (
-      <View style={styles.flowRecordWrap}>
-        <RecordRow record={item.record} onDelete={handleDelete} onEdit={setEditing} members={members} />
-      </View>
-    );
-  }, [handleDelete, members]);
+    },
+    [handleDelete, members],
+  );
 
   // 成员筛选（家庭多成员账本才显示；0=全部）
   const renderMemberFilter = () => {
@@ -281,7 +315,10 @@ export default function LedgerScreen({ active }: Props) {
           <Pressable
             key={c.id}
             style={[styles.memberChip, memberFilter === c.id && styles.memberChipActive]}
-            onPress={() => { setMemberFilter(c.id); hapticLight(); }}
+            onPress={() => {
+              setMemberFilter(c.id);
+              hapticLight();
+            }}
             accessibilityRole="button"
             accessibilityLabel={c.id === 0 ? '全部成员' : `只看 ${c.label}`}
             accessibilityState={{ selected: memberFilter === c.id }}
@@ -303,128 +340,37 @@ export default function LedgerScreen({ active }: Props) {
       <StatusBar style="dark" />
       {/* 列表页与编辑页互斥显示（display 切换，同 App 切 Tab；编辑页为普通页面流，触摸/安全区与首页一致） */}
       <View style={editing ? styles.pageHidden : styles.page}>
-      {mode === 'calendar' ? (
-        <ScrollView ref={calendarScrollRef} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={styles.titleRow}>
-            <Text style={styles.pageTitle}>明细</Text>
-            <View style={styles.modeSwitch}>
-              {(['calendar', 'list'] as const).map((m) => (
-                <Pressable
-                  key={m}
-                  style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
-                  onPress={() => setMode(m)}
-                  accessibilityRole="tab"
-                  accessibilityLabel={m === 'calendar' ? '日历模式' : '流水模式'}
-                  accessibilityState={{ selected: mode === m }}
-                >
-                  <Text style={[styles.modeText, mode === m && styles.modeTextActive]}>
-                    {m === 'calendar' ? '日历' : '流水'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* 月份切换 + 热力图 */}
-          <View style={styles.card}>
-            <View style={styles.monthRow}>
-              <Pressable
-                style={styles.monthBtn}
-                onPress={() => changeMonth(-1)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="上一月"
-              >
-                <Text style={styles.monthBtnText}>‹</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => { if (!isCurrentMonth) { setViewDate(new Date()); setSelectedDate(getToday()); } }}
-                accessibilityRole="button"
-                accessibilityLabel="回到本月"
-              >
-                <Text style={styles.monthTitle}>{getMonthName(viewDate)}</Text>
-              </Pressable>
-              <Pressable
-                style={styles.monthBtn}
-                onPress={() => changeMonth(1)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="下一月"
-              >
-                <Text style={styles.monthBtnText}>›</Text>
-              </Pressable>
-            </View>
-            <MonthHeatmap
-              year={viewDate.getFullYear()}
-              month={viewDate.getMonth() + 1}
-              dailyExpense={dailyExpense}
-              maxExpense={maxExpense}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-            />
-          </View>
-
-          {renderMemberFilter()}
-
-          {/* 选中日期明细 */}
-          <View style={styles.dayHeader}>
-            <Text style={styles.dayTitle}>{selectedLabel}</Text>
-            <View style={styles.daySummary}>
-              {dayTotals.exp > 0 ? (
-                <Text style={styles.daySummaryText}>
-                  支出 <Text style={{ color: COLORS.expense, fontWeight: '700' }}>¥{formatMoney(dayTotals.exp)}</Text>
-                </Text>
-              ) : null}
-              {dayTotals.inc > 0 ? (
-                <Text style={styles.daySummaryText}>
-                  收入 <Text style={{ color: COLORS.income, fontWeight: '700' }}>¥{formatMoney(dayTotals.inc)}</Text>
-                </Text>
-              ) : null}
-            </View>
-          </View>
-          <RecordList
-            records={visibleDayRecords}
-            onDelete={handleDelete}
-            onEdit={setEditing}
-            emptyText="这一天还没有记录"
-            members={members}
-          />
-        </ScrollView>
-      ) : (
-        /* 流水模式：FlatList 虚拟化（长月数据不卡顿） */
-        <FlatList
-          ref={listScrollRef}
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          data={flowItems}
-          keyExtractor={(item) => item.kind === 'header' ? `h-${item.date}` : `r-${item.record.id}`}
-          renderItem={renderFlowItem}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={
-            <View>
-              <View style={styles.titleRow}>
-                <Text style={styles.pageTitle}>明细</Text>
-                <View style={styles.modeSwitch}>
-                  {(['calendar', 'list'] as const).map((m) => (
-                    <Pressable
-                      key={m}
-                      style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
-                      onPress={() => setMode(m)}
-                      accessibilityRole="tab"
-                      accessibilityLabel={m === 'calendar' ? '日历模式' : '流水模式'}
-                      accessibilityState={{ selected: mode === m }}
-                    >
-                      <Text style={[styles.modeText, mode === m && styles.modeTextActive]}>
-                        {m === 'calendar' ? '日历' : '流水'}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+        {mode === 'calendar' ? (
+          <ScrollView
+            ref={calendarScrollRef}
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.titleRow}>
+              <Text style={styles.pageTitle}>明细</Text>
+              <View style={styles.modeSwitch}>
+                {(['calendar', 'list'] as const).map((m) => (
+                  <Pressable
+                    key={m}
+                    style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
+                    onPress={() => setMode(m)}
+                    accessibilityRole="tab"
+                    accessibilityLabel={m === 'calendar' ? '日历模式' : '流水模式'}
+                    accessibilityState={{ selected: mode === m }}
+                  >
+                    <Text style={[styles.modeText, mode === m && styles.modeTextActive]}>
+                      {m === 'calendar' ? '日历' : '流水'}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
-              {renderMemberFilter()}
-              {/* 月份切换（流水模式与日历模式共享 viewDate，v0.5.1） */}
-              <View style={styles.monthBar}>
+            </View>
+
+            {/* 月份切换 + 热力图 */}
+            <View style={styles.card}>
+              <View style={styles.monthRow}>
                 <Pressable
                   style={styles.monthBtn}
                   onPress={() => changeMonth(-1)}
@@ -435,7 +381,12 @@ export default function LedgerScreen({ active }: Props) {
                   <Text style={styles.monthBtnText}>‹</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => { if (!isCurrentMonth) { setViewDate(new Date()); setSelectedDate(getToday()); } }}
+                  onPress={() => {
+                    if (!isCurrentMonth) {
+                      setViewDate(new Date());
+                      setSelectedDate(getToday());
+                    }
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel="回到本月"
                 >
@@ -451,69 +402,187 @@ export default function LedgerScreen({ active }: Props) {
                   <Text style={styles.monthBtnText}>›</Text>
                 </Pressable>
               </View>
-              {/* 流水筛选 */}
-              <View style={styles.filterRow}>
-                <View style={styles.chips}>
-                  {([['all', '全部'], ['expense', '支出'], ['income', '收入']] as [FilterType, string][]).map(([k, label]) => (
-                    <Pressable
-                      key={k}
-                      style={[styles.filterChip, filterType === k && styles.filterChipActive]}
-                      onPress={() => setFilterType(k)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`筛选${label}`}
-                      accessibilityState={{ selected: filterType === k }}
-                    >
-                      <Text style={[styles.filterChipText, filterType === k && styles.filterChipTextActive]}>{label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-              <View style={styles.searchRow}>
-                <View style={styles.searchWrap}>
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="搜索备注 / 分类"
-                    placeholderTextColor={COLORS.textTertiary}
-                    value={searchText}
-                    onChangeText={setSearchText}
-                    maxLength={20}
-                  />
-                  {searchText.length > 0 ? (
-                    <Pressable
-                      style={styles.searchClear}
-                      onPress={() => setSearchText('')}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel="清除搜索"
-                    >
-                      <Text style={styles.searchClearText}>✕</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-                <View style={styles.monthTotal}>
-                  <Text style={styles.monthTotalText}>
-                    收 <Text style={{ color: COLORS.income, fontWeight: '700' }}>{formatMoney(monthTotal.inc)}</Text>
-                  </Text>
-                  <Text style={styles.monthTotalText}>
-                    支 <Text style={{ color: COLORS.expense, fontWeight: '700' }}>{formatMoney(monthTotal.exp)}</Text>
-                  </Text>
-                </View>
-              </View>
-              {flowItems.length === 0 ? (
-                <RecordList records={[]} emptyText="没有符合条件的记录" />
-              ) : null}
+              <MonthHeatmap
+                year={viewDate.getFullYear()}
+                month={viewDate.getMonth() + 1}
+                dailyExpense={dailyExpense}
+                maxExpense={maxExpense}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+              />
             </View>
-          }
-        />
-      )}
+
+            {renderMemberFilter()}
+
+            {/* 选中日期明细 */}
+            <View style={styles.dayHeader}>
+              <Text style={styles.dayTitle}>{selectedLabel}</Text>
+              <View style={styles.daySummary}>
+                {dayTotals.exp > 0 ? (
+                  <Text style={styles.daySummaryText}>
+                    支出{' '}
+                    <Text style={{ color: COLORS.expense, fontWeight: '700' }}>
+                      ¥{formatMoney(dayTotals.exp)}
+                    </Text>
+                  </Text>
+                ) : null}
+                {dayTotals.inc > 0 ? (
+                  <Text style={styles.daySummaryText}>
+                    收入{' '}
+                    <Text style={{ color: COLORS.income, fontWeight: '700' }}>
+                      ¥{formatMoney(dayTotals.inc)}
+                    </Text>
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            <RecordList
+              records={visibleDayRecords}
+              onDelete={handleDelete}
+              onEdit={setEditing}
+              emptyText="这一天还没有记录"
+              members={members}
+            />
+          </ScrollView>
+        ) : (
+          /* 流水模式：FlatList 虚拟化（长月数据不卡顿） */
+          <FlatList
+            ref={listScrollRef}
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            data={flowItems}
+            keyExtractor={(item) => (item.kind === 'header' ? `h-${item.date}` : `r-${item.record.id}`)}
+            renderItem={renderFlowItem}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            ListHeaderComponent={
+              <View>
+                <View style={styles.titleRow}>
+                  <Text style={styles.pageTitle}>明细</Text>
+                  <View style={styles.modeSwitch}>
+                    {(['calendar', 'list'] as const).map((m) => (
+                      <Pressable
+                        key={m}
+                        style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
+                        onPress={() => setMode(m)}
+                        accessibilityRole="tab"
+                        accessibilityLabel={m === 'calendar' ? '日历模式' : '流水模式'}
+                        accessibilityState={{ selected: mode === m }}
+                      >
+                        <Text style={[styles.modeText, mode === m && styles.modeTextActive]}>
+                          {m === 'calendar' ? '日历' : '流水'}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                {renderMemberFilter()}
+                {/* 月份切换（流水模式与日历模式共享 viewDate，v0.5.1） */}
+                <View style={styles.monthBar}>
+                  <Pressable
+                    style={styles.monthBtn}
+                    onPress={() => changeMonth(-1)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="上一月"
+                  >
+                    <Text style={styles.monthBtnText}>‹</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      if (!isCurrentMonth) {
+                        setViewDate(new Date());
+                        setSelectedDate(getToday());
+                      }
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="回到本月"
+                  >
+                    <Text style={styles.monthTitle}>{getMonthName(viewDate)}</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.monthBtn}
+                    onPress={() => changeMonth(1)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="下一月"
+                  >
+                    <Text style={styles.monthBtnText}>›</Text>
+                  </Pressable>
+                </View>
+                {/* 流水筛选 */}
+                <View style={styles.filterRow}>
+                  <View style={styles.chips}>
+                    {(
+                      [
+                        ['all', '全部'],
+                        ['expense', '支出'],
+                        ['income', '收入'],
+                      ] as [FilterType, string][]
+                    ).map(([k, label]) => (
+                      <Pressable
+                        key={k}
+                        style={[styles.filterChip, filterType === k && styles.filterChipActive]}
+                        onPress={() => setFilterType(k)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`筛选${label}`}
+                        accessibilityState={{ selected: filterType === k }}
+                      >
+                        <Text
+                          style={[styles.filterChipText, filterType === k && styles.filterChipTextActive]}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.searchRow}>
+                  <View style={styles.searchWrap}>
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="搜索备注 / 分类"
+                      placeholderTextColor={COLORS.textTertiary}
+                      value={searchText}
+                      onChangeText={setSearchText}
+                      maxLength={20}
+                    />
+                    {searchText.length > 0 ? (
+                      <Pressable
+                        style={styles.searchClear}
+                        onPress={() => setSearchText('')}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="清除搜索"
+                      >
+                        <Text style={styles.searchClearText}>✕</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  <View style={styles.monthTotal}>
+                    <Text style={styles.monthTotalText}>
+                      收{' '}
+                      <Text style={{ color: COLORS.income, fontWeight: '700' }}>
+                        {formatMoney(monthTotal.inc)}
+                      </Text>
+                    </Text>
+                    <Text style={styles.monthTotalText}>
+                      支{' '}
+                      <Text style={{ color: COLORS.expense, fontWeight: '700' }}>
+                        {formatMoney(monthTotal.exp)}
+                      </Text>
+                    </Text>
+                  </View>
+                </View>
+                {flowItems.length === 0 ? <RecordList records={[]} emptyText="没有符合条件的记录" /> : null}
+              </View>
+            }
+          />
+        )}
       </View>
       <View style={editing ? styles.page : styles.pageHidden}>
         {/* 点击记录编辑（v0.10）：保存后 RECORDED 事件刷新列表并自动同步 */}
-        <EditRecordModal
-          visible={editing !== null}
-          record={editing}
-          onClose={() => setEditing(null)}
-        />
+        <EditRecordModal visible={editing !== null} record={editing} onClose={() => setEditing(null)} />
       </View>
     </SafeAreaView>
   );

@@ -97,7 +97,9 @@ export default function Toast({ anchor = 'top' }: Props = {}) {
       ]}
       accessibilityLiveRegion="polite"
     >
-      <Animated.View style={[styles.bubble, { backgroundColor: bgColor, opacity, transform: [{ translateY }] }]}>
+      <Animated.View
+        style={[styles.bubble, { backgroundColor: bgColor, opacity, transform: [{ translateY }] }]}
+      >
         <Text style={styles.text}>{current.message}</Text>
       </Animated.View>
     </View>

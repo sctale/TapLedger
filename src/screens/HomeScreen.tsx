@@ -12,12 +12,17 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING, getCategories,
-} from '../constants';
+import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING, getCategories } from '../constants';
 import { addRecord, getSetting, saveSetting } from '../database/ledgerDB';
 import { formatMoney, getToday } from '../utils/dateUtils';
-import { appendKey, evaluateAmount, hasOperator, isValidAmount, toAmount, type PadKey } from '../utils/moneyUtils';
+import {
+  appendKey,
+  evaluateAmount,
+  hasOperator,
+  isValidAmount,
+  toAmount,
+  type PadKey,
+} from '../utils/moneyUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
 import CategorySelector from '../components/CategorySelector';
@@ -25,7 +30,7 @@ import NumberPad from '../components/NumberPad';
 import type { RecordType } from '../types';
 
 interface Props {
-  active: boolean;   // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
+  active: boolean; // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
 }
 
 export default function HomeScreen({ active }: Props) {
@@ -37,8 +42,12 @@ export default function HomeScreen({ active }: Props) {
   const [category, setCategory] = useState('food');
   const typeRef = useRef<RecordType>(type);
   const categoryRef = useRef<string>(category);
-  useEffect(() => { typeRef.current = type; }, [type]);
-  useEffect(() => { categoryRef.current = category; }, [category]);
+  useEffect(() => {
+    typeRef.current = type;
+  }, [type]);
+  useEffect(() => {
+    categoryRef.current = category;
+  }, [category]);
   const [note, setNote] = useState('');
   const [showNote, setShowNote] = useState(false);
   const [reimbursable, setReimbursable] = useState(false);
@@ -47,9 +56,12 @@ export default function HomeScreen({ active }: Props) {
   const [syncUserId, setSyncUserId] = useState(0);
 
   // v0.9.1 随手记式快捷记账：当前账本/记账人标识、连记、各分类上次金额
-  const [identity, setIdentity] = useState<{ logged: boolean; display: string; avatar: string; ledgerName: string }>(
-    { logged: false, display: '', avatar: '', ledgerName: '' }
-  );
+  const [identity, setIdentity] = useState<{
+    logged: boolean;
+    display: string;
+    avatar: string;
+    ledgerName: string;
+  }>({ logged: false, display: '', avatar: '', ledgerName: '' });
   const [continuous, setContinuous] = useState(false);
   const [amountMap, setAmountMap] = useState<Record<string, number>>({});
 
@@ -114,7 +126,9 @@ export default function HomeScreen({ active }: Props) {
         // 静默
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 全局事件刷新
@@ -182,20 +196,22 @@ export default function HomeScreen({ active }: Props) {
       }),
     ];
     return () => subs.forEach((s) => s.remove());
-     
   }, []);
 
   // 切换收支类型
-  const handleTypeChange = useCallback((next: RecordType) => {
-    if (next === type) return;
-    setType(next);
-    setCategory(getCategories(next)[0]?.key ?? 'other');
-    // 报销只对支出成立。此前切到收入不清标记，而「待报销」按钮在收入态是隐藏的，
-    // 于是存出 type=income + reimbursable=1 的脏数据，虚增待报销总额且界面上清不掉。
-    if (next === 'income') setReimbursable(false);
-    hapticLight();
-    saveSetting(SETTING_KEYS.DEFAULT_TYPE, next).catch(() => {});
-  }, [type]);
+  const handleTypeChange = useCallback(
+    (next: RecordType) => {
+      if (next === type) return;
+      setType(next);
+      setCategory(getCategories(next)[0]?.key ?? 'other');
+      // 报销只对支出成立。此前切到收入不清标记，而「待报销」按钮在收入态是隐藏的，
+      // 于是存出 type=income + reimbursable=1 的脏数据，虚增待报销总额且界面上清不掉。
+      if (next === 'income') setReimbursable(false);
+      hapticLight();
+      saveSetting(SETTING_KEYS.DEFAULT_TYPE, next).catch(() => {});
+    },
+    [type],
+  );
 
   const handleKey = useCallback((key: PadKey) => {
     setAmountStr((prev) => appendKey(prev, key));
@@ -231,7 +247,9 @@ export default function HomeScreen({ active }: Props) {
       hapticSuccess();
       if (!continuous) {
         setReimbursable(false);
-        showToast(type === 'expense' ? `已记支出 ¥${formatMoney(amount)}` : `已记收入 ¥${formatMoney(amount)}`);
+        showToast(
+          type === 'expense' ? `已记支出 ¥${formatMoney(amount)}` : `已记收入 ¥${formatMoney(amount)}`,
+        );
       }
       // 连记模式：不弹提示、保留待报销标记，便于连续补记同类
       DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
@@ -254,9 +272,8 @@ export default function HomeScreen({ active }: Props) {
   }, []);
 
   // 计算器：友好展示（× ÷ −）+ 实时「= 结果」预览
-  const displayAmount = amountStr === ''
-    ? '0.00'
-    : amountStr.replace(/\*/g, '×').replace(/\//g, '÷').replace(/-/g, '−');
+  const displayAmount =
+    amountStr === '' ? '0.00' : amountStr.replace(/\*/g, '×').replace(/\//g, '÷').replace(/-/g, '−');
   const showPreview = hasOperator(amountStr);
   const previewAmount = showPreview ? evaluateAmount(amountStr) : 0;
 
@@ -269,19 +286,23 @@ export default function HomeScreen({ active }: Props) {
       <StatusBar style="dark" />
       {/* 记账卡片：上半内容与数字键盘连为一张卡；键盘固定卡底，上半区仅在极小屏时兜底滚动 */}
       <View style={styles.card}>
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
           {/* 当前账本 + 记账人（家庭共同记账时防记错账本） */}
           <View style={styles.identityRow}>
-            <Text style={styles.identityLedger} numberOfLines={1}>📒 {identity.ledgerName}</Text>
+            <Text style={styles.identityLedger} numberOfLines={1}>
+              📒 {identity.ledgerName}
+            </Text>
             <Text style={styles.identityWho} numberOfLines={1}>
-              {identity.logged ? `${identity.avatar || '🙂'} ${identity.display || '已登录'}` : '未登录 · 本地'}
+              {identity.logged
+                ? `${identity.avatar || '🙂'} ${identity.display || '已登录'}`
+                : '未登录 · 本地'}
             </Text>
           </View>
 
@@ -290,7 +311,10 @@ export default function HomeScreen({ active }: Props) {
             {(['expense', 'income'] as RecordType[]).map((t) => (
               <Pressable
                 key={t}
-                style={[styles.typeBtn, type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome)]}
+                style={[
+                  styles.typeBtn,
+                  type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome),
+                ]}
                 onPress={() => handleTypeChange(t)}
                 accessibilityRole="button"
                 accessibilityLabel={t === 'expense' ? '记支出' : '记收入'}
@@ -306,7 +330,11 @@ export default function HomeScreen({ active }: Props) {
           {/* 金额区（弹性占据卡内剩余空间，保证键盘稳定卡底） */}
           <View style={styles.amountZone}>
             <View style={styles.amountRow}>
-              <Text style={[styles.amountSymbol, { color: type === 'expense' ? COLORS.expense : COLORS.income }]}>¥</Text>
+              <Text
+                style={[styles.amountSymbol, { color: type === 'expense' ? COLORS.expense : COLORS.income }]}
+              >
+                ¥
+              </Text>
               <Text
                 style={[styles.amountInput, amountStr === '' && styles.amountPlaceholder]}
                 adjustsFontSizeToFit
@@ -321,7 +349,10 @@ export default function HomeScreen({ active }: Props) {
               {showLastChip ? (
                 <Pressable
                   style={styles.lastChip}
-                  onPress={() => { setAmountStr(String(lastAmount)); hapticLight(); }}
+                  onPress={() => {
+                    setAmountStr(String(lastAmount));
+                    hapticLight();
+                  }}
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel={`填入上次金额 ${formatMoney(lastAmount)} 元`}
@@ -338,7 +369,10 @@ export default function HomeScreen({ active }: Props) {
           <CategorySelector
             categories={getCategories(type)}
             selected={category}
-            onSelect={(key) => { setCategory(key); hapticLight(); }}
+            onSelect={(key) => {
+              setCategory(key);
+              hapticLight();
+            }}
           />
 
           {/* 备注 + 待报销 + 连记 */}
@@ -378,40 +412,36 @@ export default function HomeScreen({ active }: Props) {
               {type === 'expense' ? (
                 <Pressable
                   style={[styles.reimburseBtn, reimbursable && styles.reimburseBtnOn]}
-                  onPress={() => { setReimbursable((v) => !v); hapticLight(); }}
+                  onPress={() => {
+                    setReimbursable((v) => !v);
+                    hapticLight();
+                  }}
                   hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel="标记待报销"
                   accessibilityState={{ selected: reimbursable }}
                 >
-                  <Text style={[styles.reimburseText, reimbursable && styles.reimburseTextOn]}>
-                    待报销
-                  </Text>
+                  <Text style={[styles.reimburseText, reimbursable && styles.reimburseTextOn]}>待报销</Text>
                 </Pressable>
               ) : null}
             </View>
           </View>
+        </ScrollView>
 
-      </ScrollView>
-
-      {/* 数字键盘：固定在卡片底部，与上半区连为一张卡；弹系统键盘时整体稳定不重排 */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.padDock}
-      >
-        <NumberPad onKey={handleKey} />
-        <Pressable
-          style={[styles.saveBtn, { backgroundColor: type === 'expense' ? COLORS.expense : COLORS.income }]}
-          onPress={handleSave}
-          android_ripple={{ color: 'rgba(255,255,255,0.25)' }}
-          accessibilityRole="button"
-          accessibilityLabel="记一笔"
-        >
-          <Text style={styles.saveText}>记一笔</Text>
-        </Pressable>
-      </KeyboardAvoidingView>
+        {/* 数字键盘：固定在卡片底部，与上半区连为一张卡；弹系统键盘时整体稳定不重排 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.padDock}>
+          <NumberPad onKey={handleKey} />
+          <Pressable
+            style={[styles.saveBtn, { backgroundColor: type === 'expense' ? COLORS.expense : COLORS.income }]}
+            onPress={handleSave}
+            android_ripple={{ color: 'rgba(255,255,255,0.25)' }}
+            accessibilityRole="button"
+            accessibilityLabel="记一笔"
+          >
+            <Text style={styles.saveText}>记一笔</Text>
+          </Pressable>
+        </KeyboardAvoidingView>
       </View>
-
     </SafeAreaView>
   );
 }

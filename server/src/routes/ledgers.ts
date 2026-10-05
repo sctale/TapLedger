@@ -14,16 +14,14 @@ router.get('/', (req, res) => {
   const ledgers: LedgerInfo[] = [];
 
   const personal = db.prepare('SELECT id, name, type FROM families WHERE id = ?').get(personalId) as
-    | { id: number; name: string; type: 'personal' | 'family' }
-    | undefined;
+    { id: number; name: string; type: 'personal' | 'family' } | undefined;
   if (personal) {
     ledgers.push({ id: personal.id, name: personal.name, type: 'personal', role: 'owner' });
   }
 
   if (me.familyId != null) {
     const family = db.prepare('SELECT id, name, type FROM families WHERE id = ?').get(me.familyId) as
-      | { id: number; name: string; type: 'personal' | 'family' }
-      | undefined;
+      { id: number; name: string; type: 'personal' | 'family' } | undefined;
     if (family) {
       ledgers.push({
         id: family.id,

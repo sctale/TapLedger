@@ -1,12 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  BackHandler, DeviceEventEmitter, Keyboard, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, View,
+  BackHandler,
+  DeviceEventEmitter,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, getCategories } from '../constants';
 import { updateRecord } from '../database/ledgerDB';
 import { formatMoney } from '../utils/dateUtils';
-import { appendKey, evaluateAmount, hasOperator, isValidAmount, toAmount, type PadKey } from '../utils/moneyUtils';
+import {
+  appendKey,
+  evaluateAmount,
+  hasOperator,
+  isValidAmount,
+  toAmount,
+  type PadKey,
+} from '../utils/moneyUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
 import CategorySelector from './CategorySelector';
 import NumberPad from './NumberPad';
@@ -114,7 +128,11 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
     try {
       setSaving(true);
       await updateRecord(record.id, {
-        amount, category, type, note: note.trim(), reimbursable,
+        amount,
+        category,
+        type,
+        note: note.trim(),
+        reimbursable,
       });
       hapticSuccess();
       // 列表刷新 + App 层 debounce 自动同步（与新增记录同一链路）
@@ -131,9 +149,8 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
   const canSave = isValidAmount(amountStr) && !saving;
 
   // 计算器友好展示 + 实时「= 结果」预览（与记账页一致）
-  const displayAmount = amountStr === ''
-    ? '0.00'
-    : amountStr.replace(/\*/g, '×').replace(/\//g, '÷').replace(/-/g, '−');
+  const displayAmount =
+    amountStr === '' ? '0.00' : amountStr.replace(/\*/g, '×').replace(/\//g, '÷').replace(/-/g, '−');
   const showPreview = hasOperator(amountStr);
   const previewAmount = showPreview ? evaluateAmount(amountStr) : 0;
 
@@ -147,7 +164,13 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
     <View style={styles.page}>
       {/* 顶部导航栏：取消 / 标题 / 保存 */}
       <View style={styles.navBar}>
-        <Pressable onPress={onClose} hitSlop={8} style={styles.navBtn} accessibilityRole="button" accessibilityLabel="取消编辑">
+        <Pressable
+          onPress={onClose}
+          hitSlop={8}
+          style={styles.navBtn}
+          accessibilityRole="button"
+          accessibilityLabel="取消编辑"
+        >
           <Text style={styles.navCancel}>取消</Text>
         </Pressable>
         <Text style={styles.navTitle}>编辑记录</Text>
@@ -166,112 +189,121 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
       {/* 保存失败提示（页内可见） */}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-        {/* 记账卡片结构：上半内容与数字键盘连为一张卡，键盘固定卡底（与 HomeScreen 一致） */}
-        <View style={styles.card}>
-          <ScrollView
-            ref={scrollRef}
-            style={styles.scroll}
-            contentContainerStyle={[
-              styles.content,
-              keyboardUp && { paddingBottom: keyboardH + SPACING.sm },
-            ]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-          >
-            {/* 收支切换 */}
-            <View style={styles.typeSwitch}>
-              {(['expense', 'income'] as RecordType[]).map((t) => (
-                <Pressable
-                  key={t}
-                  style={[styles.typeBtn, type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome)]}
-                  onPress={() => handleTypeChange(t)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t === 'expense' ? '改为支出' : '改为收入'}
-                  accessibilityState={{ selected: type === t }}
-                >
-                  <Text style={[styles.typeText, type === t && styles.typeTextActive]}>
-                    {t === 'expense' ? '支出' : '收入'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {/* 金额区 */}
-            <View style={styles.amountZone}>
-              <View style={styles.amountRow}>
-                <Text style={[styles.amountSymbol, { color: type === 'expense' ? COLORS.expense : COLORS.income }]}>¥</Text>
-                <Text
-                  style={[styles.amountInput, amountStr === '' && styles.amountPlaceholder]}
-                  adjustsFontSizeToFit
-                  numberOfLines={1}
-                  accessibilityLabel={`金额 ${displayAmount}元`}
-                >
-                  {displayAmount}
+      {/* 记账卡片结构：上半内容与数字键盘连为一张卡，键盘固定卡底（与 HomeScreen 一致） */}
+      <View style={styles.card}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={[styles.content, keyboardUp && { paddingBottom: keyboardH + SPACING.sm }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {/* 收支切换 */}
+          <View style={styles.typeSwitch}>
+            {(['expense', 'income'] as RecordType[]).map((t) => (
+              <Pressable
+                key={t}
+                style={[
+                  styles.typeBtn,
+                  type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome),
+                ]}
+                onPress={() => handleTypeChange(t)}
+                accessibilityRole="button"
+                accessibilityLabel={t === 'expense' ? '改为支出' : '改为收入'}
+                accessibilityState={{ selected: type === t }}
+              >
+                <Text style={[styles.typeText, type === t && styles.typeTextActive]}>
+                  {t === 'expense' ? '支出' : '收入'}
                 </Text>
-              </View>
-              <View style={styles.calcSlot}>
-                {showPreview ? (
-                  <Text style={styles.calcPreview}>= ¥{formatMoney(previewAmount)}</Text>
-                ) : null}
-              </View>
-            </View>
+              </Pressable>
+            ))}
+          </View>
 
-            {/* 分类选择（横向滑动一行） */}
-            <CategorySelector
-              categories={getCategories(type)}
-              selected={category}
-              onSelect={(key) => { setCategory(key); hapticLight(); }}
-            />
-
-            {/* 备注 + 待报销 */}
-            <View style={styles.optionRow}>
-              {showNote ? (
-                <TextInput
-                  style={styles.noteInput}
-                  placeholder="备注（可选）"
-                  placeholderTextColor={COLORS.textTertiary}
-                  value={note}
-                  onChangeText={setNote}
-                  maxLength={30}
-                  autoFocus={noteFocused}
-                  onFocus={() => {
-                    // 与首页一致：聚焦时滚到底，输入框位于系统键盘上方（adjustResize 生效）
-                    scrollRef.current?.scrollToEnd({ animated: true });
-                  }}
-                />
-              ) : (
-                <Pressable
-                  style={styles.noteToggle}
-                  onPress={() => { setShowNote(true); setNoteFocused(true); }}
-                  accessibilityRole="button"
-                  accessibilityLabel="添加备注"
-                >
-                  <Text style={styles.noteToggleText}>{note ? `备注：${note}` : '＋ 添加备注'}</Text>
-                </Pressable>
-              )}
-              {type === 'expense' ? (
-                <Pressable
-                  style={[styles.reimburseBtn, reimbursable && styles.reimburseBtnOn]}
-                  onPress={() => { setReimbursable((v) => !v); hapticLight(); }}
-                  accessibilityRole="button"
-                  accessibilityLabel="标记待报销"
-                  accessibilityState={{ selected: reimbursable }}
-                >
-                  <Text style={[styles.reimburseText, reimbursable && styles.reimburseTextOn]}>
-                    待报销
-                  </Text>
-                </Pressable>
-              ) : null}
+          {/* 金额区 */}
+          <View style={styles.amountZone}>
+            <View style={styles.amountRow}>
+              <Text
+                style={[styles.amountSymbol, { color: type === 'expense' ? COLORS.expense : COLORS.income }]}
+              >
+                ¥
+              </Text>
+              <Text
+                style={[styles.amountInput, amountStr === '' && styles.amountPlaceholder]}
+                adjustsFontSizeToFit
+                numberOfLines={1}
+                accessibilityLabel={`金额 ${displayAmount}元`}
+              >
+                {displayAmount}
+              </Text>
             </View>
-          </ScrollView>
-
-          {/* 数字键盘：固定在卡片底部；系统键盘弹起时让位（此时正被 IME 占据，收起可让备注行回落到可见区） */}
-          {!keyboardUp ? (
-            <View style={styles.padDock}>
-              <NumberPad onKey={handleKey} />
+            <View style={styles.calcSlot}>
+              {showPreview ? <Text style={styles.calcPreview}>= ¥{formatMoney(previewAmount)}</Text> : null}
             </View>
-          ) : null}
+          </View>
+
+          {/* 分类选择（横向滑动一行） */}
+          <CategorySelector
+            categories={getCategories(type)}
+            selected={category}
+            onSelect={(key) => {
+              setCategory(key);
+              hapticLight();
+            }}
+          />
+
+          {/* 备注 + 待报销 */}
+          <View style={styles.optionRow}>
+            {showNote ? (
+              <TextInput
+                style={styles.noteInput}
+                placeholder="备注（可选）"
+                placeholderTextColor={COLORS.textTertiary}
+                value={note}
+                onChangeText={setNote}
+                maxLength={30}
+                autoFocus={noteFocused}
+                onFocus={() => {
+                  // 与首页一致：聚焦时滚到底，输入框位于系统键盘上方（adjustResize 生效）
+                  scrollRef.current?.scrollToEnd({ animated: true });
+                }}
+              />
+            ) : (
+              <Pressable
+                style={styles.noteToggle}
+                onPress={() => {
+                  setShowNote(true);
+                  setNoteFocused(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="添加备注"
+              >
+                <Text style={styles.noteToggleText}>{note ? `备注：${note}` : '＋ 添加备注'}</Text>
+              </Pressable>
+            )}
+            {type === 'expense' ? (
+              <Pressable
+                style={[styles.reimburseBtn, reimbursable && styles.reimburseBtnOn]}
+                onPress={() => {
+                  setReimbursable((v) => !v);
+                  hapticLight();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="标记待报销"
+                accessibilityState={{ selected: reimbursable }}
+              >
+                <Text style={[styles.reimburseText, reimbursable && styles.reimburseTextOn]}>待报销</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </ScrollView>
+
+        {/* 数字键盘：固定在卡片底部；系统键盘弹起时让位（此时正被 IME 占据，收起可让备注行回落到可见区） */}
+        {!keyboardUp ? (
+          <View style={styles.padDock}>
+            <NumberPad onKey={handleKey} />
+          </View>
+        ) : null}
       </View>
     </View>
   );

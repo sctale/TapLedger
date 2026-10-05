@@ -30,7 +30,8 @@ function NumberPad({ onKey, disabled }: Props) {
           {row.map((key) => {
             const op = isOperator(key);
             const label = key === 'backspace' ? '⌫' : op ? OP_LABEL[key] : key;
-            const a11y = key === 'backspace' ? '退格' : op ? OP_ACCESSIBILITY[key] : key === '.' ? '小数点' : key;
+            const a11y =
+              key === 'backspace' ? '退格' : op ? OP_ACCESSIBILITY[key] : key === '.' ? '小数点' : key;
             return (
               <Pressable
                 key={key}

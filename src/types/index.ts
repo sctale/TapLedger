@@ -28,14 +28,14 @@ export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export interface RecurringRule {
   id: number;
   uuid: string;
-  userId: number;       // 创建人（0=本地未同步）
+  userId: number; // 创建人（0=本地未同步）
   name: string;
   amount: number;
   type: RecordType;
   category: string;
   frequency: RecurringFrequency;
-  dayOfWeek: number;   // weekly: 0-6 (周日-周六)
-  dayOfMonth: number;  // monthly/yearly: 1-31
+  dayOfWeek: number; // weekly: 0-6 (周日-周六)
+  dayOfMonth: number; // monthly/yearly: 1-31
   monthOfYear: number; // yearly: 1-12
   note: string;
   enabled: boolean;
@@ -48,16 +48,16 @@ export interface RecurringRule {
 // 记录实体（v0.2 扩展：账户/报销；v0.3 扩展：同步字段；账户体系已移除，account 落默认账户1）
 export interface LedgerRecord {
   id: number;
-  uuid: string;          // 同步标识
-  userId: number;        // 记账人（0=本地未同步）
+  uuid: string; // 同步标识
+  userId: number; // 记账人（0=本地未同步）
   amount: number;
   category: string;
   type: RecordType;
   note: string;
-  date: string;        // YYYY-MM-DD
+  date: string; // YYYY-MM-DD
   timestamp: number;
   reimbursable: boolean; // 可报销（待报销）
-  reimbursed: boolean;   // 已报销
+  reimbursed: boolean; // 已报销
   updatedAt: number;
   deleted: boolean;
 }

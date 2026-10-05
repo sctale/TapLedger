@@ -41,12 +41,15 @@ export async function getCachedMembers(): Promise<MemberInfo[]> {
     // 仅已加入家庭（familyName 非空）才兜底合并自己：
     // 未加入家庭的纯个人使用不合并，明细页保持无记账人标识（随手记语义）
     if (uid > 0 && !!familyName && !list.some((m) => m.id === uid)) {
-      list = [...list, {
-        id: uid,
-        displayName: display || '我',
-        avatarEmoji: avatar || '🙂',
-        role: 'member',
-      }];
+      list = [
+        ...list,
+        {
+          id: uid,
+          displayName: display || '我',
+          avatarEmoji: avatar || '🙂',
+          role: 'member',
+        },
+      ];
     }
     return list;
   } catch {

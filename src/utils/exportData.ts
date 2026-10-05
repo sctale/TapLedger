@@ -1,13 +1,13 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import {
-  getAllRecords, getAllSettings, getRecurringRules, getCustomCategories,
-} from '../database/ledgerDB';
+import { getAllRecords, getAllSettings, getRecurringRules, getCustomCategories } from '../database/ledgerDB';
 import { EXPORT_VERSION, SETTING_KEYS } from '../constants';
 import type { CustomCategory, ExportData, LedgerRecord, RecurringRule } from '../types';
 
 // v0.11 安全：备份不得携带登录凭证/身份/水位等同步私有键（分享即泄露 token，导入即劫持账号）
-const EXPORT_EXCLUDED_SETTINGS = new Set<string>(Object.values(SETTING_KEYS).filter((k) => k.startsWith('sync.')));
+const EXPORT_EXCLUDED_SETTINGS = new Set<string>(
+  Object.values(SETTING_KEYS).filter((k) => k.startsWith('sync.')),
+);
 
 // 过滤 settings：剔除 sync.* 私有键
 export function sanitizeExportSettings(settings: Record<string, string>): Record<string, string> {
@@ -30,11 +30,7 @@ export async function exportLedgerData(): Promise<{ success: boolean; count: num
     let recurring: RecurringRule[] = [];
     let customCategories: CustomCategory[] = [];
     try {
-      const [s, r, c] = await Promise.all([
-        getAllSettings(),
-        getRecurringRules(),
-        getCustomCategories(),
-      ]);
+      const [s, r, c] = await Promise.all([getAllSettings(), getRecurringRules(), getCustomCategories()]);
       settings = sanitizeExportSettings(s);
       recurring = r;
       customCategories = c;
@@ -97,7 +93,17 @@ export function isValidRecord(input: unknown): input is LedgerRecord {
 // 服务端 push 侧的字段上限（server/src/routes/sync.ts 的 zod schema）。
 // 导入的数据若超限，服务端会逐条判非法并拒收，而本地已写入 → 表现为「我这有、家人没有」。
 // 所以在导入入口就归一到上限内，宁可用默认值也不留一条永远传不上去的脏数据。
-export const SERVER_LIMITS = { note: 60, category: 40, name: 20, label: 12, key: 60, color: 16, emoji: 8, uuidMin: 8, uuidMax: 64 };
+export const SERVER_LIMITS = {
+  note: 60,
+  category: 40,
+  name: 20,
+  label: 12,
+  key: 60,
+  color: 16,
+  emoji: 8,
+  uuidMin: 8,
+  uuidMax: 64,
+};
 
 // 按码点截断（避免把 emoji 从中间切成乱码）
 export function clip(value: string, max: number): string {

@@ -8,7 +8,11 @@ import type { AuthUser } from '../types';
 const router = Router();
 
 const registerSchema = z.object({
-  username: z.string().trim().min(2, '用户名至少 2 个字符').max(20, '用户名最多 20 个字符')
+  username: z
+    .string()
+    .trim()
+    .min(2, '用户名至少 2 个字符')
+    .max(20, '用户名最多 20 个字符')
     .regex(/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/, '用户名仅限中英文/数字/下划线'),
   password: z.string().min(6, '密码至少 6 位').max(64, '密码最多 64 位'),
   displayName: z.string().trim().max(12, '昵称最多 12 个字符').optional(),
@@ -26,8 +30,12 @@ const updateMeSchema = z.object({
 
 // 用户行 → 对外字段
 function toAuthUser(row: {
-  id: number; username: string; display_name: string; avatar_emoji: string;
-  family_id: number | null; family_role: 'owner' | 'member' | null;
+  id: number;
+  username: string;
+  display_name: string;
+  avatar_emoji: string;
+  family_id: number | null;
+  family_role: 'owner' | 'member' | null;
 }) {
   const personalFid = ensurePersonalLedger(row.id, row.display_name);
   return {
@@ -60,13 +68,17 @@ router.post('/register', (req, res) => {
     return;
   }
   const hash = bcrypt.hashSync(password, 10);
-  const info = db.prepare(
-    `INSERT INTO users (username, password_hash, display_name, avatar_emoji, created_at)
-     VALUES (?, ?, ?, '🙂', ?)`
-  ).run(username, hash, displayName || username, Date.now());
-  const row = db.prepare(
-    'SELECT id, username, display_name, avatar_emoji, family_id, family_role, token_version FROM users WHERE id = ?'
-  ).get(info.lastInsertRowid) as Parameters<typeof toAuthUser>[0] & { token_version: number };
+  const info = db
+    .prepare(
+      `INSERT INTO users (username, password_hash, display_name, avatar_emoji, created_at)
+     VALUES (?, ?, ?, '🙂', ?)`,
+    )
+    .run(username, hash, displayName || username, Date.now());
+  const row = db
+    .prepare(
+      'SELECT id, username, display_name, avatar_emoji, family_id, family_role, token_version FROM users WHERE id = ?',
+    )
+    .get(info.lastInsertRowid) as Parameters<typeof toAuthUser>[0] & { token_version: number };
   res.json({ token: signToken(row.id, row.token_version), user: toAuthUser(row) });
 });
 
@@ -78,10 +90,21 @@ router.post('/login', (req, res) => {
     return;
   }
   const { username, password } = parsed.data;
-  const row = db.prepare(
-    'SELECT id, username, password_hash, display_name, avatar_emoji, family_id, family_role, token_version FROM users WHERE username = ?'
-  ).get(username) as
-    | { id: number; username: string; password_hash: string; display_name: string; avatar_emoji: string; family_id: number | null; family_role: 'owner' | 'member' | null; token_version: number }
+  const row = db
+    .prepare(
+      'SELECT id, username, password_hash, display_name, avatar_emoji, family_id, family_role, token_version FROM users WHERE username = ?',
+    )
+    .get(username) as
+    | {
+        id: number;
+        username: string;
+        password_hash: string;
+        display_name: string;
+        avatar_emoji: string;
+        family_id: number | null;
+        family_role: 'owner' | 'member' | null;
+        token_version: number;
+      }
     | undefined;
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
     res.status(401).json({ error: '用户名或密码错误' });
@@ -113,9 +136,11 @@ meRouter.put('/me', requireAuth, (req, res) => {
   if (avatarEmoji) {
     db.prepare('UPDATE users SET avatar_emoji = ? WHERE id = ?').run(avatarEmoji, req.authUser!.id);
   }
-  const row = db.prepare(
-    'SELECT id, username, display_name, avatar_emoji, family_id, family_role FROM users WHERE id = ?'
-  ).get(req.authUser!.id) as Parameters<typeof toAuthUser>[0];
+  const row = db
+    .prepare(
+      'SELECT id, username, display_name, avatar_emoji, family_id, family_role FROM users WHERE id = ?',
+    )
+    .get(req.authUser!.id) as Parameters<typeof toAuthUser>[0];
   res.json({ user: toAuthUser(row) });
 });
 
@@ -136,8 +161,7 @@ router.post('/password', requireAuth, passwordRateLimit, (req, res) => {
   }
   const uid = req.authUser!.id;
   const row = db.prepare('SELECT password_hash, token_version FROM users WHERE id = ?').get(uid) as
-    | { password_hash: string; token_version: number }
-    | undefined;
+    { password_hash: string; token_version: number } | undefined;
   if (!row || !bcrypt.compareSync(parsed.data.currentPassword, row.password_hash)) {
     res.status(401).json({ error: '当前密码不正确' });
     return;
@@ -148,7 +172,11 @@ router.post('/password', requireAuth, passwordRateLimit, (req, res) => {
   }
   const hash = bcrypt.hashSync(parsed.data.newPassword, 10);
   const nextVersion = row.token_version + 1;
-  db.prepare('UPDATE users SET password_hash = ?, token_version = ? WHERE id = ?').run(hash, nextVersion, uid);
+  db.prepare('UPDATE users SET password_hash = ?, token_version = ? WHERE id = ?').run(
+    hash,
+    nextVersion,
+    uid,
+  );
   // 本端换发新 token 继续登录；其它设备持有的旧 token 因 tv 不匹配立即失效
   res.json({ ok: true, token: signToken(uid, nextVersion) });
 });
@@ -167,8 +195,7 @@ meRouter.delete('/me', requireAuth, deleteRateLimit, (req, res) => {
   }
   const uid = req.authUser!.id;
   const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(uid) as
-    | { password_hash: string }
-    | undefined;
+    { password_hash: string } | undefined;
   if (!row || !bcrypt.compareSync(parsed.data.password, row.password_hash)) {
     res.status(401).json({ error: '密码错误，未执行注销' });
     return;
@@ -185,7 +212,8 @@ meRouter.delete('/me', requireAuth, deleteRateLimit, (req, res) => {
     if (familyId != null) {
       if (isOwner) {
         // 创建者注销 = 解散其创建的家庭账本：删共享数据，其余成员解绑（本地副本保留但不再同步）
-        const others = db.prepare('SELECT COUNT(*) AS c FROM users WHERE family_id = ? AND id != ?')
+        const others = db
+          .prepare('SELECT COUNT(*) AS c FROM users WHERE family_id = ? AND id != ?')
           .get(familyId, uid) as { c: number };
         unboundMembers = others.c;
         db.prepare('DELETE FROM records WHERE family_id = ?').run(familyId);

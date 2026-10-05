@@ -31,7 +31,9 @@ export interface JwtPayload {
 
 // 签发 token
 export function signToken(userId: number, tokenVersion: number): string {
-  return jwt.sign({ uid: userId, tv: tokenVersion } satisfies JwtPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+  return jwt.sign({ uid: userId, tv: tokenVersion } satisfies JwtPayload, JWT_SECRET, {
+    expiresIn: JWT_EXPIRES,
+  });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
@@ -44,7 +46,6 @@ export function verifyToken(token: string): JwtPayload | null {
 
 // 扩展 Request：注入当前用户
 declare global {
-   
   namespace Express {
     interface Request {
       authUser?: AuthUser;
@@ -65,11 +66,22 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ error: '登录已过期，请重新登录' });
     return;
   }
-  const user = db.prepare(
-    `SELECT id, username, display_name, avatar_emoji, family_id, family_role, personal_family_id, token_version
-     FROM users WHERE id = ?`
-  ).get(payload.uid) as
-    | { id: number; username: string; display_name: string; avatar_emoji: string; family_id: number | null; family_role: 'owner' | 'member' | null; personal_family_id: number | null; token_version: number }
+  const user = db
+    .prepare(
+      `SELECT id, username, display_name, avatar_emoji, family_id, family_role, personal_family_id, token_version
+     FROM users WHERE id = ?`,
+    )
+    .get(payload.uid) as
+    | {
+        id: number;
+        username: string;
+        display_name: string;
+        avatar_emoji: string;
+        family_id: number | null;
+        family_role: 'owner' | 'member' | null;
+        personal_family_id: number | null;
+        token_version: number;
+      }
     | undefined;
   if (!user) {
     res.status(401).json({ error: '用户不存在' });
@@ -99,16 +111,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 // 确保用户存在个人账本（注册时建；老用户惰性补建），返回个人账本 id
 export function ensurePersonalLedger(userId: number, displayName: string): number {
   const existing = db.prepare('SELECT personal_family_id FROM users WHERE id = ?').get(userId) as
-    | { personal_family_id: number | null }
-    | undefined;
+    { personal_family_id: number | null } | undefined;
   if (existing && existing.personal_family_id != null) {
     return existing.personal_family_id;
   }
   const tx = db.transaction(() => {
     const code = `P${userId}${String(Date.now()).slice(-6)}`;
-    const info = db.prepare(
-      "INSERT INTO families (name, invite_code, owner_id, type, created_at) VALUES (?, ?, ?, 'personal', ?)"
-    ).run(displayName || '个人账本', code, userId, Date.now());
+    const info = db
+      .prepare(
+        "INSERT INTO families (name, invite_code, owner_id, type, created_at) VALUES (?, ?, ?, 'personal', ?)",
+      )
+      .run(displayName || '个人账本', code, userId, Date.now());
     db.prepare('UPDATE users SET personal_family_id = ? WHERE id = ?').run(info.lastInsertRowid, userId);
     return info.lastInsertRowid as number;
   });
