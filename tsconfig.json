@@ -4,5 +4,16 @@
     "strict": true,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["**/*.ts", "**/*.tsx"]
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "android",
+    "ios",
+    ".expo",
+    "dist",
+    "web-build",
+    "server",
+    "plugins",
+    "scripts"
+  ]
 }

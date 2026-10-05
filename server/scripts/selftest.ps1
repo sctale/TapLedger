@@ -57,7 +57,7 @@ Write-Host "旧版本 push: applied=$($pushOld.applied) rejected=$($pushOld.reje
 if ($pushOld.rejected -ne 1) { throw 'LWW 未拒绝旧版本' }
 
 Step '9. 增量 pull（since=serverTime 应无变更）'
-$pull2 = Invoke-RestMethod "$BASE/api/sync/pull" -Method Post -Headers $hdrMom -ContentType 'application/json' -Body "{`"since`":$serverTime}"
+$pull2 = Invoke-RestMethod "$BASE/api/sync/pull" -Method Post -Headers $hdrMom -ContentType 'application/json' -Body "{`"since`":$serverTime,`"ledgerId`":$fid}"
 Write-Host "records=$($pull2.changes.records.Count)（应为 0 或仅 serverTime 前的）"
 
 Step '10. 非法参数被拒（软拒绝：rejected 计数）'

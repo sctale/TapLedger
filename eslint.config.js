@@ -56,4 +56,17 @@ module.exports = defineConfig([
       'react-hooks/rules-of-hooks': 'off',
     },
   },
+  {
+    // Expo config plugin 与发布脚本同样是 Node 侧 CommonJS（__dirname / require / module）
+    files: ['plugins/**/*.js', 'scripts/**/*.js'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        __dirname: 'readonly',
+        require: 'readonly',
+        module: 'writable',
+      },
+    },
+  },
 ]);

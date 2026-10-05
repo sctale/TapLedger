@@ -13,7 +13,10 @@ const { withAppBuildGradle } = require('expo/config-plugins');
 
 module.exports = (config) => {
   const version = config.version;
-  if (!version) return config;
+  // 缺 version 时静默跳过会让 android 里留着旧 versionCode，发布脚本只能靠 aapt 事后发现
+  if (!version) {
+    throw new Error('withVersionSync: app.json 缺少 expo.version，无法派生 versionCode');
+  }
 
   const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
   if (!match) {

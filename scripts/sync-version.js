@@ -25,4 +25,20 @@ l.version = V;
 if (l.packages && l.packages['']) l.packages[''].version = V;
 fs.writeFileSync(lf, JSON.stringify(l, null, 2) + '\n');
 
+// 服务端是独立的版本线（server/package.json 自己一套号），此前没人管它的 lock 文件，
+// 导致 server/package-lock.json 里的 version 停在 0.4.0 而 package.json 已经是 0.5.5。
+// 这里按 server/package.json 的实际版本回填 lock，避免发布时看着「版本不一致」误判。
+const serverPkgPath = 'server/package.json';
+const serverLockPath = 'server/package-lock.json';
+if (fs.existsSync(serverPkgPath) && fs.existsSync(serverLockPath)) {
+  const serverVersion = JSON.parse(fs.readFileSync(serverPkgPath, 'utf8')).version;
+  if (serverVersion) {
+    const sl = JSON.parse(fs.readFileSync(serverLockPath, 'utf8'));
+    sl.version = serverVersion;
+    if (sl.packages && sl.packages['']) sl.packages[''].version = serverVersion;
+    fs.writeFileSync(serverLockPath, JSON.stringify(sl, null, 2) + '\n');
+    console.log(`服务端 lock 版本已同步：${serverVersion}`);
+  }
+}
+
 console.log(`版本号已同步：${V}`);

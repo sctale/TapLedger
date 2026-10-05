@@ -1,0 +1,81 @@
+name: CI
+
+# 此仓库此前唯一的 workflow 是「手动推镜像」，代码本身没有任何自动门禁：
+# typecheck / lint / 格式 / 单测全靠本地手动跑，format:check 已经烂了 42 个文件没人发现。
+# android/ 是 gitignore 的 prebuild 产物，所以这里只跑静态门禁与服务端冒烟，
+# APK 仍走本地 scripts/release-app.ps1。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: APP 门禁（typecheck / lint / format / 单测）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+
+  server:
+    name: 服务端（typecheck / 构建 / 冒烟启动）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+      # 生产模式下的启动保护：缺 JWT_SECRET 必须拒绝启动（防伪造 token）
+      - name: 缺密钥时拒绝启动
+        env:
+          NODE_ENV: production
+          DATA_DIR: /tmp/tl-ci-data
+          BACKUP_DISABLED: '1'
+        run: |
+          out=$(node dist/index.js 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -q "生产环境必须配置 JWT_SECRET"
+
+      # 真实起一次服务并打健康接口，确保部署文档里的命令不是纸面正确
+      - name: health 冒烟
+        env:
+          DATA_DIR: /tmp/tl-ci-data
+          JWT_SECRET: ci-only-secret-not-for-production
+          BACKUP_DISABLED: '1'
+        run: |
+          node dist/index.js &
+          pid=$!
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:8420/api/health >/dev/null; then
+              echo "health OK"
+              kill "$pid"
+              exit 0
+            fi
+            sleep 1
+          done
+          kill "$pid"
+          echo "服务未在 20s 内就绪"
+          exit 1

@@ -68,12 +68,30 @@ try {
   $readmeRaw = $readmeRaw -replace '当前版本：[\d.]+', "当前版本：$Version"
   [System.IO.File]::WriteAllText($readmePath, $readmeRaw, $utf8)
 
-  # ---------- 3. 单测 + 类型检查 ----------
-  Write-Host "==> vitest + tsc" -ForegroundColor Cyan
+  # ---------- 3. 单测 + 类型检查 + Lint ----------
+  Write-Host "==> vitest + tsc + eslint" -ForegroundColor Cyan
   & npx vitest run
   if ($LASTEXITCODE -ne 0) { Fail "单测未通过。" }
   & npx tsc --noEmit
   if ($LASTEXITCODE -ne 0) { Fail "类型检查未通过。" }
+  & npx eslint .
+  if ($LASTEXITCODE -ne 0) { Fail "ESLint 未通过。" }
+  & npx prettier --check "src/**/*.{ts,tsx}" "server/src/**/*.ts" | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail "Prettier 格式检查未通过（先跑 npm run format）。" }
+
+  # ---------- 3.5 release 签名注入自检（v0.11.8）----------
+  # 只看构建产物会被 apksigner 拦住，但那时已经白跑几分钟 Gradle；
+  # 这里先确认 build.gradle 里插件的三段注入都在，缺任何一段就直接失败。
+  $gCheck = [System.IO.File]::ReadAllText($gradlePath, $utf8)
+  foreach ($needle in @(
+      'tapledgerKeystorePropsFile = rootProject',
+      'storeFile file(tapledgerKeystoreProps',
+      'signingConfig tapledgerKeystorePropsFile.exists() ? signingConfigs.release : signingConfigs.debug')) {
+    if ($gCheck -notlike "*$needle*") {
+      Fail "android/app/build.gradle 缺少 release 签名注入片段：$needle`n请确认 keystore.properties 存在后重新 npx expo prebuild --platform android"
+    }
+  }
+  if (-not (Test-Path (Join-Path $root 'keystore.properties'))) { Fail "缺少 keystore.properties，禁止发布。" }
 
   # ---------- 4. 本地构建 release APK ----------
   Write-Host "==> gradlew assembleRelease" -ForegroundColor Cyan
@@ -112,8 +130,15 @@ try {
   Write-Host "==> APK 就绪：TapLedger-v$Version.apk（$mb MB）" -ForegroundColor Green
 
   # ---------- 7. git 提交推送 ----------
+  # 只暂存发布链路真正改到的文件：git add -A 会把工作区里无关的半成品/意外改动
+  # 一起卷进 release 提交（本次审查就撞到一个：一次编码事故被 -A 顺手提交的风险）
   Write-Host "==> git 提交推送" -ForegroundColor Cyan
-  & git add -A
+  $stagePaths = @(
+    'app.json', 'package.json', 'package-lock.json',
+    'android/app/build.gradle', 'README.md', 'CHANGELOG.md',
+    'src', 'server/src', 'App.tsx', 'plugins', 'scripts'
+  )
+  & git add -- $stagePaths
   if ($LASTEXITCODE -ne 0) { Fail "git add 失败。" }
   & git status --short
   if (-not $CommitMsg) { $CommitMsg = "chore: 发布 v$Version" }

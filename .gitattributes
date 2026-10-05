@@ -1,0 +1,28 @@
+# 行尾统一：仓库内一律 LF，检出时按类型给 Windows 脚本 CRLF。
+# 背景：server/scripts/docker-push.ps1 曾出现「8 个 UTF-8 BOM 叠在文件头」的编码事故，
+# 根因就是 PowerShell 脚本要求带 BOM，而 git 的 autocrlf/eol 没人显式声明，
+# 不同工具来回改写行尾与编码。显式声明后不再依赖各人本地配置。
+* text=auto eol=lf
+
+# Windows 批处理 / PowerShell 必须是 CRLF（且 .ps1 含中文，另需 UTF-8 BOM）
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.gradle text eol=lf
+
+# 二进制：禁止任何行尾/换列转换
+*.png binary
+*.webp binary
+*.jpg binary
+*.ico binary
+*.keystore binary
+*.jks binary
+*.apk binary
+*.db binary
+*.db-wal binary
+*.db-shm binary
+
+# 文本但内容敏感
+*.json text eol=lf
+*.md   text eol=lf
+CHANGELOG.md merge=union
