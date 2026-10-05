@@ -25,6 +25,7 @@ curl http://<NAS_IP>:8420/api/health
 ```
 
 > 更新到新版本：`docker compose pull && docker compose up -d` 即可，无需重新编译。
+> 想确认跑的是哪一版：`docker compose logs --tail 20` 会看到 `[boot] TapLedger server v0.5.7 监听 :8420`（v0.5.7 起启动即打印版本号与备份开关）。
 
 > 部署教程：通用命令行版见 [DEPLOY_DOCKER.md](./DEPLOY_DOCKER.md)（HTTPS 反代 / TRUST_PROXY / 备份恢复 / FAQ），群晖图形化版见 [DEPLOY_SYNOLOGY.md](./DEPLOY_SYNOLOGY.md)。
 

@@ -63,14 +63,22 @@ try {
   $prevDataDir = $env:DATA_DIR
   $prevJwtSecret = $env:JWT_SECRET
   $prevBackupDisabled = $env:BACKUP_DISABLED
+  $smokeOut = ''
+  $smokeExit = -1
+  $prevEap = $ErrorActionPreference
   try {
     $env:NODE_ENV = 'production'
     $env:DATA_DIR = $smokeDir
     $env:BACKUP_DISABLED = '1'
     $env:JWT_SECRET = $null
-    $smokeOut = (& node dist/index.js 2>&1 | Out-String)
+    # 关键点：脚本顶部是 $ErrorActionPreference='Stop'，直接 `& node ... 2>&1` 会把子进程写到
+    # stderr 的那句 [fatal] 变成 PowerShell 的 ErrorRecord 并当场终止脚本（我们恰恰是想拿到它做断言）。
+    # 用 cmd 合并两条流，输出就只是普通文本，退出码仍由 $LASTEXITCODE 透传。
+    $ErrorActionPreference = 'Continue'
+    $smokeOut = (& cmd /c "node dist/index.js 2>&1" | Out-String)
     $smokeExit = $LASTEXITCODE
   } finally {
+    $ErrorActionPreference = $prevEap
     $env:NODE_ENV = $prevNodeEnv
     $env:DATA_DIR = $prevDataDir
     $env:JWT_SECRET = $prevJwtSecret
