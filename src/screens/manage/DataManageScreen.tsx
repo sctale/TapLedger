@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, DeviceEventEmitter, Platform, Pressable, ScrollView, Text, TextInput, View,
 } from 'react-native';
@@ -9,7 +9,6 @@ import { exportCSV } from '../../utils/csvExport';
 import { pickAndImportData, type ImportStrategy } from '../../utils/importData';
 import { hapticError, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
-import Toast from '../../components/Toast';
 import Modal from '../../components/Modal';
 import { manageStyles as styles } from './sharedStyles';
 
@@ -19,7 +18,7 @@ export default function DataManageScreen() {
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [resetInput, setResetInput] = useState('');
 
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   const reload = useCallback(async () => {
     try {
@@ -45,13 +44,24 @@ export default function DataManageScreen() {
   }, [reload]);
 
   // ===== 备份操作 =====
+  // 备份/导入都是「点了会弹系统面板」的动作：没有防重入时连点两下会叠两次分享面板
+  const busyRef = useRef(false);
+
   const handleExport = useCallback(async () => {
-    const result = await exportLedgerData();
-    if (result.success) showToast(`已导出 ${result.count} 条记录`);
-    else if (result.error) showToast(result.error, 'error');
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      const result = await exportLedgerData();
+      if (result.success) showToast(`已导出 ${result.count} 条记录`);
+      else if (result.error) showToast(result.error, 'error');
+    } finally {
+      busyRef.current = false;
+    }
   }, [showToast]);
 
   const handleExportCSV = useCallback(async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     try {
       const records = await getAllRecords();
       const result = await exportCSV(records);
@@ -59,25 +69,33 @@ export default function DataManageScreen() {
       else if (result.error) showToast(result.error, 'error');
     } catch {
       showToast('导出失败', 'error');
+    } finally {
+      busyRef.current = false;
     }
   }, [showToast]);
 
   const doImport = useCallback(async (strategy: ImportStrategy) => {
-    // pickAndImportData 内部成功后会 emit DATA_IMPORTED（含跨页刷新链）
-    const result = await pickAndImportData(strategy);
-    if (result.cancelled) return;
-    if (result.success) {
-      hapticSuccess();
-      let msg = `已导入 ${result.imported} 条记录`;
-      const extras: string[] = [];
-      if (result.skipped > 0) extras.push(`跳过 ${result.skipped} 条无效`);
-      if ((result.failed ?? 0) > 0) extras.push(`${result.failed} 项附属数据失败`);
-      if (extras.length > 0) msg += `（${extras.join('，')}）`;
-      showToast(msg, (result.failed ?? 0) > 0 ? 'info' : 'success');
-      await reload();
-    } else {
-      hapticError();
-      showToast(result.error ?? '导入失败', 'error');
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      // pickAndImportData 内部成功后会 emit DATA_IMPORTED（含跨页刷新链）
+      const result = await pickAndImportData(strategy);
+      if (result.cancelled) return;
+      if (result.success) {
+        hapticSuccess();
+        let msg = `已导入 ${result.imported} 条记录`;
+        const extras: string[] = [];
+        if (result.skipped > 0) extras.push(`跳过 ${result.skipped} 条无效`);
+        if ((result.failed ?? 0) > 0) extras.push(`${result.failed} 项附属数据失败`);
+        if (extras.length > 0) msg += `（${extras.join('，')}）`;
+        showToast(msg, (result.failed ?? 0) > 0 ? 'info' : 'success');
+        await reload();
+      } else {
+        hapticError();
+        showToast(result.error ?? '导入失败', 'error');
+      }
+    } finally {
+      busyRef.current = false;
     }
   }, [reload, showToast]);
 
@@ -106,8 +124,9 @@ export default function DataManageScreen() {
 
   const confirmReset = useCallback(() => {
     if (Platform.OS === 'ios') {
+      // iOS 上点「取消」回调拿到的是 undefined，直接 .trim() 会崩
       Alert.prompt('请确认', '请输入「重置」二字以确认操作', (text) => {
-        if (text.trim() === '重置') {
+        if ((text ?? '').trim() === '重置') {
           doReset();
         } else {
           hapticError();
@@ -146,13 +165,13 @@ export default function DataManageScreen() {
           <Text style={styles.dataCount}>{totalCount} 条</Text>
         </View>
         <View style={styles.btnRow}>
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={handleExport}>
+          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={handleExport} accessibilityRole="button">
             <Text style={styles.actionBtnText}>导出 JSON</Text>
           </Pressable>
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.income }]} onPress={handleExportCSV}>
+          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.income }]} onPress={handleExportCSV} accessibilityRole="button">
             <Text style={styles.actionBtnText}>导出 Excel</Text>
           </Pressable>
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.bgAlt }]} onPress={confirmImport}>
+          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.bgAlt }]} onPress={confirmImport} accessibilityRole="button">
             <Text style={[styles.actionBtnText, { color: COLORS.text }]}>导入数据</Text>
           </Pressable>
         </View>
@@ -172,18 +191,17 @@ export default function DataManageScreen() {
             { text: '取消', style: 'cancel' },
             { text: '继续', style: 'destructive', onPress: confirmReset },
           ])}
+          accessibilityRole="button"
         >
           <Text style={styles.actionBtnText}>重置当前账本</Text>
         </Pressable>
       </View>
 
-      <Toast toast={toast} onHide={hideToast} />
 
       {/* ===== Android 二次确认弹窗 ===== */}
       <Modal
         visible={resetModalVisible}
         title="确认重置"
-        fullscreen
         saveLabel="确认重置"
         onClose={() => setResetModalVisible(false)}
         onSave={handleResetModalConfirm}

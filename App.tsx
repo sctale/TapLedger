@@ -7,6 +7,7 @@ import { initDatabase, setCustomCategoriesCache, getCategoryConfig } from './src
 import { runRecurringCheck } from './src/utils/recurring';
 import { runSync, purgeOldTombstones } from './src/sync/syncEngine';
 import TabBar, { type TabKey } from './src/components/TabBar';
+import Toast from './src/components/Toast';
 import HomeScreen from './src/screens/HomeScreen';
 import LedgerScreen from './src/screens/LedgerScreen';
 import StatsScreen from './src/screens/StatsScreen';
@@ -66,8 +67,14 @@ export default function App() {
       if (state === 'active') syncInBackground();
     });
     // 网络恢复（前台等待断网恢复的场景，如地铁出站）
+    // 只在「可达性」真的变化时补一轮同步：NetInfo 在任何连接属性变化时都会回调
+    // （Wi-Fi↔蜂窝切换、IP 变化等），此前每次回调都打一串请求，信号不稳的机型会被放大
+    let lastReachable: boolean | null = null;
     const netSub = NetInfo.addEventListener((state) => {
-      if (state.isConnected) syncInBackground();
+      const reachable = state.isInternetReachable ?? null;
+      if (reachable === lastReachable) return;
+      lastReachable = reachable;
+      if (reachable === true) syncInBackground();
     });
     return () => {
       appStateSub.remove();
@@ -79,11 +86,11 @@ export default function App() {
   useEffect(() => {
     const schedule = () => {
       if (syncTimer.current) clearTimeout(syncTimer.current);
-      syncTimer.current = setTimeout(async () => {
-        const res = await runSync();
-        if (res.ok && res.pushed + res.pulled > 0) {
-          DeviceEventEmitter.emit(LEDGER_EVENTS.SYNC_DONE);
-        }
+      syncTimer.current = setTimeout(() => {
+        // runSync 的正常路径不抛（内部 catch 后返回结果），但读取配置阶段仍可能 reject，
+        // 不接住就是一次未处理拒绝、这一轮同步静默消失。
+        // SYNC_DONE 由 runSync 的 finally 统一广播，这里不再补发（此前同一轮会触发两次刷新）。
+        void runSync().catch(() => {});
       }, AUTO_SYNC_DEBOUNCE);
     };
     const subs = [
@@ -124,6 +131,8 @@ export default function App() {
           </View>
         </View>
         <TabBar current={tab} onChange={setTab} />
+        {/* 全局唯一提示层：非模态浮层，显示期间页面照常可点 */}
+        <Toast />
       </View>
     </SafeAreaProvider>
   );

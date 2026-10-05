@@ -9,7 +9,6 @@ import {
 import { formatMoney } from '../../utils/dateUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
-import Toast from '../../components/Toast';
 import type { RecurringRule } from '../../types';
 import RuleModal from './RuleModal';
 import { manageStyles as styles } from './sharedStyles';
@@ -29,7 +28,7 @@ export default function RecurringScreen() {
   const [ruleModal, setRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null);
 
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   // 自加载：规则
   const reload = useCallback(async () => {
@@ -142,7 +141,12 @@ export default function RecurringScreen() {
               return (
                 <View key={rule.id} style={styles.ruleRow}>
                   {/* 行主体可点击 → 打开编辑弹窗；开关与删除在 Pressable 之外，保留独立行为 */}
-                  <Pressable style={localStyles.ruleMain} onPress={() => openEdit(rule)}>
+                  <Pressable
+                    style={localStyles.ruleMain}
+                    onPress={() => openEdit(rule)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`编辑周期规则${rule.name}`}
+                  >
                     <View style={[styles.accIcon, { backgroundColor: `${cat.color}22` }]}>
                       <Text style={styles.accEmoji}>{cat.emoji}</Text>
                     </View>
@@ -161,19 +165,18 @@ export default function RecurringScreen() {
                     thumbColor={COLORS.white}
                     style={{ transform: [{ scale: 0.8 }] }}
                   />
-                  <Pressable onPress={() => handleDeleteRule(rule)} hitSlop={8}>
+                  <Pressable onPress={() => handleDeleteRule(rule)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`删除周期规则${rule.name}`}>
                     <Text style={styles.accDeleteText}>✕</Text>
                   </Pressable>
                 </View>
               );
             })
           )}
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={openAdd}>
+          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={openAdd} accessibilityRole="button" accessibilityLabel="添加周期记账">
             <Text style={styles.actionBtnText}>＋ 添加周期记账</Text>
           </Pressable>
         </View>
       </ScrollView>
-      <Toast toast={toast} onHide={hideToast} />
       <RuleModal
         visible={ruleModal}
         initialRule={editingRule}

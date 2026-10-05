@@ -6,7 +6,6 @@ import { COLORS, LEDGER_EVENTS, SETTING_KEYS } from '../../constants';
 import { getSetting, saveSetting } from '../../database/ledgerDB';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
-import Toast from '../../components/Toast';
 import { manageStyles } from './sharedStyles';
 
 // 本页补充样式（sharedStyles 未覆盖的键，值与原 ManageScreen styles 一致）
@@ -29,7 +28,7 @@ export default function PrefsScreen() {
   const [budgetText, setBudgetText] = useState('');
   const [defaultIncome, setDefaultIncome] = useState(false);
 
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   // 挂载时读取预算与默认收支类型
   useEffect(() => {
@@ -101,7 +100,7 @@ export default function PrefsScreen() {
               onChangeText={(t) => setBudgetText(t.replace(/[^0-9.]/g, ''))}
               maxLength={8}
             />
-            <Pressable style={styles.primaryBtn} onPress={handleSaveBudget}>
+            <Pressable style={styles.primaryBtn} onPress={handleSaveBudget} accessibilityRole="button">
               <Text style={styles.primaryBtnText}>保存</Text>
             </Pressable>
           </View>
@@ -119,7 +118,6 @@ export default function PrefsScreen() {
           </View>
         </View>
 
-        <Toast toast={toast} onHide={hideToast} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

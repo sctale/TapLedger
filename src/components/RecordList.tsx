@@ -68,14 +68,19 @@ export const RecordRow = React.memo(function RecordRow({
         style={swipeable ? { transform: [{ translateX }] } : undefined}
         {...(swipeable ? panResponder.panHandlers : {})}
       >
-    {/* 整行可点击编辑（v0.10）：左滑删除手势仅横向拖动接管，不与点击冲突 */}
+      <View style={styles.row}>
+    {/* 整行可点击编辑（v0.10）：左滑删除手势仅横向拖动接管，不与点击冲突。
+        v0.11.8：编辑热区改为「图标+信息」这一块，不再把核销/删除按钮包在里面 ——
+        嵌套 Pressable 手指能点（内层优先），但 TalkBack 会把外层标签下的子树合并成
+        一个节点，导致核销和删除对读屏完全不可达。布局不变（外层 row 仍是 flex row，
+        热区 flex:1 撑到原来 info 的右边界）。 */}
     <Pressable
+      style={styles.rowContent}
       onPress={() => onEdit?.(record)}
       disabled={!onEdit}
       accessibilityRole={onEdit ? 'button' : undefined}
       accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
     >
-    <View style={styles.row}>
       <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
         <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>{cat.emoji}</Text>
       </View>
@@ -108,6 +113,8 @@ export const RecordRow = React.memo(function RecordRow({
           {record.note ? <Text style={styles.note} numberOfLines={1}>{record.note}</Text> : null}
         </View>
       </View>
+    </Pressable>
+    <View style={styles.rowActions}>
       {onToggleReimbursed && record.reimbursable ? (
         <Pressable
           style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
@@ -137,7 +144,7 @@ export const RecordRow = React.memo(function RecordRow({
         </Pressable>
       ) : null}
     </View>
-    </Pressable>
+      </View>
       </Animated.View>
     </View>
   );
@@ -220,6 +227,18 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm + 2,
+    gap: SPACING.sm + 4,
+  },
+  // 编辑热区（图标 + 信息），与右侧动作区分开，读屏可分别聚焦
+  rowContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm + 4,
+  },
+  rowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.sm + 4,
   },
   iconWrap: {

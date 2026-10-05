@@ -13,7 +13,6 @@ import {
   getSetting,
 } from '../database/ledgerDB';
 import { useToast } from '../hooks/useToast';
-import Toast from '../components/Toast';
 import { getSyncConfig } from '../sync/apiClient';
 import RecurringScreen from './manage/RecurringScreen';
 import CategoriesScreen from './manage/CategoriesScreen';
@@ -50,7 +49,7 @@ export default function ManageScreen({ active }: Props) {
   const [budgetStr, setBudgetStr] = useState('');          // 月度预算（原始字符串）
   const [syncSummary, setSyncSummary] = useState('');      // 家庭同步状态摘要
 
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   // 主页摘要加载：各板块计数 + 同步状态（一次并行读齐）
   const loadSummary = useCallback(async () => {
@@ -152,6 +151,8 @@ export default function ManageScreen({ active }: Props) {
                   key={e.target}
                   style={[styles.entryRow, i > 0 && styles.entryDivider]}
                   onPress={() => setPage(e.target)}
+                  accessibilityRole="button"
+                  accessibilityLabel={e.title}
                 >
                   <View style={[styles.accIcon, { backgroundColor: `${COLORS.accent}15` }]}>
                     <Text style={styles.accEmoji}>{e.icon}</Text>
@@ -180,7 +181,7 @@ export default function ManageScreen({ active }: Props) {
         /* ===== 子页面：顶栏返回 + 对应二级页（切换 page 时组件自然挂载自加载） ===== */
         <View style={styles.subPage}>
           <View style={styles.navBar}>
-            <Pressable hitSlop={8} onPress={() => setPage('main')}>
+            <Pressable hitSlop={8} onPress={() => setPage('main')} accessibilityRole="button" accessibilityLabel="返回管理首页">
               <Text style={styles.navBack}>‹ 返回</Text>
             </Pressable>
             <Text style={styles.navTitle}>{PAGE_TITLES[page]}</Text>
@@ -199,7 +200,6 @@ export default function ManageScreen({ active }: Props) {
         </View>
       )}
 
-      <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
   );
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
-import { formatMoneyShort, getDaysInMonth, getFirstDayOfMonth } from '../utils/dateUtils';
+import { formatMoneyShort, getDaysInMonth, getFirstDayOfMonth, getToday } from '../utils/dateUtils';
 
 interface Props {
   year: number;
@@ -21,6 +21,8 @@ export default function MonthHeatmap({
   selectedDate,
   onSelectDate,
 }: Props) {
+  // 一屏 42 格，「今天」每帧只算一次（此前每格各 new Date() 一次）
+  const today = getToday();
   const days = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
   const cells: (number | null)[] = [
@@ -61,7 +63,7 @@ export default function MonthHeatmap({
               const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const amount = dailyExpense[dateStr] ?? 0;
               const isSelected = dateStr === selectedDate;
-              const isToday = dateStr === todayStr();
+              const isToday = dateStr === today;
               const [bg, isDeep] = levelStyle(amount);
               return (
                 <Pressable
@@ -74,6 +76,7 @@ export default function MonthHeatmap({
                   ]}
                   onPress={() => onSelectDate(dateStr)}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
                   accessibilityLabel={`${month}月${day}日${amount > 0 ? `支出${formatMoneyShort(amount)}元` : '无支出'}`}
                 >
                   <Text style={[styles.dayText, amount > 0 && styles.dayTextActive, isDeep && !isSelected && styles.dayTextDeep, isSelected && styles.dayTextSelected, isToday && !isSelected && styles.dayTextToday]}>
@@ -93,11 +96,6 @@ export default function MonthHeatmap({
       </View>
     </View>
   );
-}
-
-function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({
@@ -163,7 +161,8 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   amountText: {
-    fontSize: FONT_SIZE.xs - 2.5,
+    // 8.5sp 在手机上几乎看不清（xs-2.5），热力图金额是最常被读的数字，抬到 10sp
+    fontSize: FONT_SIZE.xs - 1,
     color: 'rgba(45,45,45,0.75)',
     fontWeight: '600',
     marginTop: 1,

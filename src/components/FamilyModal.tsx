@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
 import Modal from './Modal';
 import { hapticError, hapticLight } from '../utils/haptics';
@@ -18,6 +18,9 @@ interface Props {
 // 家庭弹窗：未入家（创建/邀请码加入）｜已入家（成员列表 + 邀请码管理 + 退出）
 export default function FamilyModal({ visible, baseUrl, token, currentUserId, onClose, onFamilyChanged, onError }: Props) {
   const [family, setFamily] = useState<FamilyInfo | null>(null);
+  // 首次回读没落地前先显示加载态：否则已有家庭的成员打开弹窗会闪一下「创建新家庭」，
+  // 看起来像家庭凭空消失了
+  const [loaded, setLoaded] = useState(false);
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [name, setName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -47,6 +50,8 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
       }
     } catch (e) {
       onError(e instanceof Error ? e.message : '加载失败');
+    } finally {
+      setLoaded(true);
     }
   };
 
@@ -55,6 +60,7 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
     setName('');
     setInviteCode('');
     setEditingProfile(false);
+    setLoaded(false);
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -205,13 +211,22 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
   };
 
   return (
-    <Modal visible={visible} title="家庭账本" fullscreen onClose={onClose}>
-        {family ? (
+    <Modal visible={visible} title="家庭账本" onClose={onClose}>
+        {!loaded ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="small" color={COLORS.accent} />
+            <Text style={styles.loadingText}>正在读取家庭信息…</Text>
+          </View>
+        ) : family ? (
           <>
             {/* 家庭信息 */}
             <View style={styles.formGroup}>
               <Text style={styles.familyName}>🏠 {family.name}</Text>
-              <Pressable style={styles.inviteRow} onPress={() => {
+              <Pressable
+                style={styles.inviteRow}
+                accessibilityRole="button"
+                accessibilityLabel={`邀请码${family.inviteCode}，点击查看`}
+                onPress={() => {
                 // 复制邀请码（长按复制体验的轻量替代：点击提示）
                 Alert.alert('邀请码', `把邀请码告诉家人：${family.inviteCode}`);
               }}>
@@ -219,7 +234,7 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
                 <Text style={styles.inviteCode}>{family.inviteCode}</Text>
               </Pressable>
               {isOwner ? (
-                <Pressable onPress={regenerate} hitSlop={8}>
+                <Pressable onPress={regenerate} hitSlop={8} accessibilityRole="button">
                   <Text style={styles.linkText}>重置邀请码</Text>
                 </Pressable>
               ) : null}
@@ -280,22 +295,22 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
                     ))}
                   </View>
                   <View style={styles.profileBtnRow}>
-                    <Pressable style={styles.cancelBtn} onPress={() => setEditingProfile(false)}>
+                    <Pressable style={styles.cancelBtn} onPress={() => setEditingProfile(false)} accessibilityRole="button">
                       <Text style={styles.cancelText}>取消</Text>
                     </Pressable>
-                    <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={saveProfile} disabled={busy}>
+                    <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={saveProfile} disabled={busy} accessibilityRole="button">
                       <Text style={styles.inlineBtnText}>保存</Text>
                     </Pressable>
                   </View>
                 </View>
               ) : (
-                <Pressable onPress={() => setEditingProfile(true)} hitSlop={8}>
+                <Pressable onPress={() => setEditingProfile(true)} hitSlop={8} accessibilityRole="button">
                   <Text style={styles.linkText}>✏️ 修改我的昵称 / 头像</Text>
                 </Pressable>
               )}
             </View>
 
-            <Pressable style={[styles.leaveBtn]} onPress={leaveFamily}>
+            <Pressable style={[styles.leaveBtn]} onPress={leaveFamily} accessibilityRole="button">
               <Text style={styles.leaveText}>{isOwner ? '解散家庭' : '退出家庭'}</Text>
             </Pressable>
           </>
@@ -313,7 +328,7 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
                   onChangeText={setName}
                   maxLength={20}
                 />
-                <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={createFamily} disabled={busy}>
+                <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={createFamily} disabled={busy} accessibilityRole="button">
                   <Text style={styles.inlineBtnText}>创建</Text>
                 </Pressable>
               </View>
@@ -332,7 +347,7 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
                   maxLength={6}
                   autoCapitalize="characters"
                 />
-                <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={joinFamily} disabled={busy}>
+                <Pressable style={[styles.inlineBtn, busy && styles.btnDisabled]} onPress={joinFamily} disabled={busy} accessibilityRole="button">
                   <Text style={styles.inlineBtnText}>加入</Text>
                 </Pressable>
               </View>
@@ -344,6 +359,17 @@ export default function FamilyModal({ visible, baseUrl, token, currentUserId, on
 }
 
 const styles = StyleSheet.create({
+  loadingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xl,
+  },
+  loadingText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+  },
   formGroup: {
     marginBottom: SPACING.md,
   },

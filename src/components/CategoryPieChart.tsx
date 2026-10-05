@@ -62,7 +62,12 @@ export default function CategoryPieChart({ data, type, height = 180 }: Props) {
     .arcs;
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`分类占比图，合计 ${Math.round(total)} 元；${slices.slice(0, 4).map((s) => `${s.label} ${Math.round(s.total)} 元`).join('，')}`}
+    >
       <View style={{ width: height, height }}>
         <Svg width={height} height={height} viewBox={`0 0 ${height} ${height}`}>
           <G rotation={-90} origin={`${height / 2}, ${height / 2}`}>

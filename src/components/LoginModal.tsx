@@ -66,7 +66,7 @@ export default function LoginModal({ visible, baseUrl, onClose, onAuthed, onErro
   };
 
   return (
-    <Modal visible={visible} title={mode === 'login' ? '登录' : '注册'} fullscreen saveLabel={mode === 'login' ? '登录' : '注册并登录'} onSave={submit} saveDisabled={busy} onClose={onClose}>
+    <Modal visible={visible} title={mode === 'login' ? '登录' : '注册'} saveLabel={mode === 'login' ? '登录' : '注册并登录'} onSave={submit} saveDisabled={busy} onClose={onClose}>
         <View style={styles.formGroup}>
           <Text style={styles.fieldLabel}>用户名（中英文/数字/下划线）</Text>
           <TextInput
@@ -118,7 +118,7 @@ export default function LoginModal({ visible, baseUrl, onClose, onAuthed, onErro
             />
           </View>
         ) : null}
-        <Pressable style={styles.switchRow} onPress={() => setMode(mode === 'login' ? 'register' : 'login')}>
+        <Pressable style={styles.switchRow} onPress={() => setMode(mode === 'login' ? 'register' : 'login')} accessibilityRole="button">
           <Text style={styles.switchText}>
             {mode === 'login' ? '没有账号？注册一个' : '已有账号？直接登录'}
           </Text>

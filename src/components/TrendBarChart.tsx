@@ -21,9 +21,12 @@ export default function TrendBarChart({ values, labels, height = 150, color = CO
   const [chartW, setChartW] = useState(DEFAULT_W);
 
   const n = values.length;
+  // 空数据集不画：下面的 (…)/n 会得到 Infinity，父层还能照常显示「还没有记录」占位
+  if (n === 0) return null;
   const gap = n > 18 ? 2 : n > 10 ? 4 : 6;
   const barWidth = Math.max((chartW - PADDING_X * 2 - gap * (n - 1)) / n, 2);
   const max = Math.max(...values, 1);
+  const total = values.reduce((s, v) => s + v, 0);
 
   // 标签抽样：数据多时只显示部分标签，避免拥挤（首尾必显示）
   const labelStep = n > 18 ? Math.ceil(n / 6) : n > 10 ? Math.ceil(n / 7) : 1;
@@ -31,6 +34,9 @@ export default function TrendBarChart({ values, labels, height = 150, color = CO
   return (
     <View
       style={styles.container}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`支出趋势图，${n} 个数据点，合计 ${Math.round(total)} 元，最高 ${Math.round(max)} 元`}
       onLayout={(e) => {
         const w = Math.round(e.nativeEvent.layout.width);
         if (w > 0 && w !== chartW) setChartW(w);

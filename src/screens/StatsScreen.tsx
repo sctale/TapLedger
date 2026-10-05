@@ -14,7 +14,6 @@ import { useToast } from '../hooks/useToast';
 import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUtils';
 import CategoryPieChart from '../components/CategoryPieChart';
 import TrendBarChart from '../components/TrendBarChart';
-import Toast from '../components/Toast';
 import ReimburseScreen from './manage/ReimburseScreen';
 
 type RangeKey = 'week' | 'month' | 'year';
@@ -39,11 +38,9 @@ export default function StatsScreen({ active }: Props) {
   const [memberStats, setMemberStats] = useState<{ userId: number; total: number; count: number }[]>([]);
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
 
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   const scrollRef = useRef<ScrollView>(null);
-
-  const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   // 报销摘要加载（统计页入口展示用）
   const loadReimburseSummary = useCallback(async () => {
@@ -54,17 +51,21 @@ export default function StatsScreen({ active }: Props) {
     }
   }, [showToast]);
 
-  // Tab 激活时滚回顶部 + 重载数据 + 回主页（切 Tab 再回来回到 main，v0.5.9）
+  // 数据变更事件同时影响主图和报销摘要，合成一个回调（此前两组监听器分别注册，
+  // RECORDED/DATA_IMPORTED/SYNC_DONE 每个事件都跑两遍）
+  const refreshAll = useCallback(() => {
+    setTick((t) => t + 1);
+    loadReimburseSummary();
+  }, [loadReimburseSummary]);
+
+  // Tab 激活时滚回顶部 + 重载数据 + 回主页（切 Tab 再回来回到 main，v0.5.6）
+  // 激活重载已经覆盖摘要，不再单独挂一个「挂载预载」effect（此前两者重复跑一次查询）
   useEffect(() => {
     if (!active) return;
     setPage('main');
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-    refresh();
-    loadReimburseSummary();
-  }, [active, refresh, loadReimburseSummary]);
-
-  // 挂载时预载报销摘要
-  useEffect(() => { loadReimburseSummary(); }, [loadReimburseSummary]);
+    refreshAll();
+  }, [active, refreshAll]);
 
   // 成员缓存加载（登录态/同步完成事件触发）
   const loadMembers = useCallback(async () => {
@@ -98,7 +99,11 @@ export default function StatsScreen({ active }: Props) {
       dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
     }
     return { rangeLabel: '近 12 个月', start: dates[0], end: today, trendDates: dates };
-  }, [range]);
+    // tick 进依赖：4 个 tab 常驻挂载，跨零点后切回本页要重算窗口，
+    // 否则「本月/近 7 天」还停在昨天（数据会按旧 end 查）。
+    // 表达式里没直接引用 tick（它只通过 new Date() 生效），所以要显式关掉这条规则
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, tick]);
 
   // 加载数据（memberFilter > 0 时按记账人筛选，v0.5）
   useEffect(() => {
@@ -149,22 +154,18 @@ export default function StatsScreen({ active }: Props) {
   // 全局刷新（含登录态/同步事件 → 更新成员缓存，v0.5）
   useEffect(() => {
     const subs = [
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.RECORDED, refresh),
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.DATA_IMPORTED, refresh),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.RECORDED, refreshAll),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.DATA_IMPORTED, refreshAll),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, loadMembers),
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, () => {
         loadMembers();
-        refresh();
+        refreshAll();
       }),
       // 设置变更（月度预算）→ 即时刷新预算卡（v0.5.5）
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.SETTINGS_CHANGED, refresh),
-      // 记账/导入/同步完成可能改变报销状态，独立刷新摘要
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.RECORDED, loadReimburseSummary),
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.DATA_IMPORTED, loadReimburseSummary),
-      DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, loadReimburseSummary),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SETTINGS_CHANGED, refreshAll),
     ];
     return () => subs.forEach((s) => s.remove());
-  }, [refresh, loadMembers, loadReimburseSummary]);
+  }, [refreshAll, loadMembers]);
 
   // Android 系统返回键：在报销子页时返回主页（主页时不消费，走默认）
   // v0.11 修复：仅激活 tab 注册，避免与管理页同时消费返回键（两页常驻挂载）
@@ -193,7 +194,8 @@ export default function StatsScreen({ active }: Props) {
 
   // 排行条相对最大值归一化（第 1 名满格，其余按比例，避免占比>33% 全部顶满的误导）
   const maxCategoryTotal = topCategories.length > 0 ? topCategories[0].total : 0;
-  const trendEmpty = trendValues.length > 0 && trendValues.every((v) => v <= 0);
+  // 空数组也要走占位：此前 length > 0 的条件让「一条记录都还没有」时画出一张空白图
+  const trendEmpty = trendValues.length === 0 || trendValues.every((v) => v <= 0);
 
   // 成员支出排行（多成员且未筛选时显示，v0.5；v0.10 增加笔数）
   const multiMember = members.length > 1;
@@ -342,7 +344,7 @@ export default function StatsScreen({ active }: Props) {
             accessibilityLabel={`待报销，${reimburseStatusText}`}
           >
             <View style={styles.reimburseRow}>
-              <View style={[styles.reimburseIcon, { backgroundColor: `${COLORS.warningText ?? COLORS.accent}15` }]}>
+              <View style={[styles.reimburseIcon, { backgroundColor: `${COLORS.warningText}15` }]}>
                 <Text style={styles.reimburseEmoji}>🧾</Text>
               </View>
               <View style={styles.reimburseInfo}>
@@ -449,7 +451,7 @@ export default function StatsScreen({ active }: Props) {
       ) : (
         <View style={styles.subPage}>
           <View style={styles.navBar}>
-            <Pressable hitSlop={8} onPress={() => setPage('main')}>
+            <Pressable hitSlop={8} onPress={() => setPage('main')} accessibilityRole="button">
               <Text style={styles.navBack}>‹ 返回</Text>
             </Pressable>
             <Text style={styles.navTitle}>报销管理</Text>
@@ -457,7 +459,6 @@ export default function StatsScreen({ active }: Props) {
           <ReimburseScreen />
         </View>
       )}
-      <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
   );
 }

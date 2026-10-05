@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { DeviceEventEmitter, Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, DeviceEventEmitter, Pressable, ScrollView, Text, View } from 'react-native';
 import { LEDGER_EVENTS } from '../../constants';
 import {
   getReimbursableRecords, getReimbursableSummary, markAllReimbursed, setReimbursed,
@@ -8,7 +8,6 @@ import { formatMoney } from '../../utils/dateUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
 import RecordList from '../../components/RecordList';
-import Toast from '../../components/Toast';
 import type { LedgerRecord } from '../../types';
 import { manageStyles as styles } from './sharedStyles';
 
@@ -17,7 +16,7 @@ export default function ReimburseScreen() {
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
   const [reimburseRecords, setReimburseRecords] = useState<LedgerRecord[]>([]);
 
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   const reload = useCallback(async () => {
     try {
@@ -47,30 +46,53 @@ export default function ReimburseScreen() {
     return () => subs.forEach((s) => s.remove());
   }, [reload]);
 
-  // ===== 报销核销操作（照搬 ManageScreen） =====
-  const handleMarkAllReimbursed = useCallback(async () => {
-    try {
-      await markAllReimbursed();
-      hapticSuccess();
-      showToast('已全部核销');
-      DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
-      await reload();
-    } catch {
-      hapticError();
-      showToast('操作失败', 'error');
-    }
-  }, [reload, showToast]);
+  // ===== 报销核销操作 =====
+  // 核销是批量、会同步到全家设备的动作，加确认；成功后只广播 RECORDED，
+  // 本页已经监听该事件重载（此前还额外 await reload()，一次操作并发跑两轮查询）
+  const busyRef = useRef(false);
+
+  const handleMarkAllReimbursed = useCallback(() => {
+    Alert.alert(
+      '一键核销全部待报销？',
+      `共 ${reimburseSummary.count} 笔、¥${formatMoney(reimburseSummary.total)}，核销后会同步到全家设备。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '全部核销',
+          style: 'destructive',
+          onPress: async () => {
+            if (busyRef.current) return;
+            busyRef.current = true;
+            try {
+              await markAllReimbursed();
+              hapticSuccess();
+              showToast('已全部核销');
+              DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
+            } catch {
+              hapticError();
+              showToast('操作失败', 'error');
+            } finally {
+              busyRef.current = false;
+            }
+          },
+        },
+      ],
+    );
+  }, [reimburseSummary.count, reimburseSummary.total, showToast]);
 
   const handleToggleReimbursed = useCallback(async (record: LedgerRecord) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     try {
       await setReimbursed(record.id, !record.reimbursed);
       hapticLight();
       DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
-      await reload();
     } catch {
       hapticError();
+    } finally {
+      busyRef.current = false;
     }
-  }, [reload]);
+  }, []);
 
   return (
     <ScrollView
@@ -88,7 +110,7 @@ export default function ReimburseScreen() {
             <Text style={styles.reimburseCount}>{reimburseSummary.count} 笔待核销</Text>
           </View>
           {reimburseSummary.count > 0 ? (
-            <Pressable style={styles.reimburseBtn} onPress={handleMarkAllReimbursed}>
+            <Pressable style={styles.reimburseBtn} onPress={handleMarkAllReimbursed} accessibilityRole="button">
               <Text style={styles.reimburseBtnText}>一键全部核销</Text>
             </Pressable>
           ) : null}
@@ -104,7 +126,6 @@ export default function ReimburseScreen() {
         )}
       </View>
 
-      <Toast toast={toast} onHide={hideToast} />
     </ScrollView>
   );
 }

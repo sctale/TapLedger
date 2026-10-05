@@ -1,18 +1,6 @@
-import { useCallback, useState } from 'react';
-import type { ToastState } from '../components/Toast';
+import { showToast } from '../components/Toast';
 
-// 统一 Toast 状态管理（ref 模式组件配合，避免定时器泄漏）
+// 兼容旧写法：页面只需要 showToast，状态与渲染都收归到全局 Toast（见 components/Toast.tsx）
 export function useToast() {
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'success', seq: 0 });
-
-  // seq 自增：连续弹同一文案时也能让 Toast 组件重置定时器（v0.11 修复）
-  const showToast = useCallback((message: string, type: ToastState['type'] = 'success') => {
-    setToast((prev) => ({ visible: true, message, type, seq: (prev.seq ?? 0) + 1 }));
-  }, []);
-
-  const hideToast = useCallback(() => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  }, []);
-
-  return { toast, showToast, hideToast };
+  return { showToast };
 }

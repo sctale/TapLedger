@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -6,11 +6,11 @@ import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING } from 
 import { getSetting, saveSetting, setActiveLedgerId as setDbActiveLedgerId } from '../../database/ledgerDB';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
-import Toast from '../../components/Toast';
 import LoginModal from '../../components/LoginModal';
 import FamilyModal from '../../components/FamilyModal';
+import Modal from '../../components/Modal';
 import { runSync, claimLocalRecordsAsUser, isSyncing } from '../../sync/syncEngine';
-import { apiHealth, apiGetFamily, apiGetLedgers } from '../../sync/apiClient';
+import { apiHealth, apiGetFamily, apiGetLedgers, apiChangePassword, apiDeleteAccount } from '../../sync/apiClient';
 import type { LedgerInfo } from '../../sync/serverTypes';
 import { manageStyles } from './sharedStyles';
 
@@ -126,12 +126,27 @@ const extraStyles = StyleSheet.create({
   },
   logoutRow: {
     alignItems: 'center',
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     marginTop: SPACING.xs,
   },
   logoutText: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.danger,
+    fontWeight: '600',
+  },
+  // 账号安全操作行（改密码 / 注销），触摸高度按 ≥44dp 留白
+  accountRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.lg,
+  },
+  accountLink: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+  },
+  accountLinkText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
     fontWeight: '600',
   },
 });
@@ -141,7 +156,7 @@ const styles = { ...manageStyles, ...extraStyles };
 
 // 家庭同步二级页（v0.5.9 从 ManageScreen 拆分；顶栏返回按钮由外层 ManageScreen 统一渲染）
 export default function SyncScreen() {
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   // 弹窗状态
   const [loginModal, setLoginModal] = useState(false);
@@ -166,6 +181,12 @@ export default function SyncScreen() {
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
 
   // 读取同步配置（reload 时一并刷新）
+  // 离开二级页时本组件会卸载，而健康探测/账本拉取是异步的 → 用 mounted + 序号
+  // 避免「后回来的旧响应覆盖新结果」和对已卸载组件 setState
+  const mountedRef = useRef(true);
+  const healthSeq = useRef(0);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const loadSyncState = useCallback(async () => {
     try {
       const [url, token, name, avatar, family, lastSync, uid, actId] = await Promise.all([
@@ -178,6 +199,7 @@ export default function SyncScreen() {
         getSetting(SETTING_KEYS.SYNC_USER_ID),
         getSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID),
       ]);
+      if (!mountedRef.current) return;
       setServerUrl(url ?? '');
       setServerUrlDraft(''); // 已保存地址不回填明文，仅在编辑态输入
       setEditingServer(false);
@@ -192,10 +214,11 @@ export default function SyncScreen() {
       setDbActiveLedgerId(actIdNum); // 本地读写作用域与持久化的活动账本保持一致
       // 可达性探测（异步，不阻塞本页其余加载）：每次进入页面/同步完成/登录态变化都会刷新
       if (url) {
+        const seq = ++healthSeq.current;
         setServerOnline(null);
         apiHealth(url)
-          .then(() => setServerOnline(true))
-          .catch(() => setServerOnline(false));
+          .then(() => { if (mountedRef.current && seq === healthSeq.current) setServerOnline(true); })
+          .catch(() => { if (mountedRef.current && seq === healthSeq.current) setServerOnline(false); });
       } else {
         setServerOnline(null);
       }
@@ -203,6 +226,7 @@ export default function SyncScreen() {
       if (url && token) {
         try {
           const { ledgers: list } = await apiGetLedgers(url, token);
+          if (!mountedRef.current) return;
           setLedgers(list);
           // 未显式选中 → 自动选中个人账本
           const personal = list.find((l) => l.type === 'personal');
@@ -322,10 +346,13 @@ export default function SyncScreen() {
       }
       if (family) {
         setSyncBusy(true);
-        const res = await runSync();
-        setSyncBusy(false);
-        if (res.ok) showToast(`已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条`);
-        else showToast(res.error ?? '同步失败', 'error');
+        try {
+          const res = await runSync();
+          if (res.ok) showToast(`已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条`);
+          else showToast(res.error ?? '同步失败', 'error');
+        } finally {
+          setSyncBusy(false);
+        }
       }
       DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
     } catch (e) {
@@ -341,16 +368,28 @@ export default function SyncScreen() {
     }
     if (isSyncing() || syncBusy) return;
     setSyncBusy(true);
-    const res = await runSync();
-    setSyncBusy(false);
-    if (res.ok) {
-      hapticSuccess();
-      showToast(res.pushed + res.pulled > 0 ? `已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条` : '已是最新');
-    } else {
-      hapticError();
-      showToast(res.error ?? '同步失败', 'error');
+    try {
+      const res = await runSync();
+      if (res.ok) {
+        hapticSuccess();
+        // 被服务端判非法而没能上传的条目要单独说清楚：本地看得到、家人看不到，
+        // 不说就等于悄悄丢数据（v0.11.8）
+        showToast(
+          res.invalid
+            ? `已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条；${res.invalid} 条超出字段限制未上传`
+            : res.pushed + res.pulled > 0 ? `已同步：上传 ${res.pushed} 条，下载 ${res.pulled} 条` : '已是最新',
+          res.invalid ? 'error' : 'success',
+        );
+      } else {
+        hapticError();
+        showToast(res.error ?? '同步失败', 'error');
+      }
+    } finally {
+      // runSync 在读取配置阶段就可能 reject；少了这个 finally，busy 永远停在 true，
+      // 「立即同步」和账本选择会一直灰着直到离开本页
+      setSyncBusy(false);
+      loadSyncState();
     }
-    loadSyncState();
   }, [serverUrl, syncToken, syncBusy, showToast, loadSyncState]);
 
   // 切换当前账本（个人/家庭）
@@ -382,6 +421,28 @@ export default function SyncScreen() {
     }
   }, [serverUrl, syncToken, activeLedgerId, ledgerSwitchBusy, syncBusy, showToast, loadSyncState]);
 
+  // 清掉本地登录态（服务器地址保留）——退出登录与注销账号共用
+  const clearLoginState = useCallback(async () => {
+    await Promise.all([
+      saveSetting(SETTING_KEYS.SYNC_TOKEN, ''),
+      saveSetting(SETTING_KEYS.SYNC_USER_ID, '0'),
+      saveSetting(SETTING_KEYS.SYNC_USER_DISPLAY, ''),
+      saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, ''),
+      saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, ''),
+      saveSetting(SETTING_KEYS.SYNC_MEMBERS_JSON, ''), // 清空成员缓存（v0.5）
+      saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, '0'),
+      saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, ''),
+    ]);
+    setSyncToken('');
+    setLoggedName('');
+    setLoggedAvatar('');
+    setFamilyName('');
+    setLedgers([]);
+    setActiveLedgerId(0);
+    setDbActiveLedgerId(0);
+    DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
+  }, [setActiveLedgerId]);
+
   // 退出登录（保留服务器地址）
   const handleLogout = useCallback(async () => {
     Alert.alert('退出登录', '退出后停止同步（本地数据保留）。确定？', [
@@ -390,28 +451,66 @@ export default function SyncScreen() {
         text: '退出',
         style: 'destructive',
         onPress: async () => {
-          await Promise.all([
-            saveSetting(SETTING_KEYS.SYNC_TOKEN, ''),
-            saveSetting(SETTING_KEYS.SYNC_USER_ID, '0'),
-            saveSetting(SETTING_KEYS.SYNC_USER_DISPLAY, ''),
-            saveSetting(SETTING_KEYS.SYNC_USER_AVATAR, ''),
-            saveSetting(SETTING_KEYS.SYNC_FAMILY_NAME, ''),
-            saveSetting(SETTING_KEYS.SYNC_MEMBERS_JSON, ''), // 清空成员缓存（v0.5）
-            saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_ID, '0'),
-            saveSetting(SETTING_KEYS.SYNC_ACTIVE_LEDGER_NAME, ''),
-          ]);
-          setSyncToken('');
-          setLoggedName('');
-          setLoggedAvatar('');
-          setFamilyName('');
-          setLedgers([]);
+          await clearLoginState();
           hapticLight();
           showToast('已退出登录');
-          DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
         },
       },
     ]);
-  }, [showToast]);
+  }, [clearLoginState, showToast]);
+
+  // ===== 账号安全操作：改密码 / 注销（Android 没有 Alert.prompt，走全屏表单）=====
+  const [accountAction, setAccountAction] = useState<'password' | 'delete' | null>(null);
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [accountBusy, setAccountBusy] = useState(false);
+
+  const openAccountAction = useCallback((action: 'password' | 'delete') => {
+    setCurrentPw('');
+    setNewPw('');
+    setAccountAction(action);
+  }, []);
+
+  const submitAccountAction = useCallback(async () => {
+    if (!serverUrl || !syncToken) {
+      showToast('请先登录', 'error');
+      return;
+    }
+    if (!currentPw) {
+      showToast('请输入当前密码', 'error');
+      return;
+    }
+    if (accountAction === 'password' && newPw.length < 6) {
+      showToast('新密码至少 6 位', 'error');
+      return;
+    }
+    setAccountBusy(true);
+    try {
+      if (accountAction === 'password') {
+        const { token } = await apiChangePassword(serverUrl, syncToken, currentPw, newPw);
+        // 服务端把 token_version +1：本端换发新 token 继续用，其它设备旧 token 立刻 401
+        await saveSetting(SETTING_KEYS.SYNC_TOKEN, token);
+        setSyncToken(token);
+        showToast('密码已修改，其他设备需要重新登录');
+      } else if (accountAction === 'delete') {
+        const res = await apiDeleteAccount(serverUrl, syncToken, currentPw);
+        await clearLoginState();
+        showToast(
+          res.dissolvedFamily
+            ? `账号已注销，家庭账本已解散${res.unboundMembers > 0 ? `（${res.unboundMembers} 位成员已解绑，其本机数据保留）` : ''}`
+            : '账号已注销（本地数据保留，不再同步）',
+        );
+      }
+      setAccountAction(null);
+      setCurrentPw('');
+      setNewPw('');
+    } catch (e) {
+      hapticError();
+      showToast(e instanceof Error ? e.message : '操作失败', 'error');
+    } finally {
+      setAccountBusy(false);
+    }
+  }, [accountAction, clearLoginState, currentPw, newPw, serverUrl, setSyncToken, showToast, syncToken]);
 
   return (
     <ScrollView
@@ -469,7 +568,7 @@ export default function SyncScreen() {
               autoCapitalize="none"
               keyboardType="url"
             />
-            <Pressable style={styles.primaryBtn} onPress={handleSaveServer}>
+            <Pressable style={styles.primaryBtn} onPress={handleSaveServer} accessibilityRole="button">
               <Text style={styles.primaryBtnText}>连接</Text>
             </Pressable>
             {serverUrl && editingServer ? (
@@ -535,10 +634,11 @@ export default function SyncScreen() {
                   style={[styles.actionBtn, { backgroundColor: COLORS.accent, opacity: syncBusy ? 0.6 : 1 }]}
                   onPress={handleSyncNow}
                   disabled={syncBusy}
+                  accessibilityRole="button"
                 >
                   <Text style={styles.actionBtnText}>{syncBusy ? '同步中…' : '🔄 立即同步'}</Text>
                 </Pressable>
-                <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.transfer }]} onPress={() => setFamilyModal(true)}>
+                <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.transfer }]} onPress={() => setFamilyModal(true)} accessibilityRole="button">
                   <Text style={styles.actionBtnText}>👨‍👩‍👧 家庭管理</Text>
                 </Pressable>
               </View>
@@ -547,7 +647,27 @@ export default function SyncScreen() {
                   {lastSyncTime > 0 ? `上次同步：${formatSyncTime(lastSyncTime)}` : '尚未同步过，点击「立即同步」开始'}
                 </Text>
               ) : null}
-              <Pressable style={styles.logoutRow} onPress={handleLogout} hitSlop={8}>
+              <View style={styles.accountRow}>
+                <Pressable
+                  style={styles.accountLink}
+                  onPress={() => openAccountAction('password')}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="修改密码"
+                >
+                  <Text style={styles.accountLinkText}>修改密码</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.accountLink}
+                  onPress={() => openAccountAction('delete')}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="注销账号"
+                >
+                  <Text style={styles.logoutText}>注销账号</Text>
+                </Pressable>
+              </View>
+              <Pressable style={styles.logoutRow} onPress={handleLogout} hitSlop={8} accessibilityRole="button" accessibilityLabel="退出登录">
                 <Text style={styles.logoutText}>退出登录</Text>
               </Pressable>
             </>
@@ -555,7 +675,7 @@ export default function SyncScreen() {
             <>
               {/* 未登录 */}
               <Text style={styles.hint}>连接自建服务端后，可与家人共享一本账（可选功能，不登录则纯本地使用）</Text>
-              <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={() => setLoginModal(true)}>
+              <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={() => setLoginModal(true)} accessibilityRole="button">
                 <Text style={styles.actionBtnText}>🔑 登录 / 注册</Text>
               </Pressable>
             </>
@@ -586,7 +706,48 @@ export default function SyncScreen() {
         />
       ) : null}
 
-      <Toast toast={toast} onHide={hideToast} />
+      {/* ===== 弹窗：修改密码 / 注销账号（都要求当前密码复核）===== */}
+      <Modal
+        visible={accountAction !== null}
+        title={accountAction === 'delete' ? '注销账号' : '修改密码'}
+        onClose={() => setAccountAction(null)}
+        saveLabel={accountAction === 'delete' ? '确认注销' : '保存'}
+        saveDisabled={accountBusy}
+        onSave={submitAccountAction}
+      >
+        <Text style={styles.hint}>
+          {accountAction === 'delete'
+            ? '注销会删除服务端账号与你的个人账本；家庭创建者注销即解散家庭账本，其他成员的本机副本保留但不再同步。此操作不可撤销。'
+            : '修改密码后，其他设备上的登录状态会立即失效，需要重新登录。'}
+        </Text>
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>当前密码</Text>
+          <TextInput
+            style={styles.input}
+            value={currentPw}
+            onChangeText={setCurrentPw}
+            secureTextEntry
+            placeholder="用于确认是你本人操作"
+            placeholderTextColor={COLORS.textTertiary}
+            maxLength={64}
+          />
+        </View>
+        {accountAction === 'password' ? (
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>新密码</Text>
+            <TextInput
+              style={styles.input}
+              value={newPw}
+              onChangeText={setNewPw}
+              secureTextEntry
+              placeholder="至少 6 位"
+              placeholderTextColor={COLORS.textTertiary}
+              maxLength={64}
+            />
+          </View>
+        ) : null}
+      </Modal>
+
     </ScrollView>
   );
 }

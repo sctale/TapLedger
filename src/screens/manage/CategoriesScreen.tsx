@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  Alert, DeviceEventEmitter, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import {
   CATEGORY_COLORS, CATEGORY_ICONS, COLORS, EXPENSE_CATEGORIES, FONT_SIZE, INCOME_CATEGORIES, LEDGER_EVENTS, RADIUS, SPACING,
@@ -14,7 +14,6 @@ import {
 import { hapticError, hapticSuccess } from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
 import Modal from '../../components/Modal';
-import Toast from '../../components/Toast';
 import type { CategoryConfig, CategoryDef, CustomCategory, RecordType } from '../../types';
 import { manageStyles as styles } from './sharedStyles';
 
@@ -34,7 +33,7 @@ export default function CategoriesScreen() {
   const [view, setView] = useState<ViewMode>('list');
   const [editingCategory, setEditingCategory] = useState<CustomCategory | null>(null);
 
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   const fullConfig = useMemo(
     () => ensureFullCategoryConfig(customCategories, categoryConfig),
@@ -262,6 +261,9 @@ export default function CategoriesScreen() {
                   disabled={idx === 0}
                   style={[localStyles.sortBtn, idx === 0 && localStyles.sortBtnDisabled]}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`上移${item.def.label}`}
+                  accessibilityState={{ disabled: idx === 0 }}
                 >
                   <Text style={localStyles.sortBtnText}>↑</Text>
                 </Pressable>
@@ -270,6 +272,9 @@ export default function CategoriesScreen() {
                   disabled={idx === items.length - 1}
                   style={[localStyles.sortBtn, idx === items.length - 1 && localStyles.sortBtnDisabled]}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`下移${item.def.label}`}
+                  accessibilityState={{ disabled: idx === items.length - 1 }}
                 >
                   <Text style={localStyles.sortBtnText}>↓</Text>
                 </Pressable>
@@ -278,18 +283,24 @@ export default function CategoriesScreen() {
                   onValueChange={() => handleToggleVisible(type, item.def.key)}
                   trackColor={{ false: COLORS.border, true: `${COLORS.accent}88` }}
                   thumbColor={item.visible ? COLORS.accent : COLORS.textTertiary}
+                  accessibilityLabel={`显示或隐藏${item.def.label}`}
+                  accessibilityRole="switch"
                 />
                 {item.isCustom && (
                   <>
                     <Pressable
                       onPress={() => openEdit(customCategories.find((c) => c.key === item.def.key)!)}
                       hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`编辑分类${item.def.label}`}
                     >
                       <Text style={localStyles.editText}>编辑</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => handleDeleteCategory(customCategories.find((c) => c.key === item.def.key)!)}
                       hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`删除分类${item.def.label}`}
                     >
                       <Text style={styles.accDeleteText}>✕</Text>
                     </Pressable>
@@ -318,11 +329,10 @@ export default function CategoriesScreen() {
           {renderGroup('支出分类', 'expense', displayGroups.expense)}
           {renderGroup('收入分类', 'income', displayGroups.income)}
 
-          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={openAdd}>
+          <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.accent }]} onPress={openAdd} accessibilityRole="button">
             <Text style={styles.actionBtnText}>＋ 添加分类</Text>
           </Pressable>
 
-          <Toast toast={toast} onHide={hideToast} />
         </ScrollView>
       ) : (
         <CategoryForm
@@ -402,11 +412,11 @@ function CategoryForm({
   return (
     <View style={localStyles.formContainer}>
       <View style={localStyles.navBar}>
-        <Pressable onPress={onClose} hitSlop={8}>
+        <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button">
           <Text style={localStyles.navCancel}>取消</Text>
         </Pressable>
         <Text style={localStyles.navTitle}>{title}</Text>
-        <Pressable onPress={submit} disabled={loading} hitSlop={8}>
+        <Pressable onPress={submit} disabled={loading} hitSlop={8} accessibilityRole="button">
           <Text style={[localStyles.navSave, loading && localStyles.navSaveDisabled]}>保存</Text>
         </Pressable>
       </View>
@@ -458,6 +468,7 @@ function CategoryForm({
                   key={t}
                   style={[styles.typeBtn, type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome)]}
                   onPress={() => setType(t)}
+                  accessibilityRole="button"
                 >
                   <Text style={[styles.typeText, type === t && styles.typeTextActive]}>
                     {t === 'expense' ? '支出' : '收入'}
@@ -474,6 +485,7 @@ function CategoryForm({
                   key={c}
                   style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotOn]}
                   onPress={() => setColor(c)}
+                  accessibilityRole="button"
                 />
               ))}
             </View>
@@ -483,6 +495,7 @@ function CategoryForm({
             style={[styles.submitBtn, { backgroundColor: COLORS.accent }, loading && localStyles.submitBtnDisabled]}
             onPress={submit}
             disabled={loading}
+            accessibilityRole="button"
           >
             <Text style={styles.submitText}>保存</Text>
           </Pressable>
@@ -516,6 +529,20 @@ function IconPickerModal({
   onConfirm: (emoji: string) => void;
 }) {
   const [draft, setDraft] = useState(currentEmoji);
+  const { width: screenWidth } = useWindowDimensions();
+  // 宫格等宽铺满：Modal 内容区左右各 24 padding，按可用宽度反推单元格边长，
+  // 保证 N 个 + 间距正好占满一行；单元格不足 56dp 时先减列数（保触摸面积），
+  // 再配 justifyContent:'center' 让最后一行也居中，不再靠左堆着。
+  const gridCols = (() => {
+    const avail = screenWidth - SPACING.lg * 2;
+    for (let cols = 5; cols >= 3; cols--) {
+      if ((avail - SPACING.sm * (cols - 1)) / cols >= 56) return cols;
+    }
+    return 3;
+  })();
+  const iconCellSize = Math.floor(
+    Math.min(96, (screenWidth - SPACING.lg * 2 - SPACING.sm * (gridCols - 1)) / gridCols),
+  );
 
   // 每次打开时同步当前选中图标到草稿
   useEffect(() => {
@@ -526,7 +553,6 @@ function IconPickerModal({
     <Modal
       visible={visible}
       title="选择图标"
-      fullscreen
       onClose={onCancel}
       saveLabel="完成"
       onSave={() => onConfirm(draft || '📌')}
@@ -537,7 +563,11 @@ function IconPickerModal({
           {CATEGORY_ICONS.map((ic) => (
             <Pressable
               key={ic}
-              style={[localStyles.iconCell, draft === ic && localStyles.iconCellOn]}
+              style={[
+                localStyles.iconCell,
+                { width: iconCellSize, height: iconCellSize },
+                draft === ic && localStyles.iconCellOn,
+              ]}
               onPress={() => setDraft(ic)}
               accessibilityRole="button"
               accessibilityLabel={`选择图标${ic}`}
@@ -627,10 +657,9 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING.sm,
+    justifyContent: 'center',
   },
   iconCell: {
-    width: 46,
-    height: 46,
     borderRadius: RADIUS.sm,
     backgroundColor: COLORS.bgAlt,
     alignItems: 'center',
@@ -643,7 +672,7 @@ const localStyles = StyleSheet.create({
     backgroundColor: COLORS.surfaceAlt,
   },
   iconCellEmoji: {
-    fontSize: FONT_SIZE.lg,
+    fontSize: FONT_SIZE.xl,
   },
   // 全屏表单
   formContainer: {

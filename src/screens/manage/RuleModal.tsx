@@ -76,7 +76,7 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
   };
 
   return (
-    <Modal visible={visible} title={isEditing ? '编辑周期记账' : '添加周期记账'} fullscreen saveLabel={isEditing ? '保存修改' : '保存'} onClose={onClose} onSave={submit}>
+    <Modal visible={visible} title={isEditing ? "编辑周期记账" : "添加周期记账"} saveLabel={isEditing ? '保存修改' : '保存'} onClose={onClose} onSave={submit}>
         <View style={styles.formGroup}>
           <Text style={styles.fieldLabel}>名称</Text>
           <TextInput
@@ -115,7 +115,16 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
               <Pressable
                 key={t}
                 style={[styles.typeBtn, type === t && (t === 'expense' ? styles.typeBtnExpense : styles.typeBtnIncome)]}
-                onPress={() => { setType(t); if (t === 'income' && (category === 'food' || category === 'housing')) setCategory('salary'); }}
+                onPress={() => {
+                  setType(t);
+                  // 原来只硬编码 food/housing 两个 key：自定义分类或第 7 个之后的分类
+                  // 切类型后会「选中但看不见」，保存下来仍是另一个类型的分类
+                  const next = getCategories(t);
+                  if (!next.some((c) => c.key === category)) setCategory(next[0]?.key ?? 'other');
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t === 'expense' ? '支出' : '收入'}
+                accessibilityState={{ selected: type === t }}
               >
                 <Text style={[styles.typeText, type === t && styles.typeTextActive]}>
                   {t === 'expense' ? '支出' : '收入'}
@@ -127,16 +136,26 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
         <View style={styles.formGroup}>
           <Text style={styles.fieldLabel}>分类</Text>
           <View style={styles.catWrap}>
-            {getCategories(type).slice(0, 6).map((c) => (
-              <Pressable
-                key={c.key}
-                style={[styles.pickChip, category === c.key && { backgroundColor: c.color, borderColor: c.color }]}
-                onPress={() => setCategory(c.key)}
-              >
-                <Text style={styles.pickEmoji}>{c.emoji}</Text>
-                <Text style={[styles.pickName, category === c.key && styles.pickNameOn]}>{c.label}</Text>
-              </Pressable>
-            ))}
+            {(() => {
+              const all = getCategories(type);
+              const chips = all.slice(0, 6);
+              const selected = all.find((c) => c.key === category);
+              // 编辑已有规则时选中的分类可能排在 6 个之后 → 用最后一格顶出来，保证看得见当前值
+              if (selected && !chips.some((c) => c.key === selected.key)) chips[5] = selected;
+              return chips.map((c) => (
+                <Pressable
+                  key={c.key}
+                  style={[styles.pickChip, category === c.key && { backgroundColor: c.color, borderColor: c.color }]}
+                  onPress={() => setCategory(c.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={c.label}
+                  accessibilityState={{ selected: category === c.key }}
+                >
+                  <Text style={styles.pickEmoji}>{c.emoji}</Text>
+                  <Text style={[styles.pickName, category === c.key && styles.pickNameOn]}>{c.label}</Text>
+                </Pressable>
+              ));
+            })()}
           </View>
         </View>
         <View style={styles.formGroup}>
@@ -147,6 +166,7 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
                 key={f.key}
                 style={[styles.pickChip, frequency === f.key && localStyles.pickChipOn]}
                 onPress={() => setFrequency(f.key)}
+                accessibilityRole="button"
               >
                 <Text style={[styles.pickName, frequency === f.key && styles.pickNameOn]}>{f.label}</Text>
               </Pressable>
@@ -162,6 +182,7 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
                   key={w}
                   style={[styles.pickChip, dayOfWeek === i && localStyles.pickChipOn]}
                   onPress={() => setDayOfWeek(i)}
+                  accessibilityRole="button"
                 >
                   <Text style={[styles.pickName, dayOfWeek === i && styles.pickNameOn]}>周{w}</Text>
                 </Pressable>
@@ -178,6 +199,7 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
                   key={d}
                   style={[styles.pickChip, dayOfMonth === d && localStyles.pickChipOn]}
                   onPress={() => setDayOfMonth(d)}
+                  accessibilityRole="button"
                 >
                   <Text style={[styles.pickName, dayOfMonth === d && styles.pickNameOn]}>{d}号</Text>
                 </Pressable>
@@ -194,6 +216,7 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
                   key={m}
                   style={[styles.pickChip, monthOfYear === m && localStyles.pickChipOn]}
                   onPress={() => setMonthOfYear(m)}
+                  accessibilityRole="button"
                 >
                   <Text style={[styles.pickName, monthOfYear === m && styles.pickNameOn]}>{m}月</Text>
                 </Pressable>

@@ -15,7 +15,6 @@ import { getCachedMembers, type MemberInfo } from '../sync/memberUtils';
 import MonthHeatmap from '../components/MonthHeatmap';
 import RecordList, { RecordRow } from '../components/RecordList';
 import EditRecordModal from '../components/EditRecordModal';
-import Toast from '../components/Toast';
 import type { LedgerRecord, RecordType } from '../types';
 
 type FilterType = 'all' | RecordType;
@@ -45,33 +44,45 @@ export default function LedgerScreen({ active }: Props) {
   const [memberFilter, setMemberFilter] = useState(0); // 0=全部，>0 按记账人筛选（v0.9.1）
   const [editing, setEditing] = useState<LedgerRecord | null>(null); // 点击编辑的记录（v0.10）
 
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   const calendarScrollRef = useRef<ScrollView>(null);
   const listScrollRef = useRef<FlatList<FlowItem>>(null);
 
   const { start, end } = useMemo(() => getMonthRange(viewDate), [viewDate]);
 
+  // 加载竞态守卫：挂载 / 切 Tab / 记一笔 / 导入 会并发触发多轮查询，
+  // 慢的那轮后回来就会把新数据盖成旧的（首页与统计页都有这个守卫，本页此前缺）。
+  // 月份与单日各自计数，互不误伤。
+  const mountedRef = useRef(true);
+  const monthSeq = useRef(0);
+  const daySeq = useRef(0);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const loadMonth = useCallback(async () => {
+    const seq = ++monthSeq.current;
     try {
       const [days, max, records] = await Promise.all([
         getDaySummaries(start, end),
         getMaxDailyExpense(start, end),
         getRecordsByRange(start, end),
       ]);
+      if (!mountedRef.current || seq !== monthSeq.current) return;
       const map: Record<string, number> = {};
       for (const d of days) map[d.date] = d.expense;
       setDailyExpense(map);
       setMaxExpense(max);
       setMonthRecords(records);
     } catch {
-      showToast('明细数据加载失败', 'error');
+      if (mountedRef.current && seq === monthSeq.current) showToast('明细数据加载失败', 'error');
     }
   }, [start, end, showToast]);
 
   const loadDay = useCallback(async (date: string) => {
+    const seq = ++daySeq.current;
     try {
       const records = await getRecordsByDate(date);
+      if (!mountedRef.current || seq !== daySeq.current) return;
       setDayRecords(records);
     } catch {
       // 单日加载失败保持现状
@@ -132,19 +143,18 @@ export default function LedgerScreen({ active }: Props) {
   }, [loadMonth, loadDay, selectedDate]);
 
   // 切月：选中日同步到目标月同日（超出月末则 clamp，与系统日历一致）
+  // 不在 setViewDate 的 updater 里再调 setSelectedDate —— updater 必须纯（StrictMode 会双调用）
   const changeMonth = useCallback((delta: number) => {
-    setViewDate((prev) => {
-      const next = addMonths(prev, delta);
-      const [y, m, d] = selectedDate.split('-').map(Number);
-      // 目标月与当前选中日同月才需要同步（跨月选中日始终在 viewDate 月内）
-      const sameMonth = y === prev.getFullYear() && m === prev.getMonth() + 1;
-      if (sameMonth) {
-        const day = Math.min(d, getDaysInMonth(next.getFullYear(), next.getMonth() + 1));
-        setSelectedDate(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-      }
-      return next;
-    });
-  }, [selectedDate]);
+    const next = addMonths(viewDate, delta);
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    // 目标月与当前选中日同月才需要同步（跨月选中日始终在 viewDate 月内）
+    const sameMonth = y === viewDate.getFullYear() && m === viewDate.getMonth() + 1;
+    setViewDate(next);
+    if (sameMonth) {
+      const day = Math.min(d, getDaysInMonth(next.getFullYear(), next.getMonth() + 1));
+      setSelectedDate(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+    }
+  }, [viewDate, selectedDate]);
 
   const handleDelete = useCallback((record: LedgerRecord) => {
     confirmDeleteRecord(record.id, (msg, isError) => showToast(msg, isError ? 'error' : 'success'));
@@ -213,16 +223,18 @@ export default function LedgerScreen({ active }: Props) {
     return items;
   }, [filteredRecords]);
 
+  // 合计直接走 filteredRecords，与下面列出的行同口径。
+  // 此前只跟记账人筛选，切到「只看支出」或搜索关键词后合计仍按全月算，
+  // 数字和列表互相矛盾（且把「支出排除待报销」这条规则在 UI 层又抄了一遍）。
   const monthTotal = useMemo(() => {
     let exp = 0;
     let inc = 0;
-    for (const r of monthRecords) {
-      if (memberFilter !== 0 && r.userId !== memberFilter) continue;
+    for (const r of filteredRecords) {
       if (r.type === 'expense' && !r.reimbursable) exp += r.amount;
       else if (r.type === 'income') inc += r.amount;
     }
     return { exp, inc };
-  }, [monthRecords, memberFilter]);
+  }, [filteredRecords]);
 
   const isCurrentMonth = useMemo(() => {
     const now = new Date();
@@ -503,7 +515,6 @@ export default function LedgerScreen({ active }: Props) {
           onClose={() => setEditing(null)}
         />
       </View>
-      <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
   );
 }

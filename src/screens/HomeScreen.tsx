@@ -22,7 +22,6 @@ import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
 import CategorySelector from '../components/CategorySelector';
 import NumberPad from '../components/NumberPad';
-import Toast from '../components/Toast';
 import type { RecordType } from '../types';
 
 interface Props {
@@ -30,7 +29,7 @@ interface Props {
 }
 
 export default function HomeScreen({ active }: Props) {
-  const { toast, showToast, hideToast } = useToast();
+  const { showToast } = useToast();
 
   // 记账输入状态
   const [type, setType] = useState<RecordType>('expense');
@@ -57,6 +56,9 @@ export default function HomeScreen({ active }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   // v0.11 修复：today 改为保存时实时计算（此前挂载时定死，跨零点连记会记到昨天）
   const [, setCatTick] = useState(0); // 自定义分类变更 → 触发重渲染刷新分类选择器
+  // 连记模式下手会按得很快，「记一笔」没有 disabled 态：一次轻双击就会落两条同样的账
+  const savingRef = useRef(false);
+  const amountMapRef = useRef<Record<string, number>>({});
 
   // Tab 激活时滚回顶部
   useEffect(() => {
@@ -86,10 +88,17 @@ export default function HomeScreen({ active }: Props) {
         let parsed: Record<string, number> = {};
         try {
           const raw = amtMapStr ? JSON.parse(amtMapStr) : {};
-          if (raw && typeof raw === 'object') parsed = raw as Record<string, number>;
+          // 只认「字符串 → 正数」的条目：备份/旧版本可能塞进数组或字符串值，
+          // 直接 as Record<string, number> 会让下面的 lastAmount > 0 拿垃圾值当金额
+          if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+            for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+              if (typeof v === 'number' && Number.isFinite(v) && v > 0) parsed[k] = v;
+            }
+          }
         } catch {
           parsed = {};
         }
+        amountMapRef.current = parsed;
         setAmountMap(parsed);
         setIdentity({
           logged,
@@ -149,10 +158,15 @@ export default function HomeScreen({ active }: Props) {
       DeviceEventEmitter.addListener(LEDGER_EVENTS.SETTINGS_CHANGED, async () => {
         try {
           const savedType = await getSetting(SETTING_KEYS.DEFAULT_TYPE);
-          if (savedType === 'income' || savedType === 'expense') {
-            setType(savedType);
-            setCategory(getCategories(savedType)[0]?.key ?? 'food');
-          }
+          if (savedType !== 'income' && savedType !== 'expense') return;
+          // 只有类型真的变了才重置分类：偏好页改预算等设置也会广播这个事件，
+          // 无条件重置会把用户已经选好的分类顶回第一个
+          if (savedType === typeRef.current) return;
+          typeRef.current = savedType;
+          setType(savedType);
+          const first = getCategories(savedType)[0]?.key ?? (savedType === 'expense' ? 'food' : 'salary');
+          categoryRef.current = first;
+          setCategory(first);
         } catch {
           // 静默
         }
@@ -176,6 +190,9 @@ export default function HomeScreen({ active }: Props) {
     if (next === type) return;
     setType(next);
     setCategory(getCategories(next)[0]?.key ?? 'other');
+    // 报销只对支出成立。此前切到收入不清标记，而「待报销」按钮在收入态是隐藏的，
+    // 于是存出 type=income + reimbursable=1 的脏数据，虚增待报销总额且界面上清不掉。
+    if (next === 'income') setReimbursable(false);
     hapticLight();
     saveSetting(SETTING_KEYS.DEFAULT_TYPE, next).catch(() => {});
   }, [type]);
@@ -197,12 +214,15 @@ export default function HomeScreen({ active }: Props) {
       showToast('请输入金额', 'error');
       return;
     }
+    if (savingRef.current) return; // 双击/连点保护：一次轻双击就是两条真实支出
+    savingRef.current = true;
     const amount = toAmount(amountStr);
     const today = getToday();
     try {
       await addRecord(amount, category, type, today, note.trim(), reimbursable, { userId: syncUserId });
       // 记住该分类最近金额，供「上次 ¥x」快捷填入
-      const nextMap = { ...amountMap, [category]: amount };
+      const nextMap = { ...amountMapRef.current, [category]: amount };
+      amountMapRef.current = nextMap;
       setAmountMap(nextMap);
       saveSetting(SETTING_KEYS.LAST_AMOUNT_BY_CATEGORY, JSON.stringify(nextMap)).catch(() => {});
       setAmountStr('');
@@ -218,8 +238,10 @@ export default function HomeScreen({ active }: Props) {
     } catch {
       hapticError();
       showToast('保存失败，请重试', 'error');
+    } finally {
+      savingRef.current = false;
     }
-  }, [amountStr, category, type, note, reimbursable, showToast, syncUserId, continuous, amountMap]);
+  }, [amountStr, category, type, note, reimbursable, showToast, syncUserId, continuous]);
 
   // 连记开关（持久化）
   const toggleContinuous = useCallback(() => {
@@ -390,7 +412,6 @@ export default function HomeScreen({ active }: Props) {
       </KeyboardAvoidingView>
       </View>
 
-      <Toast toast={toast} onHide={hideToast} />
     </SafeAreaView>
   );
 }
