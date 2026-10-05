@@ -1,5 +1,64 @@
 # 更新日志
 
+## [0.11.8] - 2026-10-05（含服务端 [0.5.6]）
+
+本版是一次**全仓库审查后的集中修复**：同步的安全与正确性、数据层语义、两处交互反馈（记一笔后点不动 / 分类图标排布）、构建与发布链、以及一直过期却没人发现的文档。
+
+### 安全（服务端 0.5.6，实测复现后修复）
+
+- **跨账本写入（严重）**：`sync/push` 的 upsert 以 uuid 为冲突键，但 `WHERE` 不校验该行原本属于哪本账本。实测：另一个家庭的用户把已知 uuid 推进**自己的**账本，即可改写别人家庭账本里那条记录的金额/备注（数据仍留在原账本）。被移除的前成员也照样能做——他的本机副本保留着全家 uuid，直接 push 家庭账本会 403，但绕道个人账本就能改。修复：三张表的 `DO UPDATE` 都加 `AND <表>.family_id = excluded.family_id`
+- **记账人错位（严重）**：push 时服务端无条件把 `user_id` 注入为「推送者」，且更新分支也覆盖它 → 家人改一笔金额，这笔的记账人就变成他，成员支出排行与报销归属一起失真。修复：`user_id` 只在插入时落定，编辑不改作者
+- **未来时间戳永久压制**：客户端时钟超前（改错时区/手动调时间）时，那条记录的 `updated_at` 落在未来，之后所有正常编辑都被 LWW 判为「更旧」而静默丢弃。修复：服务端把 `updatedAt` 钳制到服务端时钟，只压版本号、不丢数据
+- **无改密通道**：365 天长效 JWT + 无状态，密码泄露只能销号。新增 `POST /api/auth/password`（需当前密码复核、5 次/分/IP），改密时 `users.token_version +1`：本端换发新 token 继续用，其它设备旧 token 立即 401。老库靠幂等 `ALTER TABLE` 补列，旧 token 无 `tv` 载荷按 0 处理，升级不会把全家踢下线
+- 其余：`/admin` 页面在未配置 `ADMIN_TOKEN` 时也返回 503（此前恒定 200，等于公开后台入口）；面板口令改为**勾选才**写 localStorage；限流表与邀请码锁定表加过期清理，不再只增不删
+
+### 数据正确性
+
+- **被拒变更不再静默丢失**：服务端把「未生效」拆成 `skipped`（版本更旧，幂等丢弃）与 `invalid`（字段超限，本地已存但传不上去）并回 `invalidIds`；客户端同步页如实提示「N 条超出字段限制未上传」。此前客户端完全不看 push 响应、照推水位，那条数据就永远停在我有家人没有
+- **导入按服务端上限归一**：`SERVER_LIMITS` 统一 note/category/name/label/emoji/uuid 长度与数值范围，超限在导入入口截断或丢弃并计入 skipped，而不是到服务端才被拒
+- **「替换导入」不再硬删本地**：改为按 uuid 身份 upsert + 对备份里没有的行打墓碑。硬删不产生墓碑 → 服务器与家人设备留着旧记录，换机/重装后被 pull 回来，表现为「替换没生效、账目翻倍」（与 `resetPersonalLedger` 早已采用的墓碑语义对齐）
+- **分类主键改为 (key, ledger_id)**：单列 `key` 主键让个人账本与家庭账本的同名分类互相顶掉——同 key 插不进去（合并导入静默计 failed），而按 key 改名/标删又会影响另一本账本。老库走幂等重建迁移（`PRAGMA table_info` 判主键列，重复执行安全）
+- **pull 一律限定账本**：本地按 uuid 查找原先不带 `ledger_id`，家庭账本的增量能改写个人账本里的同 uuid 行；分类改名场景也改成「先删同 uuid 旧 key 行，再按复合主键 LWW upsert」，不再 `ON CONFLICT DO NOTHING` 永久吞掉一条
+- **周期记账多设备不重复入账**：生成记录的 uuid 由「规则 + 到期日」决定，两台设备各自到期生成时服务端按同 uuid 收敛为一条（此前房租这类订阅可能被记两次）
+- 报销三条 SQL 补 `type = 'expense'`：待报销只对支出成立，配合下面那条 UI 修复两头都堵
+- `claimLocalRecordsAsUser` 只认领「尚未归属任何账本」的本地存量，不再把另一本账本里的无主记录标成自己
+
+### 交互反馈（本次直接收到的两条）
+
+- **记一笔后那 2 秒点不动别的图标**：透明 `RNModal` 在 Android 上是全屏 Dialog 窗口（原生只加 `FLAG_NOT_FOCUSABLE`，从不加 `FLAG_NOT_TOUCHABLE`），窗口内 `pointerEvents="none"` 只影响 RN 自己的手势派发，系统仍把这层之下的所有触摸交给它。Toast 改为**非模态浮层**：全局单例状态 + App 根一层渲染 + 每个表单弹窗内一层（弹窗是独立窗口，提示必须挂在同窗口才盖得住）。顺带修掉「4 个 tab 各挂一份 Toast，隐藏页的报错弹到当前页」「分类表单里 toast 不可见」。现在提示显示期间分类网格、数字键盘照常可点
+- **添加分类时图标靠左**：宫格只有 `flexWrap` 没有居中，29 个固定 46dp 单元格左堆。改为**单元格按可用宽度等宽铺满**（列数自适应、最小 56dp 保触摸面积）+ `justifyContent: center`，最后一行也居中
+
+### 其它修复
+
+- 首页：「记一笔」加防重入（连记模式手快双击就是两条真实支出）；切到收入时清掉待报销标记（此前存出收入+待报销的脏数据且界面上清不掉）；`SETTINGS_CHANGED` 只在收支类型真的变化时才重置分类（改预算不再把已选分类顶回第一个）；上次金额缓存解析只接受正数条目
+- 明细页：加载补竞态守卫（四条并发加载路径此前慢的那轮回来会盖掉新数据）；月度合计改走 `filteredRecords`，与列表同口径；切月不再在 `setState` updater 里调另一个 setter
+- 同步页：`setSyncBusy` 进 `finally`（此前 `runSync` 一旦抛错，立即同步与账本选择永久置灰）；网络回调加卸载守卫；退出登录同时复位本地账本作用域
+- 报销页：一键核销加二次确认；成功后只广播一次事件（此前每个核销并发跑两轮查询）
+- 周期规则表单：切收支类型按当前可见分类列表校正选中项（此前硬编码只认 food/housing，自定义分类切类型后「选中但看不见」仍被保存）
+- 统计页：合并重复的事件监听（RECORDED/导入/同步 此前每个事件跑两遍）；跨零点后切回本页重算时间窗口；趋势图空数据改为显示占位而不是空白图
+- 无障碍：给缺角色的按钮补齐 `accessibilityRole`（现在全仓库 88 个 `Pressable` 都有角色，此前子页大量按钮只有点击没有角色）；`RecordList` 拆掉「整行编辑 Pressable 包住核销/删除」的嵌套（读屏会把它们合并成一个节点，两个动作完全不可达），热力图补选中态与今天的单次日期计算，图标按钮字号 8.5sp→10sp
+- App 根：自动同步的 debounce 路径接住 reject（此前是一次未处理拒绝、这轮同步静默消失），去掉重复广播的 `SYNC_DONE`；NetInfo 只在可达性真的变化时补同步
+- `Modal` 删掉自 v0.7.1 起无人使用的底部 sheet 分支（连带去掉「轻扫即关」——表单填一半会被误滑丢弃且无二次确认）
+
+### 构建与发布链
+
+- `withReleaseSigning`：三处 build.gradle 文本注入全部加命中断言——此前模板一挪缩进就静默不注入，release 包带着 debug 签名照常构建成功（同包名可被覆盖安装），只有跑发布脚本时才被 apksigner 拦下；缺 `keystore.properties` 时开发回落并大声告警，设 `TAPLEDGER_REQUIRE_RELEASE_SIGNING=1`（发布脚本会设）则直接终止。`withVersionSync` 缺 version 时改为报错
+- `release-app.ps1`：加 eslint + prettier 门禁、构建前先自检签名注入片段与 keystore 存在（省掉一次几分钟的白跑）；`git add -A` 改为只暂存发布链路涉及的文件
+- `docker-push.ps1`：本机 `docker build` 只产宿主架构，直接推会覆盖 CI 的 amd64+arm64 清单、arm64 NAS 拉不到镜像 → 优先走 `docker buildx` 多架构，无 buildx 时需显式 `-AllowSingleArch`；GHCR 凭据支持只含 `write:packages` 的环境变量 PAT，临时文件名随机化，结束时 `docker logout`
+- `server/Dockerfile`：`npm install` → `npm ci`（此前镜像内容取决于构建日期）、运行层不再重装编译链、加 `HEALTHCHECK`（此前只有 compose 里配了，`docker run` 或群晖界面跑就没有存活探测）。**保留以 root 运行**：改 `USER node` 会让已部署实例写不进原 root 属主的 data/ 卷，要收紧请连部署文档的 chown 迁移步骤一起改
+- 新增 `.github/workflows/ci.yml`：APP 的 typecheck/lint/format:check/单测 + 服务端 typecheck/构建 + 两条启动冒烟（缺密钥必须拒绝启动、配好后 health 必须通）。此前仓库没有任何自动门禁，`format:check` 已烂了 42 个文件
+- `.gitattributes`：显式声明行尾与二进制（`docker-push.ps1` 出现过 8 个 UTF-8 BOM 叠在文件头的编码事故，根因就是没人声明）
+- `tsconfig.json` 排除 `server`（根 typecheck 此前把服务端源码和它的 node_modules 一起拖进来）；`sync-version.js` 顺带同步 `server/package-lock.json` 的 version（此前停在 0.4.0）
+- 修正 `server/scripts/selftest.ps1` 与 README curl 示例漏掉 `ledgerId`（照抄必 400），README 示例里的 `accountUuid` 一并清掉
+
+### 文档纠偏
+
+- README 的「全部数据保存在本地，**无账号、无网络请求**」与同页的可选家庭同步自相矛盾，改为「本地优先，同步是可关闭的功能」
+- README 项目结构树过期约四成：删掉不存在的 `AccountPicker.tsx` 与「账户/转账管理」，补上 `EditRecordModal`、`screens/manage/*`、`memberUtils`、服务端 `routes/{ledgers,admin}.ts`、`backup.ts`
+- 「全部分类可**拖拽**排序」→ 实际是 ↑/↓ 按钮；设计令牌表里的「转账」改为辅助青
+- `docs/COMMERCIAL_EVALUATION.md` 中被实测推翻的两条 ✅（访问控制「基本完备」、push 注入 userId 是优点）改写为修复记录；JWT 7 天等过期表述更新；`DEPLOY_DOCKER.md` 版本戳 0.5.2 → 0.5.6
+- **已知未做**：安卓端「注销账号」入口本版已补，但 `DELETE /api/me` 的合规说明口径（他人账本内本人记录只归零不删除）仍需在用户协议里写清楚；服务端墓碑清理任务、pull 分页、字段上限的跨端单一来源仍待做
+
 ## [0.11.7] - 2026-10-01
 
 ### Bug 修复

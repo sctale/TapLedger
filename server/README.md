@@ -103,7 +103,7 @@ APP 直连 `http://NAS_IP:8420` 即可（自托管场景）。如需公网访问
    - **允许邀请码加入家庭**：二级保险，关闭后即便拿到邀请码也进不去
 4. 同页显示只读概览：用户数 / 家庭数 / 有效记录数 / 最近同步时间
 
-安全说明：未配置 `ADMIN_TOKEN` 时面板接口一律 503（等于不存在）；口令错误 401 且有 10 次/分/IP 限流；面板页本身无任何敏感数据。请通过 HTTPS 使用（见上节）。
+安全说明：未配置 `ADMIN_TOKEN` 时面板**页面与接口一律 503**（v0.5.6 起连 HTML 也不返回，此前页面恒定 200 等于公开宣告后台入口存在）；口令用 sha256 归一后定值时间比较，并有 10 次/分/IP 限流；面板页本身不含任何敏感数据。勾选「记住口令」才会把口令写进浏览器 localStorage——公共设备别勾。请通过 HTTPS 使用（见上节）。
 
 ## 二、本地开发
 
@@ -119,9 +119,13 @@ npm run typecheck
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PORT` | `8420` | 监听端口 |
-| `JWT_SECRET` | 开发默认值 | **生产必改** |
-| `JWT_EXPIRES` | `365d` | 可选（v0.5.5）：登录态有效期，家庭场景默认一年免重登；可设 `30d` 等收紧 |
+| `JWT_SECRET` | 开发默认值 | **生产必改**：生产环境缺失/等于内置默认值/短于 16 位则拒绝启动。README 建议 ≥32 位随机串（代码只硬性拦住明显不安全的取值） |
+| `JWT_EXPIRES` | `365d` | 可选（v0.5.5）：登录态有效期，家庭场景默认一年免重登；可设 `30d` 等收紧。改密会让旧 token 立即失效（`users.token_version` 递增） |
 | `DATA_DIR` | `./data` | 数据库目录 |
+| `ADMIN_TOKEN` | 空 | 可选（v0.5.0）：管理面板口令；不配置则 `/admin` 与 `/api/admin/*` 一律 503 |
+| `TRUST_PROXY` | 空 | 可选（v0.5.2）：经 Nginx/群晖反代时设 `1`，让登录/注册限流按真实客户端 IP 计数，否则全员共用代理 IP 的配额 |
+| `BACKUP_KEEP` | `7` | 可选（v0.4.3）：每日热备份保留份数 |
+| `BACKUP_DISABLED` | 空 | 可选：设 `1` 关闭自动备份 |
 
 ## 三、API 概览
 
@@ -130,8 +134,10 @@ npm run typecheck
 | GET | `/api/health` | 健康检查 | - |
 | POST | `/api/auth/register` | 注册 `{username, password, displayName?}` | - |
 | POST | `/api/auth/login` | 登录 `{username, password}` → `{token, user}` | - |
+| POST | `/api/auth/password` | 改密 `{currentPassword, newPassword}` → `{ok, token}`；成功后其它设备旧 token 立即 401 | Bearer |
 | GET | `/api/me` | 当前用户信息 | Bearer |
 | PUT | `/api/me` | 改昵称/头像 `{displayName?, avatarEmoji?}` | Bearer |
+| DELETE | `/api/me` | 注销账号 `{password}`：级联删个人账本；创建者注销＝解散家庭账本（成员解绑、本机副本保留） | Bearer |
 | POST | `/api/family` | 创建家庭 `{name}`（创建者为 owner） | Bearer |
 | POST | `/api/family/join` | 邀请码加入 `{inviteCode}` | Bearer |
 | GET | `/api/family` | 当前家庭信息（含邀请码） | Bearer |
@@ -141,7 +147,7 @@ npm run typecheck
 | POST | `/api/family/leave` | 退出/解散家庭 | Bearer |
 | GET | `/api/ledgers` | 列出当前用户可访问的账本（个人 + 家庭） | Bearer |
 | POST | `/api/sync/pull` | 拉取增量 `{since, ledgerId}` → `{serverTime, changes}` | Bearer |
-| POST | `/api/sync/push` | 上传变更 `{ledgerId, changes}` → `{applied, rejected}` | Bearer |
+| POST | `/api/sync/push` | 上传变更 `{ledgerId, changes}` → `{applied, skipped, invalid, invalidIds?, rejected, errors?}` | Bearer |
 
 ### 个人账本 / 家庭账本
 
@@ -151,11 +157,15 @@ npm run typecheck
 
 ### 同步协议（本地优先 + LWW）
 
-- 所有业务实体（records/accounts/transfers/recurring/customCategories）以 **uuid** 为主键，带 `updatedAt`（毫秒时间戳）与 `deleted`（墓碑）
+- 所有业务实体（records / recurring / customCategories）以 **uuid** 为主键，带 `updatedAt`（毫秒时间戳）与 `deleted`（墓碑）
 - **pull**：返回 `updated_at > since` 的全部变更（含墓碑），客户端按 LWW 合并到本地
-- **push**：服务端逐条 upsert，仅当 `incoming.updated_at > 服务端 updated_at` 才覆盖（整条 last-write-wins）
-- 冲突（两端同时改一条）：`updatedAt` 新者胜，旧版本被拒绝（rejected 计数），客户端下次 pull 拉回正确版本
-- 登录接口限流：同 IP 每分钟 5 次
+- **push**：服务端逐条 upsert，仅当 `incoming.updated_at > 服务端 updated_at` **且该 uuid 原本就属于这本账本**才覆盖
+  - `family_id` 条件是 v0.5.6 补的：uuid 是全局主键，缺它时任何登录用户都能把字段写进别人账本的同 uuid 记录（SET 子句不动 family_id，数据留在原账本 → 跨账本篡改）
+  - `user_id`（记账人）只在插入时落定，编辑不会把作者改成最后编辑的人
+  - `updatedAt` 会被钳制到服务端当前时间：设备时钟超前产生的「未来版本号」否则会永久压制后续所有正常编辑
+- 未生效的条目分两类：`skipped`（版本不比服务端新 / uuid 属于别的账本，幂等丢弃，无需提示）与 `invalid`（字段超出 zod 限制，**本地已写入但传不上去**，客户端必须如实提示；`invalidIds` 给出样本）
+- 字段上限：`note` ≤60、`category` ≤40、规则 `name` ≤20、分类 `label` ≤12、`emoji` ≤8、`uuid` 8–64，客户端在录入与导入入口即按此归一（`src/utils/exportData.ts` 的 `SERVER_LIMITS`）
+- 限流：登录 5/分/IP、注册 3/分/IP、加入家庭 5/分/IP + 同一邀请码错 10 次锁 10 分钟、改密与注销各 5/分/IP
 
 ## 四、快速自测（curl）
 
@@ -179,9 +189,10 @@ curl -s $BASE/api/family/join -H "Authorization: Bearer $TOKEN_MOM" \
   -H 'Content-Type: application/json' -d '{"inviteCode":"XXXXXX"}'
 
 # 爸爸 push 一条记录，妈妈 pull 即可看到
+# LEDGER_ID：账本 id 由 GET /api/ledgers 取得（个人账本 + 家庭账本各一个），push/pull 都必带
 curl -s $BASE/api/sync/push -H "Authorization: Bearer $TOKEN_DAD" \
   -H 'Content-Type: application/json' \
-  -d '{"records":[{"uuid":"r-001","amount":25,"category":"food","type":"expense","note":"午饭","date":"2026-08-16","timestamp":1755300000000,"accountUuid":"","updatedAt":1755300000000,"deleted":0}]}'
+  -d "{\"ledgerId\":$LEDGER_ID,\"records\":[{\"uuid\":\"r-001\",\"amount\":25,\"category\":\"food\",\"type\":\"expense\",\"note\":\"午饭\",\"date\":\"2026-08-16\",\"timestamp\":1755300000000,\"reimbursable\":0,\"reimbursed\":0,\"updatedAt\":1755300000000,\"deleted\":0}]}"
 curl -s $BASE/api/sync/pull -H "Authorization: Bearer $TOKEN_MOM" \
-  -H 'Content-Type: application/json' -d '{"since":0}'
+  -H 'Content-Type: application/json' -d "{\"since\":0,\"ledgerId\":$LEDGER_ID}"
 ```

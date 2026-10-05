@@ -21,9 +21,9 @@
 - **日历热力图**：月历颜色深浅直观展示每日消费（色盲友好：颜色+数字双通道）
 - **流水明细**：按天分组、收支筛选、备注/分类搜索，显示报销状态
 - **收支统计**：收支总览、分类占比圆环图、分类排行、近 7 天/本月/12 个月趋势
-- **分类管理**：支持新增/编辑/删除自定义分类（预设图标点选 + 自定义输入，配色齐全），内置分类可显隐，全部分类可拖拽排序
+- **分类管理**：支持新增/编辑/删除自定义分类（预设图标点选 + 自定义输入，配色齐全），内置分类可显隐，全部分类可上下移动排序
 - **数据管理**：JSON 完整备份（含周期/分类）+ Excel（CSV）导出，支持合并/替换导入；新增重置个人账本（清空记录/周期/分类，保留设置）
-- **隐私优先**：全部数据保存在本地，无账号、无网络请求；冷启动本地秒开（v0.10 起同步转后台）
+- **本地优先**：不配置服务器就是一本纯本地账本——无账号、无网络请求、冷启动秒开；家庭同步是可随时关掉的一项功能，开启了也仍然先写本地 SQLite、离线照常记账，联网后增量补同步
 - **家庭同步（v0.4+ 可选）**：自托管 NAS 后端，多用户 + 家庭公共账本，邀请码邀请家人，本地优先离线可用，增量双向同步；v0.5 增加记账人标识、成员筛选与支出排行；v0.10 网络恢复/回前台自动补同步（详见下方「家庭共享记账」）
 
 ## 家庭共享记账（v0.4+，可选）
@@ -45,6 +45,7 @@
 - **成员筛选**：统计页按成员过滤（总览/饼图/排行/趋势）
 - **成员支出排行**：各成员支出金额、占比与笔数对比
 - **成员管理**：成员显示创建者/成员角色徽标；创建者可移除成员（历史记录保留）；任何人可改自己的昵称/头像，全家设备同步生效
+- **账号安全（v0.11.8）**：同步页可直接**修改密码**（改密后其他设备的登录态立即失效，本机继续在线）与**注销账号**（需当前密码复核；创建者注销即解散家庭账本，其余成员解绑并保留本机副本）。此前的 365 天长效 JWT 没有任何撤销通道，现在由 `users.token_version` 兜住
 
 ## 服务端部署（NAS / Docker，可选）
 
@@ -166,48 +167,58 @@ src/
 ├── components/         # UI 组件
 │   ├── CategorySelector.tsx   # 分类选择网格
 │   ├── NumberPad.tsx          # 自定义数字键盘
-│   ├── AccountPicker.tsx      # 账户选择器
-│   ├── RecordList.tsx         # 记录列表（账户/报销标记，RecordRow 支持虚拟化）
+│   ├── RecordList.tsx         # 记录行/列表（记账人标记、报销标记，编辑热区与动作区分离）
+│   ├── EditRecordModal.tsx    # 明细页全屏编辑（v0.10，与首页同构的记账卡）
 │   ├── MonthHeatmap.tsx       # 月历热力图
 │   ├── CategoryPieChart.tsx   # 分类占比圆环图
 │   ├── TrendBarChart.tsx      # 趋势柱状图
 │   ├── LoginModal.tsx         # 登录/注册弹窗（v0.4）
 │   ├── FamilyModal.tsx        # 家庭管理弹窗（v0.4）
-│   ├── Modal.tsx              # 通用底部弹窗
+│   ├── Modal.tsx              # 全屏表单弹窗（内含 Toast 层）
 │   ├── TabBar.tsx             # 底部导航
-│   └── Toast.tsx              # 轻提示
+│   └── Toast.tsx              # 轻提示（全局单例，非模态浮层）
 ├── screens/            # 页面
-│   ├── HomeScreen.tsx         # 记账（今日总览 + 快捷记账）
-│   ├── LedgerScreen.tsx       # 明细（日历热力图 + 流水 FlatList 虚拟化）
-│   ├── StatsScreen.tsx       # 统计（总览/饼图/排行/趋势）
-│   └── ManageScreen.tsx       # 管理（周期记账/报销管理/分类管理/家庭同步/偏好设置/数据管理；账户与转账管理）
+│   ├── HomeScreen.tsx         # 记账（快捷记账卡 + 连记/上次金额）
+│   ├── LedgerScreen.tsx       # 明细（日历热力图 + 流水 FlatList 虚拟化 + 点行编辑）
+│   ├── StatsScreen.tsx        # 统计（收支总览/预算/饼图/排行/趋势/报销入口）
+│   ├── ManageScreen.tsx       # 管理首页（周期/报销/分类/家庭同步/偏好/数据 六个入口）
+│   └── manage/                # 二级页：Categories / Recurring / Reimburse / Sync / Prefs / DataManage + RuleModal + sharedStyles
 ├── sync/               # 家庭同步（v0.4，本地优先）
 │   ├── apiClient.ts           # fetch 封装（token/超时/错误语义化）
-│   ├── syncEngine.ts          # 增量双向同步引擎（push/pull + LWW + 墓碑清理）
+│   ├── syncEngine.ts          # 增量双向同步引擎（push/pull + LWW + 墓碑 + 401 清登录态）
+│   ├── memberUtils.ts         # 家庭成员缓存（记账人标识）
 │   └── serverTypes.ts         # 与 server 对齐的 DTO
 ├── database/           # 数据层
-│   └── ledgerDB.ts            # SQLite CRUD + 迁移（含 v0.3 同步字段）+ 软删除
+│   └── ledgerDB.ts            # SQLite CRUD + 幂等迁移（补列 / 主键重建）+ 软删除 + 账本作用域
+├── constants/          # 设计令牌（配色/间距/圆角/分类/同步事件/设置 key）
 ├── hooks/              # useToast / useDeleteRecord
-├── constants/          # 设计令牌（配色/间距/圆角/分类/账户类型/同步设置 key）
 ├── types/              # 类型定义
 └── utils/
-    ├── dateUtils.ts           # 日期工具
-    ├── moneyUtils.ts          # 金额输入规则
+    ├── dateUtils.ts           # 日期与金额格式化
+    ├── moneyUtils.ts          # 数字键盘输入规则 + 四则运算求值（不用 eval）
     ├── recurring.ts           # 周期记账生成器
-    ├── exportData.ts          # JSON 导出（v3 含同步字段）
+    ├── exportData.ts          # JSON 导出（v3 含同步字段）+ 服务端字段上限归一
     ├── importData.ts          # JSON 导入（合并/替换，兼容 v2）
     ├── csvExport.ts           # Excel（CSV）导出
     └── haptics.ts             # 触感反馈
+src/utils/__tests__/   # vitest 单测（金额输入/求值、日期、周期到期判断）
 server/                 # 自托管后端（NAS Docker，v0.4）
-├── src/routes/         # auth / family / sync / health
-├── Dockerfile          # 多阶段 alpine 构建
-├── docker-compose.yml  # 一键部署（volume 持久化）
+├── src/
+│   ├── index.ts               # Express 装配（限流挂载顺序、TRUST_PROXY、统一错误处理）
+│   ├── db.ts                  # SQLite（WAL）+ 建表 + 存量库幂等迁移 + 邀请码生成
+│   ├── auth.ts                # JWT 签发/校验（含 token_version 撤销）、账本归属、IP 限流
+│   ├── backup.ts              # 每日在线热备份（better-sqlite3 backup）
+│   └── routes/                # auth / family / ledgers / sync / health / admin
+├── Dockerfile          # 多阶段 alpine 构建（多架构 + 非编译运行层）
+├── docker-compose.yml  # 一键部署（volume 持久化 + healthcheck）
 ├── DEPLOY_SYNOLOGY.md  # 群晖 DS224+ 图形化部署教程
 ├── DEPLOY_DOCKER.md    # 通用 Docker Compose 部署教程（反代/备份/FAQ）
+├── scripts/            # docker-push.ps1（GHCR 推送）、selftest*.ps1（接口冒烟）
 └── README.md           # 服务端详情（API / 同步协议 / 本地开发）
 scripts/
-├── generate-icons.ps1         # 图标生成脚本
-└── release-app.ps1            # APP 一键发布脚本（版本同步→构建→校验→Release）
+├── sync-version.js            # 版本号单一来源同步（app.json / package.json / lock / server lock）
+├── release-app.ps1            # APP 一键发布（版本同步→门禁→构建→签名校验→Release）
+└── generate-icons.ps1         # 图标生成（本地工具，非发布链路）
 ```
 
 ## 设计令牌（与 TapMood 同源）
@@ -218,13 +229,13 @@ scripts/
 | 卡片 | `#FFFFFF` / `#FFF9F5` | 白 / 暖色卡片底 |
 | 主文字 | `#2D2D2D` / `#6E6E6E` | 深灰 / 次级 |
 | 强调色 | `#7986CB` | 柔和靛蓝 |
-| 支出 / 收入 / 转账 | `#FF8A65` / `#81C784` / `#4DB6AC` | 暖橙 / 薄荷绿 / 青 |
+| 支出 / 收入 / 辅助青 | `#FF8A65` / `#81C784` / `#4DB6AC` | 暖橙 / 薄荷绿 / 青（家庭管理按钮等） |
 | 圆角 | 8 / 12 / 16 / 20 / 24 / 胶囊 | 统一设计令牌 |
 | 间距 | 4 / 8 / 16 / 24 / 32 / 48 | 大留白风格 |
 
 ## 版本
 
-当前版本：0.11.7
+当前版本：0.11.8
 
 ## 开源许可
 

@@ -129,7 +129,7 @@ docker compose pull && docker compose up -d
 **版本注意**：
 
 - 升到 v0.4.2+ 前先确认 `.env` 的 `JWT_SECRET` 是真实强随机串（否则拒绝启动）
-- 当前最新：server v0.5.2（新增 TRUST_PROXY）、管理面板 v0.5.0、自动备份 v0.4.3
+- 当前最新：server **v0.5.6**（跨账本写入守卫、记账人作者保留、未来时间戳钳制、push 返回 invalid/skipped 分类、改密接口 `POST /api/auth/password`、`/admin` 未配口令时整页 503）；历史：v0.5.5 登录态 365 天 + 注销接口、v0.5.2 `TRUST_PROXY`、v0.5.0 管理面板、v0.4.3 每日自动热备份
 
 ## 7. 备份与恢复
 
