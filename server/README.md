@@ -56,11 +56,11 @@ curl http://<NAS_IP>:8420/api/health
 powershell -ExecutionPolicy Bypass -File scripts\docker-push.ps1
 ```
 
-脚本完成：gh token 登录 GHCR → `docker build` → 推送双标签。镜像已设为 **Public**，NAS 无需 `docker login` 直接拉取。
+脚本完成：GHCR 登录（优先用环境变量 `TAPLEDGER_GHCR_PAT` 里仅含 `write:packages` 的 PAT，否则回落到 `gh auth token`）→ `docker buildx build --platform linux/amd64,linux/arm64` → 推送 `0.x.y` 与 `latest` 双标签 → 结束时 `docker logout`。本机没有 buildx 多架构能力时脚本会**拒绝**单架构推送（那会覆盖多架构清单，导致 arm64 的 NAS 拉不到镜像），确认只需本机架构才加 `-AllowSingleArch`。镜像已设为 **Public**，NAS 无需 `docker login` 直接拉取。
 
 NAS 更新：`docker compose pull && docker compose up -d`。
 
-> 仓库内的 GitHub Actions workflow（`.github/workflows/build-and-push-server-image.yml`，已改为仅手动触发）仅作为无本地 Docker 环境时的备用通道。
+> 镜像与 APK **一律本地构建**，仓库不再配置任何构建类 GitHub Actions（v0.11.8 起）。APP 侧门禁（类型检查 / ESLint / Prettier / 单测 / 签名注入自检）跑在 `scripts/release-app.ps1` 里。
 
 ### 数据备份
 

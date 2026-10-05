@@ -43,7 +43,45 @@ if ($LASTEXITCODE -ne 0) { Fail "gh 未登录，请执行 gh auth login --web �
 # 0.1) 进入 server 目录（$serverDir 已在顶部解析）
   Push-Location $serverDir
 try {
-  # 1) 登录 GHCR（用 gh 生成的临时 token 走 stdin，凭据文件用后即删）
+  # 1) 本地门禁：仓库不再配置任何构建类 GitHub Actions，检查必须在这里跑完，
+  #    否则推上去的是一个没人验过的镜像（NAS 端直接跑生产）
+  Write-Host "==> 服务端门禁：依赖 / typecheck / build" -ForegroundColor Cyan
+  if (-not (Test-Path (Join-Path $serverDir 'node_modules'))) {
+    & npm ci
+    if ($LASTEXITCODE -ne 0) { Fail "依赖按 lockfile 安装失败，禁止推送。" }
+  }
+  & npm run typecheck
+  if ($LASTEXITCODE -ne 0) { Fail "tsc 类型检查未通过，禁止推送。" }
+  & npm run build
+  if ($LASTEXITCODE -ne 0) { Fail "构建失败，禁止推送。" }
+
+  # 冒烟：生产模式缺 JWT_SECRET 必须拒绝启动。这项保护一旦退化，等于发布一个
+  # token 可被任意伪造的服务端镜像，所以它在门禁里而不是只写在文档里。
+  Write-Host "==> 冒烟：生产模式缺 JWT_SECRET 必须拒绝启动" -ForegroundColor Cyan
+  $smokeDir = Join-Path $env:TEMP ("tl-image-smoke-" + $PID)
+  $prevNodeEnv = $env:NODE_ENV
+  $prevDataDir = $env:DATA_DIR
+  $prevJwtSecret = $env:JWT_SECRET
+  $prevBackupDisabled = $env:BACKUP_DISABLED
+  try {
+    $env:NODE_ENV = 'production'
+    $env:DATA_DIR = $smokeDir
+    $env:BACKUP_DISABLED = '1'
+    $env:JWT_SECRET = $null
+    $smokeOut = (& node dist/index.js 2>&1 | Out-String)
+    $smokeExit = $LASTEXITCODE
+  } finally {
+    $env:NODE_ENV = $prevNodeEnv
+    $env:DATA_DIR = $prevDataDir
+    $env:JWT_SECRET = $prevJwtSecret
+    $env:BACKUP_DISABLED = $prevBackupDisabled
+    if (Test-Path $smokeDir) { Remove-Item -Recurse -Force $smokeDir -ErrorAction SilentlyContinue }
+  }
+  if ($smokeExit -eq 0) { Fail "生产模式下没配 JWT_SECRET 居然启动成功：拒绝启动的保护已失效，禁止推送。" }
+  if ($smokeOut -notmatch 'JWT_SECRET') { Fail "启动虽被拒绝，但没有预期的 JWT_SECRET 提示，请检查启动校验：`n$smokeOut" }
+  Write-Host "==> 门禁通过" -ForegroundColor Green
+
+  # 2) 登录 GHCR（用 gh 生成的临时 token 走 stdin，凭据文件用后即删）
   # 修复记录（2026-10-01）：PS5.x 非交互子进程中，管道/BaseStream 向 docker 写 stdin
   # 会被控制台编码层破坏，GHCR 报 "denied: denied"；改为写临时 ASCII 文件 + cmd 重定向，已实测成功。
   Write-Host "==> docker login ghcr.io" -ForegroundColor Cyan
@@ -64,7 +102,7 @@ try {
     $ghToken = $null
   }
 
-  # 2) 构建并推送
+  # 3) 构建并推送
   # 优先 buildx 多架构：CI workflow 发布的是 amd64+arm64 清单，
   # 而本机 docker build 只产宿主架构 —— 用它覆盖同名 tag/latest，
   # 会让 arm64 的 NAS 突然拉不到镜像（v0.11.8 审查发现的静默降级）

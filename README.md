@@ -135,7 +135,7 @@ npx expo start --android
 powershell -ExecutionPolicy Bypass -File scripts\release-app.ps1
 ```
 
-脚本自动完成全链路：版本号同步（app.json / package.json / package-lock.json / android build.gradle / README）→ 单测 + 类型检查 → 本地构建 release APK → `aapt` 校验 versionName/versionCode → `apksigner` 校验签名者（拦截 debug 签名）→ 复制到根目录 `TapLedger-vX.Y.Z.apk` → git 提交推送 → 创建 GitHub Release 并上传 APK（说明取自 CHANGELOG 最新条目）。
+脚本自动完成全链路：版本号同步（app.json / package.json / package-lock.json / android build.gradle / README）→ 单测 + 类型检查 + ESLint + Prettier 检查 → 签名注入自检（确认 `android/app/build.gradle` 里三段私有签名配置都在，且 `keystore.properties` 存在）→ 本地构建 release APK → `aapt` 校验 versionName/versionCode → `apksigner` 校验签名者（拦截 debug 签名）→ 复制到根目录 `TapLedger-vX.Y.Z.apk` → git 提交推送 → 创建 GitHub Release 并上传 APK（说明取自 CHANGELOG 最新条目）。
 
 > **签名前置**：release 包使用私有 keystore 签名（非 debug）。首次构建前需准备 `keystore/tapledger-release.keystore` 与根目录 `keystore.properties`（均不入库，`.gitignore` 已排除），再执行 `npx expo prebuild --platform android` 让 `plugins/withReleaseSigning.js` 注入签名配置。丢失 keystore 将无法给老用户推送升级，务必异地备份。
 
@@ -148,8 +148,10 @@ powershell -ExecutionPolicy Bypass -File server\scripts\docker-push.ps1
 ```
 
 - 镜像：`ghcr.io/sctale/tapledger-server`（Public，NAS 无需 `docker login` 直接拉取）
+- 推送前脚本会先跑本地门禁：`npm run typecheck` + `npm run build` + 断言「生产模式缺 `JWT_SECRET` 必须拒绝启动」，任一项不过就不发镜像
+- 构建走 `docker buildx`，一次产出 **linux/amd64 + linux/arm64** 双架构清单（群晖等多为 arm64）；本机没有多架构能力时脚本拒绝单架构推送，避免覆盖清单把 NAS 的拉取搞坏
 - NAS 更新：`docker compose pull && docker compose up -d`
-- 前置：本机装有 Docker Desktop；`gh auth login` 已登录且含 `write:packages` 权限
+- 前置：本机装有 Docker Desktop；`gh auth login` 已登录且含 `write:packages` 权限（或给脚本传只含 `write:packages` 的 `TAPLEDGER_GHCR_PAT`）
 
 ### 手动构建 APK（调试用）
 

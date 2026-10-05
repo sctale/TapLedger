@@ -50,7 +50,8 @@
 - `release-app.ps1`：加 eslint + prettier 门禁、构建前先自检签名注入片段与 keystore 存在（省掉一次几分钟的白跑）；`git add -A` 改为只暂存发布链路涉及的文件
 - `docker-push.ps1`：本机 `docker build` 只产宿主架构，直接推会覆盖 CI 的 amd64+arm64 清单、arm64 NAS 拉不到镜像 → 优先走 `docker buildx` 多架构，无 buildx 时需显式 `-AllowSingleArch`；GHCR 凭据支持只含 `write:packages` 的环境变量 PAT，临时文件名随机化，结束时 `docker logout`
 - `server/Dockerfile`：`npm install` → `npm ci`（此前镜像内容取决于构建日期）、运行层不再重装编译链、加 `HEALTHCHECK`（此前只有 compose 里配了，`docker run` 或群晖界面跑就没有存活探测）。**保留以 root 运行**：改 `USER node` 会让已部署实例写不进原 root 属主的 data/ 卷，要收紧请连部署文档的 chown 迁移步骤一起改
-- 新增 `.github/workflows/ci.yml`：APP 的 typecheck/lint/format:check/单测 + 服务端 typecheck/构建 + 两条启动冒烟（缺密钥必须拒绝启动、配好后 health 必须通）。此前仓库没有任何自动门禁，`format:check` 已烂了 42 个文件
+- 门禁全部本地化，并**删除仓库里两个 GitHub Actions workflow**（`ci.yml`、`build-and-push-server-image.yml`）：APK 与 Docker 镜像一律本地构建，不再经 Actions。原计划放在 CI 里的检查改由本地脚本承担——`scripts/release-app.ps1` 补 `eslint` + `prettier --check` 与签名注入自检（构建前先跑，省掉几分钟白跑），`server/scripts/docker-push.ps1` 推送前先 typecheck + build + 断言「生产模式缺 JWT_SECRET 必须拒绝启动」。此前仓库没有任何自动门禁，`format:check` 已烂了 42 个文件没人发现
+- 这次误加 CI 又踩出一个只在「非本地环境」才暴露的问题，值得记一笔：根 eslint 配置会连 `server/src` 一起 lint，服务端依赖没装时报 11 个 `import/no-unresolved`（express/bcryptjs）——本地两个 `node_modules` 都在，所以本地永远跑不出这个错
 - `.gitattributes`：显式声明行尾与二进制（`docker-push.ps1` 出现过 8 个 UTF-8 BOM 叠在文件头的编码事故，根因就是没人声明）
 - `tsconfig.json` 排除 `server`（根 typecheck 此前把服务端源码和它的 node_modules 一起拖进来）；`sync-version.js` 顺带同步 `server/package-lock.json` 的 version（此前停在 0.4.0）
 - 修正 `server/scripts/selftest.ps1` 与 README curl 示例漏掉 `ledgerId`（照抄必 400），README 示例里的 `accountUuid` 一并清掉
