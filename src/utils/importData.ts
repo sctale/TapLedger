@@ -2,12 +2,12 @@ import * as DocumentPicker from 'expo-document-picker';
 import { DeviceEventEmitter } from 'react-native';
 import { File } from 'expo-file-system';
 import {
-  bulkInsertRecords, replaceAllRecords, saveSetting, addCustomCategory,
+  bulkInsertRecords, replaceRecordsByIdentity, replaceRecurringRulesByIdentity,
+  replaceCustomCategoriesByIdentity, saveSetting, addCustomCategory,
   addRecurringRule, setCustomCategoriesCache, getCategoryConfig,
-  clearRecurringAndCategories,
 } from '../database/ledgerDB';
 import { LEDGER_EVENTS, EXPORT_VERSION, setCategoryConfig } from '../constants';
-import { isValidRecord, normalizeRecord, sanitizeExportSettings } from './exportData';
+import { isValidRecord, normalizeRecord, sanitizeExportSettings, clip, normUuid, SERVER_LIMITS } from './exportData';
 import type { CustomCategory, LedgerRecord, RecurringRule } from '../types';
 
 export type ImportStrategy = 'merge' | 'replace';
@@ -29,6 +29,49 @@ interface ParsedBackup {
   customCategories: CustomCategory[];
   skipped: number;
   error?: string;
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= min && n <= max ? n : fallback;
+}
+
+// 附属数据同样要归一到服务端字段上限（记录走 normalizeRecord）
+function normalizeRecurring(r: RecurringRule): RecurringRule {
+  const timestamp = Number.isFinite(r.createdAt) ? Math.max(0, Math.round(r.createdAt)) : Date.now();
+  const amount = Number(r.amount);
+  return {
+    ...r,
+    uuid: normUuid(r.uuid),
+    name: clip(String(r.name ?? ''), SERVER_LIMITS.name) || '订阅',
+    amount: Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : 0,
+    category: clip(String(r.category ?? ''), SERVER_LIMITS.category) || 'other',
+    frequency: (['daily', 'weekly', 'monthly', 'yearly'] as const).includes(r.frequency) ? r.frequency : 'monthly',
+    dayOfWeek: clampInt(r.dayOfWeek, 0, 6, 0),
+    dayOfMonth: clampInt(r.dayOfMonth, 1, 31, 1),
+    monthOfYear: clampInt(r.monthOfYear, 1, 12, 1),
+    note: clip(typeof r.note === 'string' ? r.note : '', SERVER_LIMITS.note),
+    enabled: Boolean(r.enabled),
+    lastGenerated: clip(typeof r.lastGenerated === 'string' ? r.lastGenerated : '', 10),
+    createdAt: timestamp,
+    updatedAt: Number(r.updatedAt) > 0 ? Math.round(Number(r.updatedAt)) : timestamp,
+  };
+}
+
+function normalizeCategory(c: CustomCategory): CustomCategory {
+  const timestamp = Number.isFinite(c.createdAt) ? Math.max(0, Math.round(c.createdAt)) : Date.now();
+  const emoji = typeof c.emoji === 'string' && c.emoji.length <= SERVER_LIMITS.emoji ? c.emoji : '📌';
+  return {
+    ...c,
+    uuid: normUuid(c.uuid),
+    key: clip(String(c.key ?? ''), SERVER_LIMITS.key) || `custom_${Date.now()}`,
+    label: clip(String(c.label ?? ''), SERVER_LIMITS.label) || '分类',
+    emoji,
+    color: clip(typeof c.color === 'string' ? c.color : '', SERVER_LIMITS.color) || '#90A4AE',
+    type: c.type === 'income' ? 'income' : 'expense',
+    createdAt: timestamp,
+    updatedAt: Number(c.updatedAt) > 0 ? Math.round(Number(c.updatedAt)) : timestamp,
+  };
 }
 
 // 解析 JSON 备份
@@ -60,12 +103,17 @@ function parseJSONBackup(text: string): ParsedBackup {
       skipped++;
     }
   }
+  const recurringRaw = Array.isArray(obj.recurring) ? (obj.recurring as RecurringRule[]) : [];
+  const categoriesRaw = Array.isArray(obj.customCategories) ? (obj.customCategories as CustomCategory[]) : [];
+  const recurring = recurringRaw.map(normalizeRecurring);
+  // 金额非正的规则传上去必被服务端判非法，导入阶段直接丢弃并计入 skipped
+  const validRecurring = recurring.filter((r) => r.amount > 0);
   return {
     records,
     settings: (obj.settings && typeof obj.settings === 'object' ? obj.settings : {}) as Record<string, string>,
-    recurring: Array.isArray(obj.recurring) ? (obj.recurring as RecurringRule[]) : [],
-    customCategories: Array.isArray(obj.customCategories) ? (obj.customCategories as CustomCategory[]) : [],
-    skipped,
+    recurring: validRecurring,
+    customCategories: categoriesRaw.map(normalizeCategory),
+    skipped: skipped + (recurring.length - validRecurring.length),
   };
 }
 
@@ -73,42 +121,46 @@ function parseJSONBackup(text: string): ParsedBackup {
 async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promise<ImportResult> {
   try {
     let failed = 0;
-    // 1) 记录（replace 策略同时清空周期规则与自定义分类，v0.11 修复：此前只替换记录导致重复追加）
+    // 1) 数据写入
     if (strategy === 'replace') {
-      await replaceAllRecords(data.records);
-      await clearRecurringAndCategories();
+      // 三张表统一按同步身份（uuid）替换：本地多出来的打墓碑、同 uuid 覆盖、新的插入。
+      // 此前是「硬删本地 + 重插」，不产生墓碑 → 家人设备与服务器仍留着旧记录，
+      // 换机/重装后被 pull 回来，表现为「替换导入没生效、账目翻倍」。
+      await replaceRecordsByIdentity(data.records);
+      await replaceRecurringRulesByIdentity(data.recurring);
+      await replaceCustomCategoriesByIdentity(data.customCategories);
     } else {
       await bulkInsertRecords(data.records);
+      // 3) 周期规则（合并策略逐条插入，冲突即计入 failed）
+      for (const r of data.recurring) {
+        try {
+          await addRecurringRule({
+            name: r.name, amount: r.amount, type: r.type, category: r.category,
+            frequency: r.frequency, dayOfWeek: r.dayOfWeek,
+            dayOfMonth: r.dayOfMonth, monthOfYear: r.monthOfYear, note: r.note,
+            enabled: r.enabled, lastGenerated: r.lastGenerated,
+            uuid: r.uuid || undefined, updatedAt: r.updatedAt || undefined,
+            userId: r.userId || undefined,
+          });
+        } catch {
+          failed++;
+        }
+      }
+      // 4) 自定义分类
+      for (const c of data.customCategories) {
+        try {
+          await addCustomCategory({
+            key: c.key, label: c.label, emoji: c.emoji, color: c.color, type: c.type,
+            uuid: c.uuid || undefined, updatedAt: c.updatedAt || undefined,
+          });
+        } catch {
+          failed++;
+        }
+      }
     }
     // 2) 设置（v0.11 安全：剔除 sync.* 私有键，防止导入旧备份覆盖/劫持当前登录态）
     for (const [k, v] of Object.entries(sanitizeExportSettings(data.settings))) {
       if (typeof v === 'string') await saveSetting(k, v).catch(() => {});
-    }
-    // 3) 周期规则
-    for (const r of data.recurring) {
-      try {
-        await addRecurringRule({
-          name: r.name, amount: r.amount, type: r.type, category: r.category,
-          frequency: r.frequency, dayOfWeek: r.dayOfWeek,
-          dayOfMonth: r.dayOfMonth, monthOfYear: r.monthOfYear, note: r.note,
-          enabled: r.enabled, lastGenerated: r.lastGenerated,
-          uuid: r.uuid || undefined, updatedAt: r.updatedAt || undefined,
-          userId: r.userId || undefined,
-        });
-      } catch {
-        failed++;
-      }
-    }
-    // 4) 自定义分类（刷新缓存）
-    for (const c of data.customCategories) {
-      try {
-        await addCustomCategory({
-          key: c.key, label: c.label, emoji: c.emoji, color: c.color, type: c.type,
-          uuid: c.uuid || undefined, updatedAt: c.updatedAt || undefined,
-        });
-      } catch {
-        failed++;
-      }
     }
     await setCustomCategoriesCache();
     const cfg = await getCategoryConfig();

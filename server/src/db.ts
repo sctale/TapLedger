@@ -24,6 +24,9 @@ db.exec(`
     family_id INTEGER,
     family_role TEXT CHECK(family_role IN ('owner', 'member') OR family_role IS NULL),
     personal_family_id INTEGER,
+    -- 令牌版本号：写进 JWT 载荷，改密/改注销凭据时 +1，旧 token 立即全部失效
+    -- （JWT 无状态，否则 365 天长效 token 一旦泄露就没有撤销通道）
+    token_version INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
 
@@ -121,6 +124,9 @@ if (hasColumn('families', 'type')) {
 }
 if (!hasColumn('users', 'personal_family_id')) {
   db.exec('ALTER TABLE users ADD COLUMN personal_family_id INTEGER');
+}
+if (!hasColumn('users', 'token_version')) {
+  db.exec("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0");
 }
 
 // 生成 6 位大写字母数字邀请码（避开易混淆字符；CSPRNG，公网可达时抗预测/爆破）

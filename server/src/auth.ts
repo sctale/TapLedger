@@ -26,11 +26,12 @@ const JWT_SECRET = loadJwtSecret();
 
 export interface JwtPayload {
   uid: number;
+  tv: number; // token_version：与 users.token_version 不一致即视为已撤销（改密后全端失效）
 }
 
 // 签发 token
-export function signToken(userId: number): string {
-  return jwt.sign({ uid: userId } satisfies JwtPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+export function signToken(userId: number, tokenVersion: number): string {
+  return jwt.sign({ uid: userId, tv: tokenVersion } satisfies JwtPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
@@ -65,12 +66,19 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
   const user = db.prepare(
-    `SELECT id, username, display_name, avatar_emoji, family_id, family_role, personal_family_id FROM users WHERE id = ?`
+    `SELECT id, username, display_name, avatar_emoji, family_id, family_role, personal_family_id, token_version
+     FROM users WHERE id = ?`
   ).get(payload.uid) as
-    | { id: number; username: string; display_name: string; avatar_emoji: string; family_id: number | null; family_role: 'owner' | 'member' | null; personal_family_id: number | null }
+    | { id: number; username: string; display_name: string; avatar_emoji: string; family_id: number | null; family_role: 'owner' | 'member' | null; personal_family_id: number | null; token_version: number }
     | undefined;
   if (!user) {
     res.status(401).json({ error: '用户不存在' });
+    return;
+  }
+  // 旧版本签发的 token 没有 tv 载荷 → 视作 0，升级后老用户不会被强制登出；
+  // 一旦改密（token_version +1）这些 token 全部失效。
+  if ((payload.tv ?? 0) !== user.token_version) {
+    res.status(401).json({ error: '登录状态已在其他设备变更（如修改密码），请重新登录' });
     return;
   }
   // 老用户/新用户统一确保存在个人账本
@@ -127,6 +135,13 @@ export function makeIpRateLimit(limit: number, windowMs: number) {
       entry.count += 1;
     } else {
       hits.set(ip, { count: 1, resetAt: now + windowMs });
+    }
+    // 只增不删的 Map 在长期运行（公网可达 + 扫描流量）下会缓慢涨内存：
+    // 超过阈值时顺手清掉已过窗口的键，成本 O(size)，触发频率极低。
+    if (hits.size > 512) {
+      for (const [k, v] of hits) {
+        if (now >= v.resetAt) hits.delete(k);
+      }
     }
     next();
   };

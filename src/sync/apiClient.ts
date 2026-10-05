@@ -1,7 +1,7 @@
 // 后端 API 客户端：fetch 封装 + token 注入 + 超时 + 错误语义化
 import { SETTING_KEYS } from '../constants';
 import { getSetting } from '../database/ledgerDB';
-import type { AuthUser, FamilyInfo, FamilyMember, LedgerInfo, SyncChanges } from './serverTypes';
+import type { AuthUser, FamilyInfo, FamilyMember, LedgerInfo, PushResult, SyncChanges } from './serverTypes';
 
 export class ApiError extends Error {
   status: number;
@@ -112,6 +112,21 @@ export async function apiUpdateMe(baseUrl: string, token: string, patch: { displ
   return request<{ user: AuthUser }>(baseUrl, '/api/me', { method: 'PUT', body: patch, token });
 }
 
+// 修改密码（server 0.5.6）：成功返回本端新 token；其它设备的旧 token 因 token_version 递增立即失效
+export async function apiChangePassword(baseUrl: string, token: string, currentPassword: string, newPassword: string) {
+  return request<{ ok: boolean; token: string }>(baseUrl, '/api/auth/password', {
+    method: 'POST', body: { currentPassword, newPassword }, token,
+  });
+}
+
+// 注销账号（server 0.5.4 就有接口，安卓端此前一直没有入口）：
+// 需带当前密码复核；创建者注销=解散家庭账本，普通成员=解绑（本机副本保留）
+export async function apiDeleteAccount(baseUrl: string, token: string, password: string) {
+  return request<{ ok: boolean; dissolvedFamily: boolean; unboundMembers: number }>(baseUrl, '/api/me', {
+    method: 'DELETE', body: { password }, token,
+  });
+}
+
 // 当前用户的账本列表（个人账本 + 家庭账本）
 export async function apiGetLedgers(baseUrl: string, token: string) {
   return request<{ ledgers: LedgerInfo[] }>(baseUrl, '/api/ledgers', { method: 'GET', token });
@@ -126,7 +141,7 @@ export async function apiSyncPull(baseUrl: string, token: string, since: number,
 }
 
 export async function apiSyncPush(baseUrl: string, token: string, changes: Partial<SyncChanges>, ledgerId: number) {
-  return request<{ serverTime: number; applied: number; rejected: number }>(baseUrl, '/api/sync/push', {
+  return request<PushResult>(baseUrl, '/api/sync/push', {
     method: 'POST', body: { ...changes, ledgerId }, token,
   });
 }

@@ -287,9 +287,25 @@ export const SETTING_KEYS = {
   LAST_AMOUNT_BY_CATEGORY: 'last_amount_by_category', // 各分类最近一次金额（JSON: {categoryKey: number}）
 } as const;
 
-// 生成同步 uuid（时间戳36进制 + 随机串，家庭场景碰撞概率可忽略）
+// 生成同步 uuid（本地库与服务端都拿它当记录身份，服务端 records.uuid 是全局主键）
+// 此前只用 Math.random()：它既非密码学随机，尾部只有 8 个 base36 字符，
+// 而 uuid 撞车在多台账本共用一个服务端时等于把别人的记录顶掉（服务端已加 family_id 守卫兜底，
+// 但仍不该依赖碰撞概率）。优先用平台 crypto.randomUUID，拿不到时退回到
+// 「时间戳 + 进程内递增序号 + 每次启动随机盐 + 随机串」，同毫秒内也不会自撞。
+const UUID_BOOT_SALT = Math.random().toString(36).slice(2, 10);
+let uuidSeq = 0;
+
 export function genUuid(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const webCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (typeof webCrypto?.randomUUID === 'function') {
+    try {
+      return webCrypto.randomUUID();
+    } catch {
+      // Hermes 等环境可能只有空壳 crypto，继续走兜底实现
+    }
+  }
+  uuidSeq = (uuidSeq + 1) % 1679616; // 36^4，够用且短
+  return `${Date.now().toString(36)}-${uuidSeq.toString(36).padStart(4, '0')}-${UUID_BOOT_SALT}${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // 导出格式版本（v3：实体带 uuid/updatedAt 同步字段；导入兼容 v2）

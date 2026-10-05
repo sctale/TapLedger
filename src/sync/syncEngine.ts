@@ -13,6 +13,9 @@ export interface SyncResult {
   ok: boolean;
   pushed: number;
   pulled: number;
+  /** 因字段超出服务端限制而没能上传的条数（本地已存、家人看不到，需要如实提示） */
+  invalid?: number;
+  invalidIds?: string[];
   error?: string;
 }
 
@@ -93,10 +96,12 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
   let applied = 0;
   // 整体包事务：任一条失败即整体回滚，避免半程写入导致下次漏拉（水位不一致）
   await db.withTransactionAsync(async () => {
+    // 查找一律带 ledger_id：uuid 在本地没有唯一约束、也不分账本，
+    // 少了这个条件，家庭账本的 pull 会改写个人账本里的同 uuid 行（与服务端同源的问题）
     // 1) 记录
     for (const r of changes.records) {
       const local = await db.getFirstAsync<{ id: number; updated_at: number }>(
-        'SELECT id, updated_at FROM ledger_records WHERE uuid = ?', [r.uuid]
+        'SELECT id, updated_at FROM ledger_records WHERE uuid = ? AND ledger_id = ?', [r.uuid, activeLedger]
       );
       if (local) {
         if (r.updatedAt > local.updated_at) {
@@ -123,7 +128,7 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
     // 2) 周期规则
     for (const r of changes.recurring) {
       const local = await db.getFirstAsync<{ id: number; updated_at: number }>(
-        'SELECT id, updated_at FROM recurring_rules WHERE uuid = ?', [r.uuid]
+        'SELECT id, updated_at FROM recurring_rules WHERE uuid = ? AND ledger_id = ?', [r.uuid, activeLedger]
       );
       if (local) {
         if (r.updatedAt > local.updated_at) {
@@ -147,30 +152,28 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
       }
     }
 
-    // 3) 自定义分类
+    // 3) 自定义分类：主键是 (key, ledger_id)，改名会换主键 → 先按 uuid 清掉同账本里的旧 key 行，
+    //    再按 (key, ledger_id) 做 LWW upsert。此前是 ON CONFLICT(key) DO NOTHING：
+    //    另一本账本已有同 key 分类时这条会被永久吞掉（本地永远看不到，服务端每轮都还带着它）。
     for (const c of changes.customCategories) {
-      const local = await db.getFirstAsync<{ key: string; updated_at: number }>(
-        'SELECT key, updated_at FROM custom_categories WHERE uuid = ?', [c.uuid]
+      const renamed = await db.getFirstAsync<{ rowid: number; updated_at: number }>(
+        'SELECT rowid, updated_at FROM custom_categories WHERE uuid = ? AND key <> ? AND ledger_id = ?',
+        [c.uuid, c.key, activeLedger]
       );
-      if (local) {
-        if (c.updatedAt > local.updated_at) {
-          await db.runAsync(
-            `UPDATE custom_categories SET key = ?, label = ?, emoji = ?, color = ?, type = ?, updated_at = ?, deleted = ? WHERE key = ?`,
-            [c.key, c.label, c.emoji, c.color, c.type, c.updatedAt, c.deleted, local.key]
-          );
-          applied++;
-        }
-      } else {
-        // v0.11 兜底：key 是主键，若与本地另一 uuid 的分类冲突，直接 INSERT 会抛错回滚整轮 pull
-        // 导致同步永久卡死；改为跳过该条（服务端下次 pull 仍会带上，LWW 最终一致）
-        await db.runAsync(
-          `INSERT INTO custom_categories (key, label, emoji, color, type, created_at, uuid, updated_at, deleted, ledger_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(key) DO NOTHING`,
-          [c.key, c.label, c.emoji, c.color, c.type, Date.now(), c.uuid, c.updatedAt, c.deleted, activeLedger]
-        );
+      if (renamed && c.updatedAt > renamed.updated_at) {
+        await db.runAsync('DELETE FROM custom_categories WHERE rowid = ?', [renamed.rowid]);
         applied++;
       }
+      const res = await db.runAsync(
+        `INSERT INTO custom_categories (key, uuid, ledger_id, label, emoji, color, type, created_at, updated_at, deleted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(key, ledger_id) DO UPDATE SET
+           uuid = excluded.uuid, label = excluded.label, emoji = excluded.emoji, color = excluded.color,
+           type = excluded.type, updated_at = excluded.updated_at, deleted = excluded.deleted
+         WHERE excluded.updated_at > custom_categories.updated_at`,
+        [c.key, c.uuid, activeLedger, c.label, c.emoji, c.color, c.type, Date.now(), c.updatedAt, c.deleted]
+      );
+      if (res.changes > 0) applied++;
     }
   });
 
@@ -203,8 +206,17 @@ export async function runSync(): Promise<SyncResult> {
     const lastPushAt = Number(lastPushStr ?? '0') || 0;
     const { changes, maxLocalTs } = await collectPushChanges(lastPushAt);
     const pushCount = Object.values(changes).reduce((s, arr) => s + (arr?.length ?? 0), 0);
+    let invalid = 0;
+    let invalidIds: string[] | undefined;
     if (pushCount > 0) {
-      await apiSyncPush(config.baseUrl, config.token, changes, ledgerId);
+      const pushRes = await apiSyncPush(config.baseUrl, config.token, changes, ledgerId);
+      // v0.11.8：此前完全不看 push 响应，字段超限被服务端拒收时本地水位照样推进，
+      // 那条数据就永远停在「我有、家人没有」且没有任何提示。
+      invalid = pushRes.invalid ?? 0;
+      invalidIds = pushRes.invalidIds;
+      // 水位仍然推进：不推进会让这条每轮同步重发一次、每轮都被拒，同步彻底卡死。
+      // 真正的修复是导入/录入入口已按服务端上限归一（见 exportData.SERVER_LIMITS），
+      // 这里只把残余的异常如实报给 UI。
       await saveSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PUSH_AT, ledgerId), String(maxLocalTs));
       // 首次登录/老用户：同步即视为已确认归属，后续无需重复 claim
     } else {
@@ -234,7 +246,7 @@ export async function runSync(): Promise<SyncResult> {
       // 成员缓存失败不影响同步主流程
     }
 
-    return { ok: true, pushed: pushCount, pulled };
+    return { ok: true, pushed: pushCount, pulled, invalid, invalidIds };
   } catch (e) {
     // 凭证失效（401，如服务端旧版 token 过期）：自动清理登录态并通知 UI，
     // 避免同步静默失败、用户却以为仍登录（v0.11.3；服务端 0.5.5 起默认 365 天长效）
@@ -262,11 +274,13 @@ export async function runSync(): Promise<SyncResult> {
   }
 }
 
-// 登录后归属：本地 user_id=0 的记录划归当前用户（记账人标记）
+// 登录后归属：本地未记账人的存量（user_id=0）划归当前用户（记账人标记）
+// 只处理「尚未归属任何账本」的那批（ledger_id=0，登录后会被 adopt 进当前账本）；
+// 不加这个条件时，另一本账本里别人留下的无主记录也会被一起标成我的，报销对账口径就错了。
 export async function claimLocalRecordsAsUser(userId: number): Promise<void> {
   const db = await getDB();
   await db.runAsync(
-    'UPDATE ledger_records SET user_id = ? WHERE user_id = 0 AND deleted = 0',
+    'UPDATE ledger_records SET user_id = ? WHERE user_id = 0 AND deleted = 0 AND ledger_id = 0',
     [userId]
   );
 }

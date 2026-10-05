@@ -57,6 +57,11 @@ export const adminApiRouter = Router();
 // 单文件面板页（内联，避免 Docker tsc 构建不拷贝静态资源导致 404；接口走同源 fetch）
 // 注意：本 router 挂载在 app.use('/admin', ...)，故此处路径为 '/'
 adminPageRouter.get('/', (_req, res) => {
+  // 与接口口径一致：未配置口令时面板整页也不暴露（此前 HTML 恒定 200，等于公开宣告后台入口存在）
+  if (!ADMIN_TOKEN) {
+    res.status(503).type('html').send('<!doctype html><meta charset="utf-8"><p>管理面板未启用：请在 .env 配置 ADMIN_TOKEN 后重启容器</p>');
+    return;
+  }
   res.type('html').send(ADMIN_HTML);
 });
 
@@ -93,6 +98,7 @@ const ADMIN_HTML = [
 '<h1>一点账本 管理面板</h1><div class="sub">开关即时生效，无需重启容器</div>',
 '<div class="card"><div style="font-size:13px;margin-bottom:6px">管理口令 ADMIN_TOKEN</div>',
 '<input id="tok" type="password" placeholder="粘贴 .env 中配置的 ADMIN_TOKEN"><button onclick="load()">连接并加载</button>',
+'<label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:#857F78"><input type="checkbox" id="rem" style="width:auto">记住口令（仅限本机自己使用，公共设备上别勾）</label>',
 '<div id="err" class="err"></div></div>',
 '<div class="card" id="panel" style="display:none">',
 '<div class="row"><div><div class="name">允许新用户注册</div><div class="desc">关闭后仅老用户可登录，阻断新账号进入</div></div>',
@@ -108,7 +114,8 @@ const ADMIN_HTML = [
 'document.getElementById("stats").innerHTML="用户 "+s.stats.users+" ｜ 家庭 "+s.stats.families+" ｜ 有效记录 "+s.stats.records+" ｜ 最近同步 "+t;',
 'document.getElementById("panel").style.display="block"}',
 'function api(path,body){return fetch(path,{method:body?"POST":"GET",headers:{"content-type":"application/json","authorization":"Bearer "+token()},body:body?JSON.stringify(body):null}).then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})}',
-'function load(){if(!token()){show("请先输入管理口令");return}api("/api/admin/state").then(function(r){if(r.s!==200){show(r.j&&r.j.error?("加载失败："+r.j.error):("加载失败 "+r.s));document.getElementById("panel").style.display="none";return}localStorage.setItem("tl_admin_tok",token());show("已连接",true);render(r.j)}).catch(function(){show("网络错误")})}',
+'function remember(){if(document.getElementById("rem").checked){localStorage.setItem("tl_admin_tok",token())}else{localStorage.removeItem("tl_admin_tok")}}',
+'function load(){if(!token()){show("请先输入管理口令");return}api("/api/admin/state").then(function(r){if(r.s!==200){show(r.j&&r.j.error?("加载失败："+r.j.error):("加载失败 "+r.s));document.getElementById("panel").style.display="none";return}remember();show("已连接",true);render(r.j)}).catch(function(){show("网络错误")})}',
 'function save(){api("/api/admin/flags",{allowRegister:document.getElementById("reg").checked,allowJoin:document.getElementById("join").checked}).then(function(r){if(r.s!==200){show("保存失败："+(r.j&&r.j.error||r.s));return}render(r.j);show("已保存并生效",true)}).catch(function(){show("网络错误")})}',
 '(function(){var t=localStorage.getItem("tl_admin_tok");if(t){document.getElementById("tok").value=t;load()}})()',
 '</script></body></html>',

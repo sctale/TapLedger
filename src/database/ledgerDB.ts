@@ -66,6 +66,36 @@ export async function adoptUnassignedRowsIntoLedger(ledgerId: number): Promise<v
   await database.runAsync('UPDATE custom_categories SET ledger_id = ? WHERE ledger_id = 0', [ledgerId]);
 }
 
+// ===== 老库主键迁移：custom_categories 主键 key → (key, ledger_id) =====
+// SQLite 不能 ALTER 主键，只能重建表搬数据。检测依据是当前主键列集合，
+// 因此重复执行安全（迁移完 pk 就是 key,ledger_id，直接返回）。
+async function migrateCustomCategoryPrimaryKey(database: SQLite.SQLiteDatabase): Promise<void> {
+  const cols = await database.getAllAsync<{ name: string; pk: number }>('PRAGMA table_info(custom_categories)');
+  const pkCols = cols.filter((c) => c.pk > 0).map((c) => c.name).sort().join(',');
+  if (pkCols === 'key,ledger_id') return;
+  await database.execAsync(`
+    BEGIN;
+    CREATE TABLE custom_categories__pk_new (
+      key TEXT NOT NULL,
+      uuid TEXT NOT NULL DEFAULT '',
+      ledger_id INTEGER NOT NULL DEFAULT 0,
+      label TEXT NOT NULL,
+      emoji TEXT NOT NULL DEFAULT '📌',
+      color TEXT NOT NULL DEFAULT '#90A4AE',
+      type TEXT NOT NULL DEFAULT 'expense',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (key, ledger_id)
+    );
+    INSERT INTO custom_categories__pk_new (key, uuid, ledger_id, label, emoji, color, type, created_at, updated_at, deleted)
+      SELECT key, uuid, ledger_id, label, emoji, color, type, created_at, updated_at, deleted FROM custom_categories;
+    DROP TABLE custom_categories;
+    ALTER TABLE custom_categories__pk_new RENAME TO custom_categories;
+    COMMIT;
+  `);
+}
+
 // 初始化数据库表（新库建表含全部同步字段 + ledger_id；老库靠 ensureColumn 幂等补列）
 export async function initDatabase(): Promise<void> {
   const database = await getDB();
@@ -112,7 +142,7 @@ export async function initDatabase(): Promise<void> {
       deleted INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS custom_categories (
-      key TEXT PRIMARY KEY,
+      key TEXT NOT NULL,
       uuid TEXT NOT NULL DEFAULT '',
       ledger_id INTEGER NOT NULL DEFAULT 0,
       label TEXT NOT NULL,
@@ -121,7 +151,10 @@ export async function initDatabase(): Promise<void> {
       type TEXT NOT NULL DEFAULT 'expense',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL DEFAULT 0,
-      deleted INTEGER NOT NULL DEFAULT 0
+      deleted INTEGER NOT NULL DEFAULT 0,
+      -- 同一台设备上个人账本与家庭账本并存，key 必须是「账本内」唯一；
+      -- 单列主键会让两本账本的同名分类互相顶掉（导入同一份备份即触发）
+      PRIMARY KEY (key, ledger_id)
     );
   `);
 
@@ -143,6 +176,9 @@ export async function initDatabase(): Promise<void> {
   await ensureColumn(database, 'custom_categories', 'updated_at', `ALTER TABLE custom_categories ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`);
   await ensureColumn(database, 'custom_categories', 'deleted', `ALTER TABLE custom_categories ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`);
 
+  // ===== 老库主键迁移（必须在补列之后、建索引之前：搬数据要列齐，重建会连索引一起丢）=====
+  await migrateCustomCategoryPrimaryKey(database);
+
   // ===== 索引（幂等）=====
   await database.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_ledger_date ON ledger_records(date);
@@ -154,6 +190,7 @@ export async function initDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_recurring_updated ON recurring_rules(updated_at);
     CREATE INDEX IF NOT EXISTS idx_recurring_scope ON recurring_rules(ledger_id, deleted);
     CREATE INDEX IF NOT EXISTS idx_custom_cats_uuid ON custom_categories(uuid);
+    CREATE INDEX IF NOT EXISTS idx_custom_cats_scope ON custom_categories(ledger_id, deleted);
   `);
 
   // ===== 旧数据回填 uuid（幂等：仅填空值行）=====
@@ -497,6 +534,8 @@ export async function getCustomCategories(): Promise<CustomCategory[]> {
 }
 
 // 自定义分类创建入参（同步字段可选）
+// 同 (key, ledger_id) 已存在时按导入语义覆盖（同一本账本里的同名 key 就是同一个分类，
+// 合并导入旧备份不该因此整条失败）；跨账本同 key 互不影响，正是主键改成复合的意义。
 export async function addCustomCategory(
   cat: { key: string; label: string; emoji: string; color: string; type: RecordType; uuid?: string; updatedAt?: number }
 ): Promise<void> {
@@ -505,14 +544,21 @@ export async function addCustomCategory(
   const updatedAt = cat.updatedAt ?? Date.now();
   await database.runAsync(
     `INSERT INTO custom_categories (key, label, emoji, color, type, created_at, uuid, updated_at, deleted, ledger_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+     ON CONFLICT(key, ledger_id) DO UPDATE SET
+       label = excluded.label, emoji = excluded.emoji, color = excluded.color,
+       type = excluded.type, uuid = excluded.uuid, updated_at = excluded.updated_at, deleted = 0`,
     [cat.key, cat.label, cat.emoji, cat.color, cat.type, Date.now(), uuid, updatedAt, activeLedgerId]
   );
 }
 
 export async function deleteCustomCategory(key: string): Promise<void> {
   const database = await getDB();
-  await database.runAsync('UPDATE custom_categories SET deleted = 1, updated_at = ? WHERE key = ?', [Date.now(), key]);
+  // 必须限定账本：key 只在本账本内唯一，少了这个条件会把另一本账本的同 key 分类一起标删
+  await database.runAsync(
+    'UPDATE custom_categories SET deleted = 1, updated_at = ? WHERE key = ? AND ledger_id = ?',
+    [Date.now(), key, activeLedgerId]
+  );
 }
 
 export async function updateCustomCategory(
@@ -523,8 +569,8 @@ export async function updateCustomCategory(
   await database.runAsync(
     `UPDATE custom_categories
      SET label = ?, emoji = ?, color = ?, type = ?, updated_at = ?
-     WHERE key = ?`,
-    [cat.label, cat.emoji, cat.color, cat.type, updatedAt, cat.key]
+     WHERE key = ? AND ledger_id = ?`,
+    [cat.label, cat.emoji, cat.color, cat.type, updatedAt, cat.key, activeLedgerId]
   );
 }
 
@@ -556,13 +602,15 @@ export async function saveCategoryConfig(config: CategoryConfig): Promise<void> 
 }
 
 // ===== 报销 =====
+// 报销只对支出成立。此前三条 SQL 都没过滤 type，而首页切收支类型时不会重置待报销标记，
+// 于是会产生「收入被标成待报销」的脏数据并虚增待报销总额（v0.11.8 两头一起堵）。
 
 // 待报销汇总（未核销）
 export async function getReimbursableSummary(): Promise<{ total: number; count: number }> {
   const database = await getDB();
   const row = await database.getFirstAsync<{ total: number; count: number }>(
     `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-     FROM ledger_records WHERE deleted = 0 AND ledger_id = ? AND reimbursable = 1 AND reimbursed = 0`,
+     FROM ledger_records WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1 AND reimbursed = 0`,
     [activeLedgerId]
   );
   return { total: row?.total ?? 0, count: row?.count ?? 0 };
@@ -572,7 +620,7 @@ export async function getReimbursableSummary(): Promise<{ total: number; count: 
 export async function getReimbursableRecords(): Promise<LedgerRecord[]> {
   const database = await getDB();
   const rows = await database.getAllAsync<Record<string, unknown>>(
-    `SELECT * FROM ledger_records WHERE deleted = 0 AND ledger_id = ? AND reimbursable = 1
+    `SELECT * FROM ledger_records WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1
      ORDER BY reimbursed ASC, date DESC, timestamp DESC`,
     [activeLedgerId]
   );
@@ -583,7 +631,7 @@ export async function getReimbursableRecords(): Promise<LedgerRecord[]> {
 export async function markAllReimbursed(): Promise<void> {
   const database = await getDB();
   await database.runAsync(
-    `UPDATE ledger_records SET reimbursed = 1, updated_at = ? WHERE deleted = 0 AND ledger_id = ? AND reimbursable = 1 AND reimbursed = 0`,
+    `UPDATE ledger_records SET reimbursed = 1, updated_at = ? WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1 AND reimbursed = 0`,
     [Date.now(), activeLedgerId]
   );
 }
@@ -636,29 +684,136 @@ export async function bulkInsertRecords(records: Omit<LedgerRecord, 'id'>[]): Pr
   });
 }
 
-// 全量替换（替换策略：硬删除本地 + 重插）
-export async function replaceAllRecords(records: Omit<LedgerRecord, 'id'>[]): Promise<void> {
+// ===== 导入「替换」策略（按同步身份 upsert + 墓碑，绝不硬删）=====
+//
+// 旧实现直接 `DELETE FROM ... WHERE ledger_id = ?` 再重插，问题在于硬删不产生墓碑：
+// 服务端只向前推进 updated_at，本地消失的行不会被任何设备知道 → 家人的设备上旧记录原样留着，
+// 本机重装/换设备后还会被 pull 回来，表现就是「替换导入没生效、账目翻倍」。
+// resetPersonalLedger（:690 附近）早就改用墓碑，这里把替换导入对齐到同一语义。
+// 另外 uuid 在本地表上没有 UNIQUE 约束（历史数据可能重复），所以逐条 SELECT 再判增/改。
+
+type ImportedRecord = Omit<LedgerRecord, 'id'>;
+
+export async function replaceRecordsByIdentity(records: ImportedRecord[]): Promise<void> {
   const database = await getDB();
   await database.withTransactionAsync(async () => {
-    await database.runAsync('DELETE FROM ledger_records WHERE ledger_id = ?', [activeLedgerId]);
-    for (const r of records) {
-      await database.runAsync(
-        `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, ledger_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
-         r.reimbursable ? 1 : 0, r.reimbursed ? 1 : 0,
-         r.uuid || genUuid(), r.userId ?? 0, r.updatedAt || r.timestamp, r.deleted ? 1 : 0, activeLedgerId]
+    const now = Date.now();
+    const rows = records.map((r) => ({ ...r, uuid: r.uuid || genUuid() }));
+    const keep = new Set(rows.map((r) => r.uuid));
+    const local = await database.getAllAsync<{ uuid: string }>(
+      'SELECT uuid FROM ledger_records WHERE ledger_id = ? AND deleted = 0',
+      [activeLedgerId]
+    );
+    for (const e of local) {
+      if (!keep.has(e.uuid)) {
+        await database.runAsync(
+          'UPDATE ledger_records SET deleted = 1, updated_at = ? WHERE uuid = ? AND ledger_id = ?',
+          [now, e.uuid, activeLedgerId]
+        );
+      }
+    }
+    for (const r of rows) {
+      const found = await database.getFirstAsync<{ id: number }>(
+        'SELECT id FROM ledger_records WHERE uuid = ? AND ledger_id = ?',
+        [r.uuid, activeLedgerId]
       );
+      if (found) {
+        await database.runAsync(
+          `UPDATE ledger_records SET amount = ?, category = ?, type = ?, note = ?, date = ?, timestamp = ?,
+             reimbursable = ?, reimbursed = ?, user_id = ?, updated_at = ?, deleted = 0
+           WHERE id = ?`,
+          [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
+           r.reimbursable ? 1 : 0, r.reimbursed ? 1 : 0, r.userId ?? 0, now, found.id]
+        );
+      } else {
+        await database.runAsync(
+          `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, ledger_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+          [r.amount, r.category, r.type, r.note, r.date, r.timestamp,
+           r.reimbursable ? 1 : 0, r.reimbursed ? 1 : 0, r.uuid, r.userId ?? 0, now, activeLedgerId]
+        );
+      }
     }
   });
 }
 
-// 清空当前账本的周期规则与自定义分类（v0.11：replace 导入前置步骤，与记录同语义硬删重插）
-export async function clearRecurringAndCategories(): Promise<void> {
+export async function replaceRecurringRulesByIdentity(rules: RecurringRule[]): Promise<void> {
   const database = await getDB();
   await database.withTransactionAsync(async () => {
-    await database.runAsync('DELETE FROM recurring_rules WHERE ledger_id = ?', [activeLedgerId]);
-    await database.runAsync('DELETE FROM custom_categories WHERE ledger_id = ?', [activeLedgerId]);
+    const now = Date.now();
+    const rows = rules.map((r) => ({ ...r, uuid: r.uuid || genUuid() }));
+    const keep = new Set(rows.map((r) => r.uuid));
+    const local = await database.getAllAsync<{ uuid: string }>(
+      'SELECT uuid FROM recurring_rules WHERE ledger_id = ? AND deleted = 0',
+      [activeLedgerId]
+    );
+    for (const e of local) {
+      if (!keep.has(e.uuid)) {
+        await database.runAsync(
+          'UPDATE recurring_rules SET deleted = 1, updated_at = ? WHERE uuid = ? AND ledger_id = ?',
+          [now, e.uuid, activeLedgerId]
+        );
+      }
+    }
+    for (const r of rows) {
+      const found = await database.getFirstAsync<{ id: number }>(
+        'SELECT id FROM recurring_rules WHERE uuid = ? AND ledger_id = ?',
+        [r.uuid, activeLedgerId]
+      );
+      const fields = [
+        r.name, r.amount, r.type, r.category,
+        r.frequency, r.dayOfWeek, r.dayOfMonth, r.monthOfYear, r.note,
+        r.enabled ? 1 : 0, r.lastGenerated, r.userId ?? 0, now,
+      ];
+      if (found) {
+        await database.runAsync(
+          `UPDATE recurring_rules SET
+             name = ?, amount = ?, type = ?, category = ?, frequency = ?, day_of_week = ?,
+             day_of_month = ?, month_of_year = ?, note = ?, enabled = ?, last_generated = ?,
+             user_id = ?, updated_at = ?, deleted = 0
+           WHERE id = ?`,
+          [...fields, found.id]
+        );
+      } else {
+        await database.runAsync(
+          `INSERT INTO recurring_rules
+           (name, amount, type, category, frequency, day_of_week, day_of_month, month_of_year, note, enabled, last_generated, user_id, updated_at, created_at, uuid, deleted, ledger_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+          [...fields, now, r.uuid, activeLedgerId]
+        );
+      }
+    }
+  });
+}
+
+export async function replaceCustomCategoriesByIdentity(cats: CustomCategory[]): Promise<void> {
+  const database = await getDB();
+  await database.withTransactionAsync(async () => {
+    const now = Date.now();
+    const rows = cats.map((c) => ({ ...c, uuid: c.uuid || genUuid() }));
+    const keep = new Set(rows.map((c) => c.uuid));
+    const local = await database.getAllAsync<{ uuid: string }>(
+      'SELECT uuid FROM custom_categories WHERE ledger_id = ? AND deleted = 0',
+      [activeLedgerId]
+    );
+    for (const e of local) {
+      if (!keep.has(e.uuid)) {
+        await database.runAsync(
+          'UPDATE custom_categories SET deleted = 1, updated_at = ? WHERE uuid = ? AND ledger_id = ?',
+          [now, e.uuid, activeLedgerId]
+        );
+      }
+    }
+    for (const c of rows) {
+      await database.runAsync(
+        `INSERT INTO custom_categories (key, label, emoji, color, type, created_at, uuid, updated_at, deleted, ledger_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+         ON CONFLICT(key, ledger_id) DO UPDATE SET
+           label = excluded.label, emoji = excluded.emoji, color = excluded.color,
+           type = excluded.type, uuid = excluded.uuid, updated_at = excluded.updated_at, deleted = 0`,
+        [c.key, c.label, c.emoji, c.color, c.type, now, c.uuid, now, activeLedgerId]
+      );
+    }
   });
 }
 

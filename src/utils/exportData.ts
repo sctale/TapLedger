@@ -94,20 +94,39 @@ export function isValidRecord(input: unknown): input is LedgerRecord {
   );
 }
 
+// 服务端 push 侧的字段上限（server/src/routes/sync.ts 的 zod schema）。
+// 导入的数据若超限，服务端会逐条判非法并拒收，而本地已写入 → 表现为「我这有、家人没有」。
+// 所以在导入入口就归一到上限内，宁可用默认值也不留一条永远传不上去的脏数据。
+export const SERVER_LIMITS = { note: 60, category: 40, name: 20, label: 12, key: 60, color: 16, emoji: 8, uuidMin: 8, uuidMax: 64 };
+
+// 按码点截断（避免把 emoji 从中间切成乱码）
+export function clip(value: string, max: number): string {
+  const chars = Array.from(value ?? '');
+  return chars.length <= max ? value : chars.slice(0, max).join('');
+}
+
+// uuid 不合法（过短/过长，多为外部工具伪造）时清空，由调用方重新生成
+export function normUuid(uuid: unknown): string {
+  if (typeof uuid !== 'string') return '';
+  return uuid.length >= SERVER_LIMITS.uuidMin && uuid.length <= SERVER_LIMITS.uuidMax ? uuid : '';
+}
+
 // 清洗记录，补齐同步字段（v2 备份无 uuid → 自动生成）
 export function normalizeRecord(r: LedgerRecord): Omit<LedgerRecord, 'id'> {
+  const timestamp = Number.isFinite(r.timestamp) ? Math.max(0, Math.round(r.timestamp)) : Date.now();
+  const updatedAt = Number(r.updatedAt) > 0 ? Math.round(Number(r.updatedAt)) : timestamp;
   return {
-    uuid: typeof r.uuid === 'string' && r.uuid ? r.uuid : '',
+    uuid: normUuid(r.uuid),
     userId: Number(r.userId) > 0 ? Number(r.userId) : 0,
     amount: Math.round(r.amount * 100) / 100,
-    category: r.category,
+    category: clip(r.category, SERVER_LIMITS.category),
     type: r.type,
-    note: typeof r.note === 'string' ? r.note : '',
+    note: clip(typeof r.note === 'string' ? r.note : '', SERVER_LIMITS.note),
     date: r.date,
-    timestamp: r.timestamp,
+    timestamp,
     reimbursable: Boolean(r.reimbursable),
     reimbursed: Boolean(r.reimbursed),
-    updatedAt: Number(r.updatedAt) > 0 ? Number(r.updatedAt) : r.timestamp,
+    updatedAt,
     deleted: Boolean(r.deleted),
   };
 }

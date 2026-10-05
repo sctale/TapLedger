@@ -49,6 +49,14 @@ const joinFailures = new Map<string, { count: number; lockedUntil: number }>();
 const JOIN_MAX_FAILS = 10;
 const JOIN_LOCK_MS = 10 * 60_000;
 
+// 锁定期过后清掉过期项，避免这张 Map 随公网扫描流量只增不删
+function pruneJoinFailures(now: number): void {
+  if (joinFailures.size <= 256) return;
+  for (const [code, rec] of joinFailures) {
+    if (rec.lockedUntil <= now && rec.count === 0) joinFailures.delete(code);
+  }
+}
+
 // POST /api/family/join（邀请码加入）
 router.post('/join', joinRateLimit, requireAuth, (req, res) => {
   if (getFlag('allow_join') !== '1') {
@@ -81,6 +89,7 @@ router.post('/join', joinRateLimit, requireAuth, (req, res) => {
       rec.lockedUntil = Date.now() + JOIN_LOCK_MS;
     }
     joinFailures.set(code, rec);
+    pruneJoinFailures(Date.now());
     res.status(404).json({ error: '邀请码无效' });
     return;
   }

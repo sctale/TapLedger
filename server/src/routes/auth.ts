@@ -65,9 +65,9 @@ router.post('/register', (req, res) => {
      VALUES (?, ?, ?, '🙂', ?)`
   ).run(username, hash, displayName || username, Date.now());
   const row = db.prepare(
-    'SELECT id, username, display_name, avatar_emoji, family_id, family_role FROM users WHERE id = ?'
-  ).get(info.lastInsertRowid) as Parameters<typeof toAuthUser>[0];
-  res.json({ token: signToken(row.id), user: toAuthUser(row) });
+    'SELECT id, username, display_name, avatar_emoji, family_id, family_role, token_version FROM users WHERE id = ?'
+  ).get(info.lastInsertRowid) as Parameters<typeof toAuthUser>[0] & { token_version: number };
+  res.json({ token: signToken(row.id, row.token_version), user: toAuthUser(row) });
 });
 
 // POST /api/auth/login
@@ -79,16 +79,16 @@ router.post('/login', (req, res) => {
   }
   const { username, password } = parsed.data;
   const row = db.prepare(
-    'SELECT id, username, password_hash, display_name, avatar_emoji, family_id, family_role FROM users WHERE username = ?'
+    'SELECT id, username, password_hash, display_name, avatar_emoji, family_id, family_role, token_version FROM users WHERE username = ?'
   ).get(username) as
-    | { id: number; username: string; password_hash: string; display_name: string; avatar_emoji: string; family_id: number | null; family_role: 'owner' | 'member' | null }
+    | { id: number; username: string; password_hash: string; display_name: string; avatar_emoji: string; family_id: number | null; family_role: 'owner' | 'member' | null; token_version: number }
     | undefined;
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
     res.status(401).json({ error: '用户名或密码错误' });
     return;
   }
-  const { password_hash: _ph, ...safe } = row;
-  res.json({ token: signToken(row.id), user: toAuthUser(safe) });
+  const { password_hash: _ph, token_version: tv, ...safe } = row;
+  res.json({ token: signToken(row.id, tv), user: toAuthUser(safe) });
 });
 
 // /api/me 路由（独立挂载到 /api，与 /api/auth 区分）
@@ -117,6 +117,40 @@ meRouter.put('/me', requireAuth, (req, res) => {
     'SELECT id, username, display_name, avatar_emoji, family_id, family_role FROM users WHERE id = ?'
   ).get(req.authUser!.id) as Parameters<typeof toAuthUser>[0];
   res.json({ user: toAuthUser(row) });
+});
+
+// POST /api/auth/password（修改密码）
+// 此前账号体系没有改密通道：密码泄露只能销号重建，而 JWT 默认 365 天长效、无任何撤销手段。
+// 改密时 token_version +1 → 其它设备的旧 token 立刻 401；本端拿返回的新 token 继续用。
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, '请输入当前密码'),
+  newPassword: z.string().min(6, '新密码至少 6 位').max(64, '新密码最多 64 位'),
+});
+const passwordRateLimit = makeIpRateLimit(5, 60_000);
+
+router.post('/password', requireAuth, passwordRateLimit, (req, res) => {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? '参数无效' });
+    return;
+  }
+  const uid = req.authUser!.id;
+  const row = db.prepare('SELECT password_hash, token_version FROM users WHERE id = ?').get(uid) as
+    | { password_hash: string; token_version: number }
+    | undefined;
+  if (!row || !bcrypt.compareSync(parsed.data.currentPassword, row.password_hash)) {
+    res.status(401).json({ error: '当前密码不正确' });
+    return;
+  }
+  if (parsed.data.currentPassword === parsed.data.newPassword) {
+    res.status(400).json({ error: '新密码不能与当前密码相同' });
+    return;
+  }
+  const hash = bcrypt.hashSync(parsed.data.newPassword, 10);
+  const nextVersion = row.token_version + 1;
+  db.prepare('UPDATE users SET password_hash = ?, token_version = ? WHERE id = ?').run(hash, nextVersion, uid);
+  // 本端换发新 token 继续登录；其它设备持有的旧 token 因 tv 不匹配立即失效
+  res.json({ ok: true, token: signToken(uid, nextVersion) });
 });
 
 // DELETE /api/me（注销账号）

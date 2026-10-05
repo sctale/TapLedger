@@ -83,3 +83,14 @@ export interface FamilyMember {
   avatarEmoji: string;
   role: 'owner' | 'member';
 }
+
+// POST /api/sync/push 的响应（server 0.5.6 起把「未生效」拆成两类）
+export interface PushResult {
+  serverTime: number;
+  applied: number;
+  rejected: number;        // = skipped + invalid，兼容只看这个字段的老客户端
+  skipped?: number;        // 版本不比服务端新 / uuid 属于别的账本：幂等丢弃，不用打扰用户
+  invalid?: number;        // 字段超出服务端限制：本地已写入但传不上去，必须如实提示
+  invalidIds?: string[];   // 非法条目样本（最多 20 个 uuid）
+  errors?: string[];
+}

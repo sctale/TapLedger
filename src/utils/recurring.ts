@@ -61,6 +61,10 @@ export async function runRecurringCheck(): Promise<number> {
     if (rule.lastGenerated && dueStr <= rule.lastGenerated) continue;
 
     // 生成记录（仅生成最近一个到期日，不补历史，避免刷屏）
+    // uuid 由「规则 + 到期日」决定：同一台规则在两台设备上各自到期生成时，
+    // 服务端按 uuid 做 LWW upsert 只会留一条（此前 last_generated 是设备本地状态，
+    // 两台设备都在同步前生成 → 房租这类订阅会被记两次）。
+    const deterministic = rule.uuid.length <= 52 ? `${rule.uuid}@${dueStr}` : '';
     await addRecord(
       rule.amount,
       rule.category,
@@ -68,7 +72,7 @@ export async function runRecurringCheck(): Promise<number> {
       dueStr,
       rule.note || rule.name,
       false,
-      { userId: syncUserId }
+      { userId: syncUserId, ...(deterministic ? { uuid: deterministic } : {}) }
     );
     await setRecurringLastGenerated(rule.id, dueStr);
     generated++;

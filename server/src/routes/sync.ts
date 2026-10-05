@@ -60,29 +60,35 @@ const pullSchema = z.object({
 });
 
 // ===== 通用 LWW upsert（仅当传入 updated_at 更新时覆盖）=====
-
-// 逐表 upsert SQL（ON CONFLICT DO UPDATE ... WHERE 保证 LWW）
+//
+// 两条不变量（v0.5.6 安全审查修复）：
+// 1. WHERE 带上 family_id = @familyId：uuid 是全局主键，缺这条守卫时
+//    任何登录用户只要知道（或撞上）别人账本的 uuid，就能把字段写进**那本账本**的行里
+//    （SET 子句不改 family_id，所以数据留在原账本——等于跨账本篡改）。
+// 2. SET 子句不再更新 user_id：user_id 是「记账人」（作者），只在插入时落定。
+//    此前每次编辑都会把作者改写成最后编辑的人，成员支出排行与报销归属随之错位。
+//    客户端传的 userId 仍被 schema 丢弃，伪造记账人的能力不变。
 const UPSERTS = {
   records: db.prepare(`
     INSERT INTO records (uuid, family_id, user_id, amount, category, type, note, date, timestamp, reimbursable, reimbursed, updated_at, deleted)
     VALUES (@uuid, @familyId, @userId, @amount, @category, @type, @note, @date, @timestamp, @reimbursable, @reimbursed, @updatedAt, @deleted)
     ON CONFLICT(uuid) DO UPDATE SET
-      user_id = excluded.user_id, amount = excluded.amount, category = excluded.category,
+      amount = excluded.amount, category = excluded.category,
       type = excluded.type, note = excluded.note, date = excluded.date, timestamp = excluded.timestamp,
       reimbursable = excluded.reimbursable, reimbursed = excluded.reimbursed,
       updated_at = excluded.updated_at, deleted = excluded.deleted
-    WHERE excluded.updated_at > records.updated_at
+    WHERE excluded.updated_at > records.updated_at AND records.family_id = excluded.family_id
   `),
   recurring: db.prepare(`
     INSERT INTO recurring (uuid, family_id, user_id, name, amount, type, category, frequency, day_of_week, day_of_month, month_of_year, note, enabled, last_generated, updated_at, deleted)
     VALUES (@uuid, @familyId, @userId, @name, @amount, @type, @category, @frequency, @dayOfWeek, @dayOfMonth, @monthOfYear, @note, @enabled, @lastGenerated, @updatedAt, @deleted)
     ON CONFLICT(uuid) DO UPDATE SET
-      user_id = excluded.user_id, name = excluded.name, amount = excluded.amount, type = excluded.type,
+      name = excluded.name, amount = excluded.amount, type = excluded.type,
       category = excluded.category, frequency = excluded.frequency,
       day_of_week = excluded.day_of_week, day_of_month = excluded.day_of_month, month_of_year = excluded.month_of_year,
       note = excluded.note, enabled = excluded.enabled, last_generated = excluded.last_generated,
       updated_at = excluded.updated_at, deleted = excluded.deleted
-    WHERE excluded.updated_at > recurring.updated_at
+    WHERE excluded.updated_at > recurring.updated_at AND recurring.family_id = excluded.family_id
   `),
   custom_categories: db.prepare(`
     INSERT INTO custom_categories (uuid, family_id, key, label, emoji, color, type, updated_at, deleted)
@@ -90,7 +96,7 @@ const UPSERTS = {
     ON CONFLICT(uuid) DO UPDATE SET
       key = excluded.key, label = excluded.label, emoji = excluded.emoji, color = excluded.color,
       type = excluded.type, updated_at = excluded.updated_at, deleted = excluded.deleted
-    WHERE excluded.updated_at > custom_categories.updated_at
+    WHERE excluded.updated_at > custom_categories.updated_at AND custom_categories.family_id = excluded.family_id
   `),
 };
 
@@ -121,7 +127,7 @@ router.post('/pull', (req, res) => {
   res.json({ serverTime: Date.now(), changes });
 });
 
-// POST /api/sync/push —— 上传本地变更（逐条 LWW upsert，冲突旧版本被拒绝）
+// POST /api/sync/push —— 上传本地变更（逐条 LWW upsert）
 router.post('/push', (req, res) => {
   const body = req.body ?? {};
   const ledgerId = Number(body.ledgerId);
@@ -134,40 +140,59 @@ router.post('/push', (req, res) => {
     return;
   }
   const userId = req.authUser!.id;
+  // updated_at 钳制到服务端时钟：客户端设备时钟超前（改错时区/手动调时间）时，
+  // 一条「未来的」updated_at 会永久压制后续所有正常编辑——LWW 比不过就再也改不动了。
+  // 钳制只压低版本号，不丢数据：该条仍然入库，后续编辑按服务端时间依次覆盖。
+  const serverNow = Date.now();
 
   let applied = 0;
-  let rejected = 0;
-  const errors: string[] = [];
+  let skipped = 0;              // 版本不比服务端新 / uuid 属于别的账本：正常幂等丢弃
+  const invalidIds: string[] = []; // 字段不合法：必须让用户知道，否则本地有、服务端永远没有
+  const invalidCounts: Record<string, number> = {};
 
-  const count = (ok: boolean) => (ok ? applied++ : rejected++);
+  const tally = (kind: 'records' | 'recurring' | 'customCategories', raw: unknown) => {
+    const schema = kind === 'records' ? recordSchema : kind === 'recurring' ? recurringSchema : customCategorySchema;
+    const p = schema.safeParse(raw);
+    if (!p.success) {
+      const id = typeof (raw as { uuid?: unknown })?.uuid === 'string' ? (raw as { uuid: string }).uuid : '?';
+      if (invalidIds.length < 20) invalidIds.push(id);
+      invalidCounts[kind] = (invalidCounts[kind] ?? 0) + 1;
+      return;
+    }
+    const data = { ...p.data, updatedAt: Math.min(p.data.updatedAt, serverNow) };
+    const info =
+      kind === 'records'
+        ? UPSERTS.records.run({ ...data, familyId: ledgerId, userId })
+        : kind === 'recurring'
+          ? UPSERTS.recurring.run({ ...data, familyId: ledgerId, userId })
+          : UPSERTS.custom_categories.run({ ...data, familyId: ledgerId });
+    if (info.changes > 0) applied++;
+    else skipped++;
+  };
 
-  // 校验 + 注入归属后逐条 upsert（事务整体提交）
+  // 事务整体提交：单条失败不污染其余（校验失败的条目在 tally 内直接计入 invalid）
   const run = db.transaction(() => {
-    for (const raw of Array.isArray(body.records) ? body.records : []) {
-      const p = recordSchema.safeParse(raw);
-      if (!p.success) { rejected++; continue; }
-      const info = UPSERTS.records.run({ ...p.data, familyId: ledgerId, userId });
-      count(info.changes > 0);
-    }
-    for (const raw of Array.isArray(body.recurring) ? body.recurring : []) {
-      const p = recurringSchema.safeParse(raw);
-      if (!p.success) { rejected++; continue; }
-      const info = UPSERTS.recurring.run({ ...p.data, familyId: ledgerId, userId });
-      count(info.changes > 0);
-    }
-    for (const raw of Array.isArray(body.customCategories) ? body.customCategories : []) {
-      const p = customCategorySchema.safeParse(raw);
-      if (!p.success) { rejected++; continue; }
-      const info = UPSERTS.custom_categories.run({ ...p.data, familyId: ledgerId });
-      count(info.changes > 0);
-    }
+    for (const raw of Array.isArray(body.records) ? body.records : []) tally('records', raw);
+    for (const raw of Array.isArray(body.recurring) ? body.recurring : []) tally('recurring', raw);
+    for (const raw of Array.isArray(body.customCategories) ? body.customCategories : []) tally('customCategories', raw);
   });
   run();
 
-  if (rejected > 0 && applied === 0) {
-    errors.push('全部变更被拒绝（可能是版本过旧，请下拉同步）');
+  const invalid = invalidIds.length > 0 ? Object.values(invalidCounts).reduce((s, n) => s + n, 0) : 0;
+  const errors: string[] = [];
+  if (invalid > 0) {
+    errors.push(`${invalid} 条数据不符合服务端字段限制，未上传（详见 invalidIds）`);
   }
-  res.json({ serverTime: Date.now(), applied, rejected, errors: errors.length > 0 ? errors : undefined });
+  res.json({
+    serverTime: serverNow,
+    applied,
+    // rejected 保留原语义（= 未生效条数），老客户端只看这个字段也不会出错
+    rejected: skipped + invalid,
+    skipped,
+    invalid,
+    invalidIds: invalidIds.length > 0 ? invalidIds : undefined,
+    errors: errors.length > 0 ? errors : undefined,
+  });
 });
 
 export default router;
