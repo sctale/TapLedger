@@ -418,6 +418,26 @@ export async function getRecordsByRange(start: string, end: string): Promise<Led
   return rows.map(mapRecord);
 }
 
+// 某分类在指定区间内的支出明细（统计页「点排行看这个分类到底是什么」用）。
+// WHERE 条件与 getCategorySummary 逐字对齐（type=expense、排除待报销、可选按记账人过滤），
+// 这样明细加起来必然等于排行条上那个数 —— 对不上用户只会认为数据算错了。
+export async function getRecordsByCategory(
+  start: string,
+  end: string,
+  category: string,
+  userId = 0,
+): Promise<LedgerRecord[]> {
+  const database = await getDB();
+  const rows = await database.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM ledger_records
+     WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 0
+       AND category = ? AND date >= ? AND date <= ?${userId > 0 ? ' AND user_id = ?' : ''}
+     ORDER BY date DESC, timestamp DESC`,
+    userId > 0 ? [activeLedgerId, category, start, end, userId] : [activeLedgerId, category, start, end],
+  );
+  return rows.map(mapRecord);
+}
+
 // 查询某天的记录
 export async function getRecordsByDate(date: string): Promise<LedgerRecord[]> {
   const database = await getDB();

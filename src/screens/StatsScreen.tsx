@@ -6,6 +6,7 @@ import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, findCategory, SETTIN
 import {
   getCategorySummary,
   getRangeSummary,
+  getRecordsByCategory,
   getDaySummaries,
   getSetting,
   getMemberExpenseSummary,
@@ -16,10 +17,12 @@ import { useToast } from '../hooks/useToast';
 import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUtils';
 import CategoryPieChart from '../components/CategoryPieChart';
 import TrendBarChart from '../components/TrendBarChart';
+import RecordList from '../components/RecordList';
 import ReimburseScreen from './manage/ReimburseScreen';
+import type { LedgerRecord } from '../types';
 
 type RangeKey = 'week' | 'month' | 'year';
-type Page = 'main' | 'reimburse';
+type Page = 'main' | 'reimburse' | 'category';
 
 interface Props {
   active: boolean; // 当前 Tab 激活（App 常驻挂载，激活时滚回顶部）
@@ -39,6 +42,11 @@ export default function StatsScreen({ active }: Props) {
   const [memberFilter, setMemberFilter] = useState(0); // 0=全部成员
   const [memberStats, setMemberStats] = useState<{ userId: number; total: number; count: number }[]>([]);
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
+
+  // 分类下钻（点「支出分类排行」某一行 → 看这个分类到底是些什么内容）
+  const [drill, setDrill] = useState<{ key: string; label: string } | null>(null);
+  const [drillRecords, setDrillRecords] = useState<LedgerRecord[]>([]);
+  const [drillLoading, setDrillLoading] = useState(false);
 
   const { showToast } = useToast();
 
@@ -157,6 +165,40 @@ export default function StatsScreen({ active }: Props) {
     };
   }, [start, end, range, trendDates, tick, memberFilter, showToast]);
 
+  // 分类下钻明细：时间区间 / 成员筛选 / 数据变更都要跟着重查，
+  // 离开子页或连续点不同分类时丢弃过期结果（与本页主查询同样的 cancelled 模式）
+  useEffect(() => {
+    if (page !== 'category' || !drill) return;
+    let cancelled = false;
+    setDrillLoading(true);
+    (async () => {
+      try {
+        const rows = await getRecordsByCategory(start, end, drill.key, memberFilter);
+        if (!cancelled) setDrillRecords(rows);
+      } catch {
+        if (!cancelled) {
+          setDrillRecords([]);
+          showToast('分类明细加载失败', 'error');
+        }
+      } finally {
+        if (!cancelled) setDrillLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [page, drill, start, end, memberFilter, tick, showToast]);
+
+  const openCategory = useCallback((c: { category: string; label: string }) => {
+    setDrill({ key: c.category, label: c.label });
+    setPage('category');
+  }, []);
+
+  const backToMain = useCallback(() => {
+    setPage('main');
+    setDrill(null);
+  }, []);
+
   // 全局刷新（含登录态/同步事件 → 更新成员缓存，v0.5）
   useEffect(() => {
     const subs = [
@@ -173,19 +215,19 @@ export default function StatsScreen({ active }: Props) {
     return () => subs.forEach((s) => s.remove());
   }, [refreshAll, loadMembers]);
 
-  // Android 系统返回键：在报销子页时返回主页（主页时不消费，走默认）
+  // Android 系统返回键：在报销 / 分类明细子页时返回主页（主页时不消费，走默认）
   // v0.11 修复：仅激活 tab 注册，避免与管理页同时消费返回键（两页常驻挂载）
   useEffect(() => {
     if (!active) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (page !== 'main') {
-        setPage('main');
+        backToMain();
         return true;
       }
       return false;
     });
     return () => sub.remove();
-  }, [page, active]);
+  }, [page, active, backToMain]);
 
   const budgetPercent = budget > 0 ? Math.min(expense / budget, 1) : 0;
   const budgetOver = budget > 0 && expense > budget;
@@ -200,6 +242,16 @@ export default function StatsScreen({ active }: Props) {
 
   // 排行条相对最大值归一化（第 1 名满格，其余按比例，避免占比>33% 全部顶满的误导）
   const maxCategoryTotal = topCategories.length > 0 ? topCategories[0].total : 0;
+
+  // 分类下钻：合计直接由明细累加，与 getCategorySummary 同口径，所以必然等于排行条上的数字
+  const drillTotal = useMemo(() => drillRecords.reduce((s, r) => s + r.amount, 0), [drillRecords]);
+  const drillScopeText = useMemo(() => {
+    const who =
+      memberFilter > 0
+        ? (members.find((m) => m.id === memberFilter)?.displayName ?? `成员${memberFilter}`)
+        : '';
+    return [rangeLabel, who].filter(Boolean).join(' · ');
+  }, [rangeLabel, memberFilter, members]);
   // 空数组也要走占位：此前 length > 0 的条件让「一条记录都还没有」时画出一张空白图
   const trendEmpty = trendValues.length === 0 || trendValues.every((v) => v <= 0);
 
@@ -391,16 +443,23 @@ export default function StatsScreen({ active }: Props) {
             )}
           </View>
 
-          {/* 分类排行 */}
+          {/* 分类排行（点任意一行 → 该分类在这个时间段的具体明细） */}
           {topCategories.length > 0 ? (
             <>
-              <Text style={styles.sectionTitle}>支出分类排行</Text>
+              <Text style={styles.sectionTitle}>支出分类排行 · 点击查看明细</Text>
               <View style={styles.card}>
                 {topCategories.map((c, i) => {
                   const pct = expense > 0 ? (c.total / expense) * 100 : 0;
                   const barPct = maxCategoryTotal > 0 ? (c.total / maxCategoryTotal) * 100 : 0;
                   return (
-                    <View key={c.category} style={styles.rankRow}>
+                    <Pressable
+                      key={c.category}
+                      style={({ pressed }) => [styles.rankRow, pressed && styles.rankRowPressed]}
+                      android_ripple={{ color: `${COLORS.accent}22` }}
+                      onPress={() => openCategory({ category: c.category, label: c.def.label })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`查看${c.def.label}明细，${formatMoney(c.total)}元，${pct.toFixed(0)}%`}
+                    >
                       <Text style={styles.rankIndex}>{i + 1}</Text>
                       <View style={[styles.rankIcon, { backgroundColor: `${c.def.color}22` }]}>
                         <Text style={styles.rankEmoji}>{c.def.emoji}</Text>
@@ -421,7 +480,8 @@ export default function StatsScreen({ active }: Props) {
                           />
                         </View>
                       </View>
-                    </View>
+                      <Text style={styles.reimburseArrow}>›</Text>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -478,15 +538,60 @@ export default function StatsScreen({ active }: Props) {
             )}
           </View>
         </ScrollView>
-      ) : (
+      ) : page === 'reimburse' ? (
         <View style={styles.subPage}>
           <View style={styles.navBar}>
-            <Pressable hitSlop={8} onPress={() => setPage('main')} accessibilityRole="button">
+            <Pressable
+              hitSlop={8}
+              onPress={backToMain}
+              accessibilityRole="button"
+              accessibilityLabel="返回统计"
+            >
               <Text style={styles.navBack}>‹ 返回</Text>
             </Pressable>
             <Text style={styles.navTitle}>报销管理</Text>
           </View>
           <ReimburseScreen />
+        </View>
+      ) : (
+        // 分类明细下钻：区间/成员筛选与排行完全同口径，所以顶部合计必然等于排行条上的数字
+        <View style={styles.subPage}>
+          <View style={styles.navBar}>
+            <Pressable
+              hitSlop={8}
+              onPress={backToMain}
+              accessibilityRole="button"
+              accessibilityLabel="返回统计"
+            >
+              <Text style={styles.navBack}>‹ 返回</Text>
+            </Pressable>
+            <Text style={styles.navTitle} numberOfLines={1}>
+              {drill ? `${drill.label}明细` : '分类明细'}
+            </Text>
+          </View>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.drillScope}>{drillScopeText} · 不含待报销</Text>
+            <View style={styles.drillSummary}>
+              <Text style={styles.drillSummaryAmount}>¥{formatMoney(drillTotal)}</Text>
+              <Text style={styles.drillSummaryCount}>{drillRecords.length} 笔</Text>
+            </View>
+            {drillLoading && drillRecords.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>正在加载明细…</Text>
+              </View>
+            ) : (
+              <RecordList
+                records={drillRecords}
+                showDate
+                members={members}
+                emptyText="这个时间段该分类没有符合条件的支出"
+              />
+            )}
+          </ScrollView>
         </View>
       )}
     </SafeAreaView>
@@ -628,6 +733,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.xs + 2,
+  },
+  rankRowPressed: {
+    opacity: 0.6,
+  },
+  // 分类明细下钻页
+  drillScope: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textTertiary,
+    marginBottom: SPACING.sm,
+  },
+  drillSummary: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  drillSummaryAmount: {
+    fontSize: FONT_SIZE.xxl,
+    fontWeight: '800',
+    color: COLORS.expense,
+  },
+  drillSummaryCount: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
   },
   rankIndex: {
     width: 16,
