@@ -24,8 +24,16 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: package-lock.json
+          # 两个 lock 都进缓存 key，否则服务端那次 npm ci 每次冷装
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
       - run: npm ci
+      # 根 eslint 配置会连 server/src 一起 lint（含 import/no-unresolved），
+      # 不装服务端依赖的话 express/bcryptjs 解析不到 —— 本地两个 node_modules
+      # 都在所以跑得通，CI 上就会误报。这里补齐，保持与本地一致的 lint 覆盖面
+      - run: npm ci
+        working-directory: server
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
