@@ -82,7 +82,9 @@ export default function StatsScreen({ active }: Props) {
     }
     setPage('main');
     setDrillEdit(null); // 切走再回来不该还停在半开的编辑页（与明细页一致）
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    // 主页现在是常驻页（此前是重新挂载才天然在顶部），刚由 display:none 切回可见时
+    // 同帧 scrollTo 可能被忽略，故放到下一帧再回顶——切 Tab 回顶这个行为要保留
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false }));
     refreshAll();
   }, [active, refreshAll]);
 
@@ -296,7 +298,11 @@ export default function StatsScreen({ active }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
-      {page === 'main' ? (
+      {/* 三个页面常驻、display 互斥切换（同 App 切 Tab 与明细页编辑态的做法）。
+          此前这里是三元条件只渲染一支：从分类明细/报销页返回时，统计主页被卸载重建，
+          ScrollView 归零 → 刚看的排行位置丢了。同一页内的上下钻不该重置滚动，
+          只有切 Tab 回顶（见上面 active effect 的 scrollTo）。 */}
+      <View style={page === 'main' ? styles.page : styles.pageHidden}>
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
@@ -549,23 +555,23 @@ export default function StatsScreen({ active }: Props) {
             )}
           </View>
         </ScrollView>
-      ) : page === 'reimburse' ? (
-        <View style={styles.subPage}>
-          <View style={styles.navBar}>
-            <Pressable
-              hitSlop={8}
-              onPress={backToMain}
-              accessibilityRole="button"
-              accessibilityLabel="返回统计"
-            >
-              <Text style={styles.navBack}>‹ 返回</Text>
-            </Pressable>
-            <Text style={styles.navTitle}>报销管理</Text>
-          </View>
-          <ReimburseScreen />
+      </View>
+      <View style={page === 'reimburse' ? styles.page : styles.pageHidden}>
+        <View style={styles.navBar}>
+          <Pressable
+            hitSlop={8}
+            onPress={backToMain}
+            accessibilityRole="button"
+            accessibilityLabel="返回统计"
+          >
+            <Text style={styles.navBack}>‹ 返回</Text>
+          </Pressable>
+          <Text style={styles.navTitle}>报销管理</Text>
         </View>
-      ) : (
-        // 分类明细下钻：区间/成员筛选与排行完全同口径，所以顶部合计必然等于排行条上的数字
+        <ReimburseScreen />
+      </View>
+      {/* 分类明细下钻页：区间/成员筛选与排行完全同口径，所以顶部合计必然等于排行条上的数字 */}
+      <View style={page === 'category' ? styles.page : styles.pageHidden}>
         <View style={styles.subPage}>
           {/* 明细列表与编辑页互斥显示（display 切换，与明细页同构）：
               EditRecordModal 明确要求宿主这样承载，不能用绝对定位叠层或 RNModal
@@ -619,7 +625,7 @@ export default function StatsScreen({ active }: Props) {
             />
           </View>
         </View>
-      )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -944,6 +950,10 @@ const styles = StyleSheet.create({
   },
   // ===== 子页面顶栏 =====
   subPage: {
+    flex: 1,
+  },
+  // 常驻并列页：显示时占满，隐藏时 display:none（保留滚动位置与已挂载状态）
+  page: {
     flex: 1,
   },
   // 与明细页同款：两页互斥显示（列表页 / 编辑页），不用 absolute 叠层与 RNModal
