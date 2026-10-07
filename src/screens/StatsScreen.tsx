@@ -18,6 +18,7 @@ import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUt
 import CategoryPieChart from '../components/CategoryPieChart';
 import TrendBarChart from '../components/TrendBarChart';
 import RecordList from '../components/RecordList';
+import EditRecordModal from '../components/EditRecordModal';
 import ReimburseScreen from './manage/ReimburseScreen';
 import type { LedgerRecord } from '../types';
 
@@ -47,6 +48,9 @@ export default function StatsScreen({ active }: Props) {
   const [drill, setDrill] = useState<{ key: string; label: string } | null>(null);
   const [drillRecords, setDrillRecords] = useState<LedgerRecord[]>([]);
   const [drillLoading, setDrillLoading] = useState(false);
+  // 明细里点某一条 → 就地编辑（复用明细页同一个 EditRecordModal 组件，不另造编辑器：
+  // v0.11.4/0.11.5 两轮才把触摸与键盘避让修对，组件要求宿主用「并列页 + display 互斥」承载）
+  const [drillEdit, setDrillEdit] = useState<LedgerRecord | null>(null);
 
   const { showToast } = useToast();
 
@@ -71,8 +75,13 @@ export default function StatsScreen({ active }: Props) {
   // Tab 激活时滚回顶部 + 重载数据 + 回主页（切 Tab 再回来回到 main，v0.5.6）
   // 激活重载已经覆盖摘要，不再单独挂一个「挂载预载」effect（此前两者重复跑一次查询）
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      // 切走时收起编辑页（与明细页同处理），回到统计页不该还停在半开编辑态
+      setDrillEdit(null);
+      return;
+    }
     setPage('main');
+    setDrillEdit(null); // 切走再回来不该还停在半开的编辑页（与明细页一致）
     scrollRef.current?.scrollTo({ y: 0, animated: false });
     refreshAll();
   }, [active, refreshAll]);
@@ -191,12 +200,14 @@ export default function StatsScreen({ active }: Props) {
 
   const openCategory = useCallback((c: { category: string; label: string }) => {
     setDrill({ key: c.category, label: c.label });
+    setDrillEdit(null);
     setPage('category');
   }, []);
 
   const backToMain = useCallback(() => {
     setPage('main');
     setDrill(null);
+    setDrillEdit(null);
   }, []);
 
   // 全局刷新（含登录态/同步事件 → 更新成员缓存，v0.5）
@@ -556,42 +567,57 @@ export default function StatsScreen({ active }: Props) {
       ) : (
         // 分类明细下钻：区间/成员筛选与排行完全同口径，所以顶部合计必然等于排行条上的数字
         <View style={styles.subPage}>
-          <View style={styles.navBar}>
-            <Pressable
-              hitSlop={8}
-              onPress={backToMain}
-              accessibilityRole="button"
-              accessibilityLabel="返回统计"
-            >
-              <Text style={styles.navBack}>‹ 返回</Text>
-            </Pressable>
-            <Text style={styles.navTitle} numberOfLines={1}>
-              {drill ? `${drill.label}明细` : '分类明细'}
-            </Text>
-          </View>
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.content}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={styles.drillScope}>{drillScopeText} · 不含待报销</Text>
-            <View style={styles.drillSummary}>
-              <Text style={styles.drillSummaryAmount}>¥{formatMoney(drillTotal)}</Text>
-              <Text style={styles.drillSummaryCount}>{drillRecords.length} 笔</Text>
+          {/* 明细列表与编辑页互斥显示（display 切换，与明细页同构）：
+              EditRecordModal 明确要求宿主这样承载，不能用绝对定位叠层或 RNModal
+              ——那两轮修复（触摸失灵 / 键盘遮挡）就是从这里来的 */}
+          <View style={drillEdit ? styles.pageHidden : styles.subPage}>
+            <View style={styles.navBar}>
+              <Pressable
+                hitSlop={8}
+                onPress={backToMain}
+                accessibilityRole="button"
+                accessibilityLabel="返回统计"
+              >
+                <Text style={styles.navBack}>‹ 返回</Text>
+              </Pressable>
+              <Text style={styles.navTitle} numberOfLines={1}>
+                {drill ? `${drill.label}明细` : '分类明细'}
+              </Text>
             </View>
-            {drillLoading && drillRecords.length === 0 ? (
-              <View style={styles.empty}>
-                <Text style={styles.emptyText}>正在加载明细…</Text>
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.content}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.drillScope}>{drillScopeText} · 不含待报销 · 点击条目可编辑</Text>
+              <View style={styles.drillSummary}>
+                <Text style={styles.drillSummaryAmount}>¥{formatMoney(drillTotal)}</Text>
+                <Text style={styles.drillSummaryCount}>{drillRecords.length} 笔</Text>
               </View>
-            ) : (
-              <RecordList
-                records={drillRecords}
-                showDate
-                members={members}
-                emptyText="这个时间段该分类没有符合条件的支出"
-              />
-            )}
-          </ScrollView>
+              {drillLoading && drillRecords.length === 0 ? (
+                <View style={styles.empty}>
+                  <Text style={styles.emptyText}>正在加载明细…</Text>
+                </View>
+              ) : (
+                <RecordList
+                  records={drillRecords}
+                  showDate
+                  members={members}
+                  onEdit={(r) => setDrillEdit(r)}
+                  emptyText="这个时间段该分类没有符合条件的支出"
+                />
+              )}
+            </ScrollView>
+          </View>
+          <View style={drillEdit ? styles.subPage : styles.pageHidden}>
+            {/* 保存后组件内部广播 RECORDED → 本页 refreshAll 递增 tick → 下钻查询自动重跑，
+                列表就地更新（分类被改掉的那条会移出本列表），用户仍停在这个分类的明细上 */}
+            <EditRecordModal
+              visible={drillEdit !== null}
+              record={drillEdit}
+              onClose={() => setDrillEdit(null)}
+            />
+          </View>
         </View>
       )}
     </SafeAreaView>
@@ -919,6 +945,11 @@ const styles = StyleSheet.create({
   // ===== 子页面顶栏 =====
   subPage: {
     flex: 1,
+  },
+  // 与明细页同款：两页互斥显示（列表页 / 编辑页），不用 absolute 叠层与 RNModal
+  pageHidden: {
+    flex: 1,
+    display: 'none',
   },
   navBar: {
     height: 48,

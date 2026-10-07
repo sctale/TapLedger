@@ -158,8 +158,8 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
 
   // v0.11.5 结构修正：不再用"绝对定位覆盖层"（absolute 子级会无视父级 paddingTop 顶进状态栏、
   // 底部安全区重复计算顶出幽灵空隙，且叠层触摸在部分机型仍不稳）。
-  // 改为与 App.tsx 切 Tab 同款的"并列页 + display 切换"：本组件作为 LedgerScreen 根内的普通页面渲染，
-  // 触摸/安全区行为与首页记账卡完全一致（LedgerScreen 负责两页互斥显示）。
+  // 改为与 App.tsx 切 Tab 同款的"并列页 + display 切换"：本组件作为宿主页面根内的普通页面渲染，
+  // 触摸/安全区行为与首页记账卡完全一致（宿主负责两页互斥显示：明细页、统计页分类明细）。
   return (
     <View style={styles.page}>
       {/* 顶部导航栏：取消 / 标题 / 保存 */}
@@ -310,7 +310,7 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
 }
 
 const styles = StyleSheet.create({
-  // 普通并列页：由 LedgerScreen 用 display 与列表视图互斥切换（同 App 切 Tab 的做法）
+  // 普通并列页：由宿主用 display 与列表视图互斥切换（同 App 切 Tab 的做法）
   page: {
     flex: 1,
     backgroundColor: COLORS.background,
