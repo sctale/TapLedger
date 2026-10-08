@@ -1,7 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
 import authRoutes, { meRouter } from './routes/auth';
 import familyRoutes from './routes/family';
 import syncRoutes from './routes/sync';
@@ -10,6 +8,7 @@ import healthRoutes from './routes/health';
 import { adminPageRouter, adminApiRouter } from './routes/admin';
 import { loginRateLimit, registerRateLimit } from './auth';
 import { startAutoBackup } from './backup';
+import { serverVersion } from './version';
 
 const app = express();
 const PORT = Number(process.env.PORT || 8420);
@@ -48,22 +47,6 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   console.error('[error]', err.message);
   res.status(500).json({ error: '服务器内部错误' });
 });
-
-// 读服务端版本号（dist/index.js 的 __dirname 是 /app/dist，上一级就是镜像里的 /app/package.json；
-// 本地 tsx src/index.ts 时同样命中 server/package.json）。
-// 用在启动日志里：NAS 上「docker logs / 容器日志」是最快确认到底在跑哪个版本的途径，
-// 而 tag 会被 latest 覆盖，光看 tag 说明不了什么。
-function serverVersion(): string {
-  try {
-    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
-      version?: string;
-    };
-    return raw.version || '未知';
-  } catch {
-    // 自构建镜像少了 package.json 时只影响这一行日志，不该拖停服务
-    return '未知';
-  }
-}
 
 app.listen(PORT, () => {
   console.log(`[boot] TapLedger server v${serverVersion()} 监听 :${PORT}`);

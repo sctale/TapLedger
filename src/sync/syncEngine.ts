@@ -2,6 +2,7 @@
 // 流程：push 本地水位后的变更 → pull 服务端变更 → 本地 upsert（LWW）→ 更新水位
 import { DeviceEventEmitter } from 'react-native';
 import { LEDGER_EVENTS, SETTING_KEYS } from '../constants';
+import { showToast } from '../components/Toast';
 import {
   getDB,
   saveSetting,
@@ -312,9 +313,18 @@ export async function runSync(): Promise<SyncResult> {
 
     return { ok: true, pushed: pushCount, pulled, invalid, invalidIds };
   } catch (e) {
-    // 凭证失效（401，如服务端旧版 token 过期）：自动清理登录态并通知 UI，
-    // 避免同步静默失败、用户却以为仍登录（v0.11.3；服务端 0.5.5 起默认 365 天长效）
+    // 凭证失效（401）→ 自动清理登录态并通知 UI，避免同步静默失败、用户却以为仍登录
+    // （v0.11.3；服务端 0.5.5 起默认 365 天长效）
+    //
+    // v0.11.11：把服务端给的**具体原因**原样透出来，并主动弹提示。
+    // 三种 401 的处置方式完全不同，此前统一压成「登录已过期，请到同步页重新登录」，
+    // 结果「服务端账号不见了」这种要紧的事和「token 到期了，重登就好」长得一模一样：
+    //  · 登录已过期，请重新登录      = token 到期，或服务端换过 JWT_SECRET（全员一起掉线通常是这个）
+    //  · 登录状态已在其他设备变更     = 有人在别处改了密码（token_version 递增，属预期）
+    //  · 用户不存在                 = 服务端账号/数据库不见了（换 DATA_DIR、卷没挂上、从备份回滚）
     if (e instanceof ApiError && e.status === 401) {
+      const reason = (e.message || '').trim() || '登录状态失效';
+      const accountMissing = reason.includes('用户不存在');
       await Promise.all([
         saveSetting(SETTING_KEYS.SYNC_TOKEN, ''),
         saveSetting(SETTING_KEYS.SYNC_USER_ID, '0'),
@@ -327,7 +337,16 @@ export async function runSync(): Promise<SyncResult> {
       ]);
       setActiveLedgerId(0);
       DeviceEventEmitter.emit(LEDGER_EVENTS.AUTH_CHANGED);
-      return { ok: false, pushed: 0, pulled: 0, error: '登录已过期，请到同步页重新登录' };
+      // 后台自动同步这条路径原本没有任何 UI 出口（返回值被 debounce 丢弃），
+      // 用户只会发现"不知道什么时候被退出了"。这里补一次明确的提示。
+      showToast(
+        accountMissing
+          ? '⚠️ 服务端查不到此账号（本地账本仍在）。请先检查 NAS 上的数据卷/数据库是否还在，再决定是否重新注册'
+          : `登录已失效：${reason}。本地账本仍在，重新登录即可继续同步`,
+        'error',
+        6000,
+      );
+      return { ok: false, pushed: 0, pulled: 0, error: reason };
     }
     const msg = e instanceof ApiError ? e.message : '同步失败';
     return { ok: false, pushed: 0, pulled: 0, error: msg };

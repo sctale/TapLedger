@@ -192,6 +192,9 @@ export default function SyncScreen() {
   // 服务器可达性（v0.11.2）：null=未配置或检测中，true=可达，false=不可达
   // 此前「已连接服务器」仅由本地配置驱动，断网时也常亮绿点，误导用户
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+  // 服务端版本号（0.5.8 起 /api/health 带）：排查「两台设备同时被退出」这类问题时，
+  // 第一件事就是知道 NAS 上实际在跑哪一版——旧镜像 7 天 token、换过 JWT_SECRET，处置完全不同
+  const [serverVer, setServerVer] = useState('');
 
   // 读取同步配置（reload 时一并刷新）
   // 离开二级页时本组件会卸载，而健康探测/账本拉取是异步的 → 用 mounted + 序号
@@ -234,15 +237,21 @@ export default function SyncScreen() {
       if (url) {
         const seq = ++healthSeq.current;
         setServerOnline(null);
+        setServerVer('');
         apiHealth(url)
-          .then(() => {
-            if (mountedRef.current && seq === healthSeq.current) setServerOnline(true);
+          .then((res) => {
+            if (mountedRef.current && seq === healthSeq.current) {
+              setServerOnline(true);
+              // 旧服务端不返回 version → 留空，界面上就不显示版本，不写「未知」骗人
+              setServerVer(res.version ?? '');
+            }
           })
           .catch(() => {
             if (mountedRef.current && seq === healthSeq.current) setServerOnline(false);
           });
       } else {
         setServerOnline(null);
+        setServerVer('');
       }
       // 登录后拉取账本列表
       if (url && token) {
@@ -587,7 +596,11 @@ export default function SyncScreen() {
               ]}
             />
             <Text style={styles.serverStatusText}>
-              {serverOnline === null ? '正在检测服务器…' : serverOnline ? '已连接服务器' : '服务器不可达'}
+              {serverOnline === null
+                ? '正在检测服务器…'
+                : serverOnline
+                  ? `已连接服务器${serverVer ? ` · 服务端 v${serverVer}` : ''}`
+                  : '服务器不可达'}
             </Text>
             {serverOnline === false ? (
               <Pressable

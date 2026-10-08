@@ -127,6 +127,10 @@ docker compose logs --tail 20
 #   [boot] TapLedger server v0.5.7 监听 :8420
 #   [boot] NODE_ENV=production｜自动备份 开启
 
+# 不方便登容器时：直接问健康接口（v0.5.8 起返回 version，手机同步页也会显示「服务端 v0.5.8」）
+curl -s http://<NAS_IP>:8420/api/health
+#   {"ok":true,"version":"0.5.8","time":...}
+
 # 回退：compose 里 image 改回旧版本号 tag，再 up -d
 #   image: ghcr.io/sctale/tapledger-server:0.5.1
 ```

@@ -132,7 +132,7 @@ npm run typecheck
 
 | 方法 | 路径 | 说明 | 认证 |
 |---|---|---|---|
-| GET | `/api/health` | 健康检查 | - |
+| GET | `/api/health` | 健康检查 `{ok, version, time}`（`version` 自 v0.5.8 起带上，便于远程确认在跑哪一版） | - |
 | POST | `/api/auth/register` | 注册 `{username, password, displayName?}` | - |
 | POST | `/api/auth/login` | 登录 `{username, password}` → `{token, user}` | - |
 | POST | `/api/auth/password` | 改密 `{currentPassword, newPassword}` → `{ok, token}`；成功后其它设备旧 token 立即 401 | Bearer |

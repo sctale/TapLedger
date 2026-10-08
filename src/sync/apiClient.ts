@@ -176,5 +176,9 @@ export async function apiSyncPush(
 
 // 健康检查（配置服务器地址时探测可达性；同步页用它刷新「服务器可达」状态，默认 5s 短超时）
 export async function apiHealth(baseUrl: string, timeoutMs = 5_000) {
-  return request<{ ok: boolean }>(baseUrl, '/api/health', { method: 'GET', timeoutMs });
+  // version 自服务端 0.5.8 起返回；旧服务端没这个字段，客户端按「未知」处理即可
+  return request<{ ok: boolean; version?: string; time: number }>(baseUrl, '/api/health', {
+    method: 'GET',
+    timeoutMs,
+  });
 }
