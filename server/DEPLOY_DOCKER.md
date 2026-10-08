@@ -124,12 +124,13 @@ docker compose pull && docker compose up -d
 
 # 确认现在到底在跑哪个版本（tag 会被 latest 覆盖，看日志最可靠；v0.5.7 起启动即打印版本）
 docker compose logs --tail 20
-#   [boot] TapLedger server v0.5.7 监听 :8420
+#   [boot] TapLedger server v0.5.9 监听 :8420
 #   [boot] NODE_ENV=production｜自动备份 开启
+#   掉线类问题还会留痕：[auth] 401 原因=验签失败（JWT_SECRET 可能已变更） uid=? path=/api/me ip=…（v0.5.9 起）
 
-# 不方便登容器时：直接问健康接口（v0.5.8 起返回 version，手机同步页也会显示「服务端 v0.5.8」）
+# 不方便登容器时：直接问健康接口（v0.5.8 起返回 version，手机同步页也会显示「服务端 v0.5.9」）
 curl -s http://<NAS_IP>:8420/api/health
-#   {"ok":true,"version":"0.5.8","time":...}
+#   {"ok":true,"version":"0.5.9","time":...}
 
 # 回退：compose 里 image 改回旧版本号 tag，再 up -d
 #   image: ghcr.io/sctale/tapledger-server:0.5.1
@@ -139,7 +140,8 @@ curl -s http://<NAS_IP>:8420/api/health
 
 - 升到 v0.4.2+ 前先确认 `.env` 的 `JWT_SECRET` 是真实强随机串（否则拒绝启动）
 - 升到 v0.5.6+ 不会把已登录的设备踢下线：新增的 `users.token_version` 由老库自动补列，旧 token 无 `tv` 载荷按 0 处理
-- 当前最新：server **v0.5.7**（启动日志打印版本号，便于在容器日志里识别在跑哪一版）；v0.5.6 跨账本写入守卫、记账人作者保留、未来时间戳钳制、push 返回 invalid/skipped 分类、改密接口 `POST /api/auth/password`、`/admin` 未配口令时整页 503；历史：v0.5.5 登录态 365 天 + 注销接口、v0.5.2 `TRUST_PROXY`、v0.5.0 管理面板、v0.4.3 每日自动热备份
+- 当前最新：server **v0.5.9**（四种 401 分开文案，并把 `[auth] 401 原因=… uid=… path=… ip=…` 写进容器日志——掉线类事故从此在服务端侧留痕；同一原因每分钟限 5 条）；v0.5.8 起 `/api/health` 返回 `version`、v0.5.7 起启动日志打印版本号；v0.5.6 跨账本写入守卫、记账人作者保留、未来时间戳钳制、push 返回 invalid/skipped 分类、改密接口 `POST /api/auth/password`、`/admin` 未配口令时整页 503；历史：v0.5.5 登录态 365 天 + 注销接口、v0.5.2 `TRUST_PROXY`、v0.5.0 管理面板、v0.4.3 每日自动热备份
+- 编号提醒：APP 与服务端共用同一套 `[x.y.z]` 号（如 `[0.5.7]` 在 2026-08-18 是 APP 的，2026-10-05 是服务端的），服务端条目一律带「（服务端…）」标注，读的时候认准这个标记
 
 ## 7. 备份与恢复
 
