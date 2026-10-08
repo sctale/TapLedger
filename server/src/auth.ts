@@ -97,12 +97,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       // 最常见成因：服务端 JWT_SECRET 变了（换 .env、重建容器没带上新增卷、换部署目录）。
       // 表现就是"所有人同一天同时被退出"。
       logAuthFail('验签失败（JWT_SECRET 可能已变更）', '?', req);
-      res
-        .status(401)
-        .json({
-          error:
-            '登录凭证校验失败：服务端签名密钥可能已变更，请重新登录；若全家同时出现请检查 .env 的 JWT_SECRET',
-        });
+      res.status(401).json({
+        error:
+          '登录凭证校验失败：服务端签名密钥可能已变更，请重新登录；若全家同时出现请检查 .env 的 JWT_SECRET',
+      });
     }
     return;
   }
