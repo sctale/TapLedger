@@ -36,11 +36,37 @@ export function signToken(userId: number, tokenVersion: number): string {
   });
 }
 
-export function verifyToken(token: string): JwtPayload | null {
+export type VerifyOutcome =
+  { ok: true; payload: JwtPayload } | { ok: false; reason: 'expired' | 'bad_signature' };
+
+// 区分「token 过期」与「验签失败」：此前两者都回同一句「登录已过期，请重新登录」，
+// 于是「NAS 换过 JWT_SECRET」这种全员掉线事故和「一年到期正常过期」在客户端根本分不开。
+export function verifyToken(token: string): VerifyOutcome {
   try {
-    return jwt.verify(token, JWT_SECRET) as JwtPayload;
-  } catch {
-    return null;
+    return { ok: true, payload: jwt.verify(token, JWT_SECRET) as JwtPayload };
+  } catch (e) {
+    const name = (e as Error)?.name ?? '';
+    return { ok: false, reason: name === 'TokenExpiredError' ? 'expired' : 'bad_signature' };
+  }
+}
+
+// 401 记入容器日志：这类事故只有服务端留痕才查得出来（此前日志里只有启动行与每日备份）。
+// 公网部署要防扫描流量刷爆日志，同一原因+账号每分钟最多记 5 条。
+const authLogCounts = new Map<string, { n: number; windowAt: number }>();
+function logAuthFail(reason: string, uid: string, req: Request): void {
+  const now = Date.now();
+  const key = `${reason}:${uid}`;
+  const rec = authLogCounts.get(key);
+  if (!rec || now - rec.windowAt >= 60_000) {
+    authLogCounts.set(key, { n: 1, windowAt: now });
+  } else if (rec.n < 5) {
+    rec.n += 1;
+  } else {
+    return;
+  }
+  console.warn(`[auth] 401 原因=${reason} uid=${uid} path=${req.originalUrl} ip=${req.ip || '?'}`);
+  if (authLogCounts.size > 256) {
+    for (const [k, v] of authLogCounts) if (now - v.windowAt >= 60_000) authLogCounts.delete(k);
   }
 }
 
@@ -58,14 +84,29 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   if (!token) {
+    // 不带 token 多是客户端尚未登录/已清登录态，不是异常，记日志也限流掉了
     res.status(401).json({ error: '未登录' });
     return;
   }
-  const payload = verifyToken(token);
-  if (!payload) {
-    res.status(401).json({ error: '登录已过期，请重新登录' });
+  const verified = verifyToken(token);
+  if (!verified.ok) {
+    if (verified.reason === 'expired') {
+      logAuthFail('token 过期', '?', req);
+      res.status(401).json({ error: `登录已过期（超过 ${JWT_EXPIRES} 未使用），请重新登录` });
+    } else {
+      // 最常见成因：服务端 JWT_SECRET 变了（换 .env、重建容器没带上新增卷、换部署目录）。
+      // 表现就是"所有人同一天同时被退出"。
+      logAuthFail('验签失败（JWT_SECRET 可能已变更）', '?', req);
+      res
+        .status(401)
+        .json({
+          error:
+            '登录凭证校验失败：服务端签名密钥可能已变更，请重新登录；若全家同时出现请检查 .env 的 JWT_SECRET',
+        });
+    }
     return;
   }
+  const payload = verified.payload;
   const user = db
     .prepare(
       `SELECT id, username, display_name, avatar_emoji, family_id, family_role, personal_family_id, token_version
@@ -84,12 +125,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       }
     | undefined;
   if (!user) {
-    res.status(401).json({ error: '用户不存在' });
+    // 签名有效但账号查不到 ⇒ 服务端数据出问题了（换 DATA_DIR / 卷没挂上 / 从旧备份回滚），
+    // 必须留痕：这种被当成"重新登录一下就好"会掩盖一次真实的数据丢失
+    logAuthFail('账号不存在（检查数据卷/是否换过 DATA_DIR）', String(payload.uid), req);
+    res.status(401).json({ error: '用户不存在：服务端查不到该账号，请先确认数据卷与数据库是否还是原来那份' });
     return;
   }
   // 旧版本签发的 token 没有 tv 载荷 → 视作 0，升级后老用户不会被强制登出；
   // 一旦改密（token_version +1）这些 token 全部失效。
   if ((payload.tv ?? 0) !== user.token_version) {
+    logAuthFail(`token_version 不匹配（改过密码？本地 ${user.token_version}）`, String(payload.uid), req);
     res.status(401).json({ error: '登录状态已在其他设备变更（如修改密码），请重新登录' });
     return;
   }
