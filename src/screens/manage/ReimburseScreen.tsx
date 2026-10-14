@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, DeviceEventEmitter, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LEDGER_EVENTS } from '../../constants';
 import {
   getReimbursableRecords,
@@ -9,15 +9,19 @@ import {
 } from '../../database/ledgerDB';
 import { formatMoney } from '../../utils/dateUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
+import { getCachedMembers, type MemberInfo } from '../../sync/memberUtils';
 import { useToast } from '../../hooks/useToast';
 import RecordList from '../../components/RecordList';
+import EditRecordModal from '../../components/EditRecordModal';
 import type { LedgerRecord } from '../../types';
 import { manageStyles as styles } from './sharedStyles';
 
-// 报销二级页（v0.5.9 从 ManageScreen 拆分；顶栏返回按钮由外层 ManageScreen 统一渲染）
+// 报销二级页（v0.5.9 从 ManageScreen 拆分；顶栏返回按钮由外层统一渲染，目前挂在统计页）
 export default function ReimburseScreen() {
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
   const [reimburseRecords, setReimburseRecords] = useState<LedgerRecord[]>([]);
+  const [members, setMembers] = useState<MemberInfo[]>([]);
+  const [editing, setEditing] = useState<LedgerRecord | null>(null);
 
   const { showToast } = useToast();
 
@@ -45,6 +49,19 @@ export default function ReimburseScreen() {
     ];
     return () => subs.forEach((s) => s.remove());
   }, [reload]);
+
+  // 记账人标识靠成员缓存；登录态变化（登录/退出/同步）后重新读一次
+  useEffect(() => {
+    const load = () => {
+      getCachedMembers().then(setMembers);
+    };
+    load();
+    const subs = [
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.SYNC_DONE, load),
+      DeviceEventEmitter.addListener(LEDGER_EVENTS.AUTH_CHANGED, load),
+    ];
+    return () => subs.forEach((s) => s.remove());
+  }, []);
 
   // ===== 报销核销操作 =====
   // 核销是批量、会同步到全家设备的动作，加确认；成功后只广播 RECORDED，
@@ -95,36 +112,59 @@ export default function ReimburseScreen() {
   }, []);
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* ===== 报销 ===== */}
-      <Text style={styles.sectionTitle}>报销</Text>
-      <View style={styles.card}>
-        <View style={styles.reimburseHead}>
-          <View>
-            <Text style={styles.reimburseTotal}>待报销 ¥{formatMoney(reimburseSummary.total)}</Text>
-            <Text style={styles.reimburseCount}>{reimburseSummary.count} 笔待核销</Text>
+    <View style={local.page}>
+      <View style={editing ? local.hidden : local.page}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* ===== 报销 ===== */}
+          <Text style={styles.sectionTitle}>报销</Text>
+          <View style={styles.card}>
+            <View style={styles.reimburseHead}>
+              <View>
+                <Text style={styles.reimburseTotal}>待报销 ¥{formatMoney(reimburseSummary.total)}</Text>
+                <Text style={styles.reimburseCount}>{reimburseSummary.count} 笔待核销</Text>
+              </View>
+              {reimburseSummary.count > 0 ? (
+                <Pressable
+                  style={styles.reimburseBtn}
+                  onPress={handleMarkAllReimbursed}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.reimburseBtnText}>一键全部核销</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            {reimburseRecords.length > 0 ? (
+              <>
+                <Text style={styles.hint}>点击条目可看完整备注并编辑</Text>
+                <RecordList
+                  records={reimburseRecords}
+                  showDate
+                  members={members}
+                  onEdit={setEditing}
+                  onToggleReimbursed={handleToggleReimbursed}
+                />
+              </>
+            ) : (
+              <Text style={styles.emptyText}>暂无报销记录</Text>
+            )}
           </View>
-          {reimburseSummary.count > 0 ? (
-            <Pressable
-              style={styles.reimburseBtn}
-              onPress={handleMarkAllReimbursed}
-              accessibilityRole="button"
-            >
-              <Text style={styles.reimburseBtnText}>一键全部核销</Text>
-            </Pressable>
-          ) : null}
-        </View>
-        {reimburseRecords.length > 0 ? (
-          <RecordList records={reimburseRecords} showDate onToggleReimbursed={handleToggleReimbursed} />
-        ) : (
-          <Text style={styles.emptyText}>暂无报销记录</Text>
-        )}
+        </ScrollView>
       </View>
-    </ScrollView>
+      {/* 编辑页与列表页互斥显示（display 切换，与明细页/统计页同构）：
+          EditRecordModal 要求宿主这样承载，不能用 RNModal 或绝对定位叠层 */}
+      <View style={editing ? local.page : local.hidden}>
+        <EditRecordModal visible={editing !== null} record={editing} onClose={() => setEditing(null)} />
+      </View>
+    </View>
   );
 }
+
+const local = StyleSheet.create({
+  page: { flex: 1 },
+  hidden: { flex: 1, display: 'none' },
+});

@@ -76,86 +76,98 @@ export const RecordRow = React.memo(function RecordRow({
         {...(swipeable ? panResponder.panHandlers : {})}
       >
         <View style={styles.row}>
-          {/* 整行可点击编辑（v0.10）：左滑删除手势仅横向拖动接管，不与点击冲突。
-        v0.11.8：编辑热区改为「图标+信息」这一块，不再把核销/删除按钮包在里面 ——
-        嵌套 Pressable 手指能点（内层优先），但 TalkBack 会把外层标签下的子树合并成
-        一个节点，导致核销和删除对读屏完全不可达。布局不变（外层 row 仍是 flex row，
-        热区 flex:1 撑到原来 info 的右边界）。 */}
-          <Pressable
-            style={styles.rowContent}
-            onPress={() => onEdit?.(record)}
-            disabled={!onEdit}
-            accessibilityRole={onEdit ? 'button' : undefined}
-            accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
-          >
-            <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
-              <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>
-                {cat.emoji}
-              </Text>
-            </View>
-            <View style={styles.info}>
-              <View style={styles.catRow}>
-                <Text style={styles.catLabel}>{cat.label}</Text>
-                {member ? (
-                  <View style={[styles.memberTag, { backgroundColor: `${memberColor(member.id)}22` }]}>
-                    <Text style={styles.memberEmoji}>{member.avatarEmoji}</Text>
-                    <Text style={[styles.memberName, { color: memberColor(member.id) }]} numberOfLines={1}>
-                      {member.displayName}
-                    </Text>
-                  </View>
-                ) : null}
-                {record.reimbursable ? (
-                  <View style={[styles.badge, record.reimbursed ? styles.badgeDone : styles.badgePending]}>
-                    <Text style={[styles.badgeText, record.reimbursed && styles.badgeTextDone]}>
-                      {record.reimbursed ? '已报销' : '待报销'}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.subRow}>
-                {showDate ? <Text style={styles.dateTag}>{record.date}</Text> : null}
-                {showTime ? (
-                  <Text style={styles.timeTag}>{new Date(record.timestamp).toTimeString().slice(0, 5)}</Text>
-                ) : null}
-                {record.note ? (
-                  <Text style={styles.note} numberOfLines={1}>
-                    {record.note}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-          </Pressable>
-          <View style={styles.rowActions}>
-            {onToggleReimbursed && record.reimbursable ? (
-              <Pressable
-                style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
-                onPress={() => onToggleReimbursed(record)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel={record.reimbursed ? '撤销核销' : '核销报销'}
-              >
-                <Text style={styles.reimburseToggleText}>{record.reimbursed ? '撤销' : '核销'}</Text>
-              </Pressable>
-            ) : null}
-            <Text
-              style={[styles.amount, { color: isExpense ? COLORS.expense : COLORS.income }]}
-              accessibilityLabel={`${isExpense ? '支出' : '收入'}${formatMoney(record.amount)}元`}
+          {/* 主行：图标 + 分类信息 + 右侧动作（核销/金额/删除）。
+        v0.11.8：编辑热区是「图标+信息」这一块，不把核销/删除包进去——嵌套 Pressable
+        手指能点（内层优先），但 TalkBack 会把外层标签下的子树合并成一个节点，
+        核销和删除就对读屏不可达了。
+        v0.11.12：日期与备注挪到主行下方的整宽 metaLine，不再挤在 info 里。 */}
+          <View style={styles.rowMain}>
+            <Pressable
+              style={styles.rowContent}
+              onPress={() => onEdit?.(record)}
+              disabled={!onEdit}
+              accessibilityRole={onEdit ? 'button' : undefined}
+              accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
             >
-              {isExpense ? '-' : '+'}
-              {formatMoney(record.amount)}
-            </Text>
-            {onDelete ? (
-              <Pressable
-                style={styles.deleteBtn}
-                onPress={() => onDelete(record)}
-                hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-                accessibilityRole="button"
-                accessibilityLabel={`删除${cat.label}记录${formatMoney(record.amount)}元`}
+              <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
+                <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>
+                  {cat.emoji}
+                </Text>
+              </View>
+              <View style={styles.info}>
+                <View style={styles.catRow}>
+                  <Text style={styles.catLabel}>{cat.label}</Text>
+                  {member ? (
+                    <View style={[styles.memberTag, { backgroundColor: `${memberColor(member.id)}22` }]}>
+                      <Text style={styles.memberEmoji}>{member.avatarEmoji}</Text>
+                      <Text style={[styles.memberName, { color: memberColor(member.id) }]} numberOfLines={1}>
+                        {member.displayName}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {record.reimbursable ? (
+                    <View style={[styles.badge, record.reimbursed ? styles.badgeDone : styles.badgePending]}>
+                      <Text style={[styles.badgeText, record.reimbursed && styles.badgeTextDone]}>
+                        {record.reimbursed ? '已报销' : '待报销'}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            </Pressable>
+            <View style={styles.rowActions}>
+              {onToggleReimbursed && record.reimbursable ? (
+                <Pressable
+                  style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
+                  onPress={() => onToggleReimbursed(record)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={record.reimbursed ? '撤销核销' : '核销报销'}
+                >
+                  <Text style={styles.reimburseToggleText}>{record.reimbursed ? '撤销' : '核销'}</Text>
+                </Pressable>
+              ) : null}
+              <Text
+                style={[styles.amount, { color: isExpense ? COLORS.expense : COLORS.income }]}
+                accessibilityLabel={`${isExpense ? '支出' : '收入'}${formatMoney(record.amount)}元`}
               >
-                <Text style={styles.deleteText}>✕</Text>
-              </Pressable>
-            ) : null}
+                {isExpense ? '-' : '+'}
+                {formatMoney(record.amount)}
+              </Text>
+              {onDelete ? (
+                <Pressable
+                  style={styles.deleteBtn}
+                  onPress={() => onDelete(record)}
+                  hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`删除${cat.label}记录${formatMoney(record.amount)}元`}
+                >
+                  <Text style={styles.deleteText}>✕</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
+          {/* 日期 + 备注：单独占一行、用整行宽度。原先挤在 info 里时，报销页右侧有
+              「核销 + 金额」，info 被压到约 60dp，一个日期胶囊就把它占满，备注被挤到
+              零宽（用户截图：这页看不到备注）。缩进对齐分类文字左边缘，不跟图标抢。 */}
+          {record.note || showDate || showTime ? (
+            <Pressable
+              style={styles.metaLine}
+              onPress={onEdit ? () => onEdit(record) : undefined}
+              disabled={!onEdit}
+              accessibilityRole={onEdit ? 'button' : undefined}
+            >
+              {showDate ? <Text style={styles.dateTag}>{record.date}</Text> : null}
+              {showTime ? (
+                <Text style={styles.timeTag}>{new Date(record.timestamp).toTimeString().slice(0, 5)}</Text>
+              ) : null}
+              {record.note ? (
+                <Text style={styles.note} numberOfLines={2}>
+                  {record.note}
+                </Text>
+              ) : null}
+            </Pressable>
+          ) : null}
         </View>
       </Animated.View>
     </View>
@@ -240,14 +252,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm + 2,
+    gap: 2,
+  },
+  // 主行：图标 + 分类 + 右侧动作；日期/备注在它下面另起一行
+  rowMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.sm + 4,
   },
   // 编辑热区（图标 + 信息），与右侧动作区分开，读屏可分别聚焦
@@ -321,16 +337,16 @@ const styles = StyleSheet.create({
   badgeTextDone: {
     color: COLORS.incomeText,
   },
-  subRow: {
+  metaLine: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
-    marginTop: 1,
+    paddingLeft: 40 + SPACING.sm + 4,
   },
   note: {
     fontSize: FONT_SIZE.xs + 1,
     color: COLORS.textTertiary,
-    flexShrink: 1,
   },
   timeTag: {
     fontSize: FONT_SIZE.xs - 1,
