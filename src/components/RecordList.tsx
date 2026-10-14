@@ -40,6 +40,8 @@ export const RecordRow = React.memo(function RecordRow({
   // 记账人标识：已登录且能解析出成员即显示（v0.10.1：家庭账本即使只有 1 人也显示，
   // 家人后续加入时历史记录已有归属；members 为空数组 = 未加入家庭，不显示）
   const member = members && record.userId > 0 ? findMember(members, record.userId) : null;
+  // 单条核销/撤销按钮（只有报销页传 onToggleReimbursed）：放在左侧图标下方
+  const showReimburseBtn = !!onToggleReimbursed && record.reimbursable;
 
   // 左滑删除：仅在明显横向拖动时接管手势（不抢点击），越过阈值触发删除后弹回；✕ 仍作为兜底
   const translateX = useRef(new Animated.Value(0)).current;
@@ -76,50 +78,25 @@ export const RecordRow = React.memo(function RecordRow({
         {...(swipeable ? panResponder.panHandlers : {})}
       >
         <View style={styles.row}>
-          {/* 主行：图标 + 分类信息 + 右侧动作（核销/金额/删除）。
-        v0.11.8：编辑热区是「图标+信息」这一块，不把核销/删除包进去——嵌套 Pressable
-        手指能点（内层优先），但 TalkBack 会把外层标签下的子树合并成一个节点，
-        核销和删除就对读屏不可达了。
-        v0.11.12：日期与备注挪到主行下方的整宽 metaLine，不再挤在 info 里。 */}
+          {/* 主行：左侧图标列（报销页的核销按钮在图标下方）+ 分类信息 + 右侧金额/删除。
+        v0.11.8：核销/删除不包进编辑热区——嵌套 Pressable 手指能点（内层优先），
+        但 TalkBack 会把外层标签下的子树合并成一个节点，核销和删除就对读屏不可达了。
+        v0.11.12：日期与备注挪到主行下方的整宽 metaLine；
+        v0.11.14：核销按钮从右侧动作区挪到图标下方，窄屏不再盖住「待报销」徽章。 */}
           <View style={styles.rowMain}>
-            <Pressable
-              style={styles.rowContent}
-              onPress={() => onEdit?.(record)}
-              disabled={!onEdit}
-              accessibilityRole={onEdit ? 'button' : undefined}
-              accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
-            >
+            {/* 图标列：报销页把「核销/撤销」放在图标正下方（v0.11.14）。
+                它原先挤在主行右侧，窄屏上「图标+分类+成员+待报销+核销+金额」
+                总宽超过一行，RN 不裁剪就会让核销直接盖住状态徽章。 */}
+            <View style={styles.iconCol}>
               <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
                 <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>
                   {cat.emoji}
                 </Text>
               </View>
-              <View style={styles.info}>
-                <View style={styles.catRow}>
-                  <Text style={styles.catLabel}>{cat.label}</Text>
-                  {member ? (
-                    <View style={[styles.memberTag, { backgroundColor: `${memberColor(member.id)}22` }]}>
-                      <Text style={styles.memberEmoji}>{member.avatarEmoji}</Text>
-                      <Text style={[styles.memberName, { color: memberColor(member.id) }]} numberOfLines={1}>
-                        {member.displayName}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {record.reimbursable ? (
-                    <View style={[styles.badge, record.reimbursed ? styles.badgeDone : styles.badgePending]}>
-                      <Text style={[styles.badgeText, record.reimbursed && styles.badgeTextDone]}>
-                        {record.reimbursed ? '已报销' : '待报销'}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-            </Pressable>
-            <View style={styles.rowActions}>
-              {onToggleReimbursed && record.reimbursable ? (
+              {showReimburseBtn ? (
                 <Pressable
                   style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
-                  onPress={() => onToggleReimbursed(record)}
+                  onPress={() => onToggleReimbursed?.(record)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={record.reimbursed ? '撤销核销' : '核销报销'}
@@ -127,6 +104,35 @@ export const RecordRow = React.memo(function RecordRow({
                   <Text style={styles.reimburseToggleText}>{record.reimbursed ? '撤销' : '核销'}</Text>
                 </Pressable>
               ) : null}
+            </View>
+            {/* 编辑热区：分类信息（图标与核销按钮在左侧独立一列） */}
+            <Pressable
+              style={styles.rowContent}
+              onPress={() => onEdit?.(record)}
+              disabled={!onEdit}
+              accessibilityRole={onEdit ? 'button' : undefined}
+              accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
+            >
+              <View style={styles.catRow}>
+                <Text style={styles.catLabel}>{cat.label}</Text>
+                {member ? (
+                  <View style={[styles.memberTag, { backgroundColor: `${memberColor(member.id)}22` }]}>
+                    <Text style={styles.memberEmoji}>{member.avatarEmoji}</Text>
+                    <Text style={[styles.memberName, { color: memberColor(member.id) }]} numberOfLines={1}>
+                      {member.displayName}
+                    </Text>
+                  </View>
+                ) : null}
+                {record.reimbursable ? (
+                  <View style={[styles.badge, record.reimbursed ? styles.badgeDone : styles.badgePending]}>
+                    <Text style={[styles.badgeText, record.reimbursed && styles.badgeTextDone]}>
+                      {record.reimbursed ? '已报销' : '待报销'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </Pressable>
+            <View style={styles.rowActions}>
               <Text
                 style={[styles.amount, { color: isExpense ? COLORS.expense : COLORS.income }]}
                 accessibilityLabel={`${isExpense ? '支出' : '收入'}${formatMoney(record.amount)}元`}
@@ -147,9 +153,10 @@ export const RecordRow = React.memo(function RecordRow({
               ) : null}
             </View>
           </View>
-          {/* 日期 + 备注：单独占一行、用整行宽度。原先挤在 info 里时，报销页右侧有
-              「核销 + 金额」，info 被压到约 60dp，一个日期胶囊就把它占满，备注被挤到
-              零宽（用户截图：这页看不到备注）。缩进对齐分类文字左边缘，不跟图标抢。 */}
+          {/* 日期 + 备注：单独占一行、用整行宽度。原先它们和分类名挤在同一列里，
+              报销页右侧又有「核销 + 金额」，那一列只剩约 60dp，一个日期胶囊就把它
+              占满，备注被挤到零宽（用户截图：这页看不到备注）。
+              缩进＝图标宽 + 主行间距，与分类文字左边缘对齐。 */}
           {record.note || showDate || showTime ? (
             <Pressable
               style={styles.metaLine}
@@ -266,12 +273,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm + 4,
   },
-  // 编辑热区（图标 + 信息），与右侧动作区分开，读屏可分别聚焦
+  // 编辑热区：分类信息列（图标与核销按钮在左侧 iconCol 里，读屏可分别聚焦）
   rowContent: {
     flex: 1,
-    flexDirection: 'row',
+  },
+  // 左侧图标列：图标在上，报销页的「核销/撤销」在原图标正下方
+  iconCol: {
     alignItems: 'center',
-    gap: SPACING.sm + 4,
+    justifyContent: 'center',
+    gap: 4,
   },
   rowActions: {
     flexDirection: 'row',
@@ -288,12 +298,10 @@ const styles = StyleSheet.create({
   icon: {
     fontSize: FONT_SIZE.xxl - 8,
   },
-  info: {
-    flex: 1,
-  },
   catRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap', // 极窄屏/大字号下让徽章换行，而不是溢出压到右侧金额上
     gap: 6,
   },
   catLabel: {
@@ -365,9 +373,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   reimburseToggle: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    width: 40, // 与上方图标同宽，整列左边缘对齐
+    paddingVertical: 4,
     borderRadius: RADIUS.pill,
+    alignItems: 'center',
     backgroundColor: COLORS.warningBg,
     borderWidth: 1,
     borderColor: COLORS.warningBorder,
