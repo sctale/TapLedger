@@ -133,9 +133,13 @@ try {
   # 只暂存发布链路真正改到的文件：git add -A 会把工作区里无关的半成品/意外改动
   # 一起卷进 release 提交（本次审查就撞到一个：一次编码事故被 -A 顺手提交的风险）
   Write-Host "==> git 提交推送" -ForegroundColor Cyan
+  # 注意：android/ 整个目录在 .gitignore 里（expo prebuild 产物，版本号只在本地的
+  # build.gradle 里生效），把它列进 pathspec 会让 git add 直接以非零码退出「ignored
+  # paths」——v0.11.12 就是被这一步卡住的。上面第 2 步仍然要写 build.gradle，
+  # 但那是本地构建输入，不是提交内容。
   $stagePaths = @(
-    'app.json', 'package.json', 'package-lock.json',
-    'android/app/build.gradle', 'README.md', 'CHANGELOG.md',
+    'app.json', 'package.json', 'package-lock.json', 'server/package-lock.json',
+    'README.md', 'CHANGELOG.md',
     'src', 'server/src', 'App.tsx', 'plugins', 'scripts'
   )
   & git add -- $stagePaths
