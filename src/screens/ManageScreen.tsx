@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING } from '../constants';
 import { getCustomCategories, getRecurringRules, getSetting } from '../database/ledgerDB';
 import { useToast } from '../hooks/useToast';
-import { getSyncConfig } from '../sync/apiClient';
+import { getSyncConfig, apiHealth } from '../sync/apiClient';
 import RecurringScreen from './manage/RecurringScreen';
 import CategoriesScreen from './manage/CategoriesScreen';
 import SyncScreen from './manage/SyncScreen';
@@ -51,8 +51,20 @@ export default function ManageScreen({ active }: Props) {
   const [catCount, setCatCount] = useState(0); // 自定义分类数
   const [budgetStr, setBudgetStr] = useState(''); // 月度预算（原始字符串）
   const [syncSummary, setSyncSummary] = useState(''); // 家庭同步状态摘要
+  // 入口行的小状态灯：true=绿（已登录且健康探测通过），false=灰，undefined=该行不显示灯
+  const [syncOnline, setSyncOnline] = useState(false);
 
   const { showToast } = useToast();
+
+  // 二级页卸载/切走时旧探测响应不能回来覆盖新结果（与同步页同一套防护）
+  const mountedRef = useRef(true);
+  const healthSeq = useRef(0);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   // 主页摘要加载：各板块计数 + 同步状态（一次并行读齐）
   const loadSummary = useCallback(async () => {
@@ -74,6 +86,20 @@ export default function ManageScreen({ active }: Props) {
         setSyncSummary(`${name || '已登录'}${family ? ` · ${family}` : ''}`);
       } else {
         setSyncSummary(serverUrl ? '未登录' : '未配置（可选）');
+      }
+      // 状态灯：只有「登录了 + 探到服务器」才绿；探测不阻塞上面的摘要
+      if (cfg) {
+        const seq = ++healthSeq.current;
+        apiHealth(cfg.baseUrl)
+          .then(() => {
+            if (mountedRef.current && seq === healthSeq.current) setSyncOnline(true);
+          })
+          .catch(() => {
+            if (mountedRef.current && seq === healthSeq.current) setSyncOnline(false);
+          });
+      } else {
+        healthSeq.current += 1; // 让在途的旧探测结果作废
+        setSyncOnline(false);
       }
     } catch {
       showToast('管理页数据加载失败', 'error');
@@ -122,11 +148,17 @@ export default function ManageScreen({ active }: Props) {
     return () => sub.remove();
   }, [page, active]);
 
-  // 功能入口列表（iOS 设置风格：图标 + 标题 + 状态摘要副标题）
-  const entries: { icon: string; title: string; subtitle: string; target: Exclude<Page, 'main'> }[] = [
+  // 功能入口列表（iOS 设置风格：图标 + 标题 + 状态摘要副标题；家庭同步那行带连接灯）
+  const entries: {
+    icon: string;
+    title: string;
+    subtitle: string;
+    target: Exclude<Page, 'main'>;
+    dot?: boolean;
+  }[] = [
     { icon: '🔁', title: '周期记账', subtitle: `${ruleCount} 条规则`, target: 'recurring' },
     { icon: '🏷️', title: '分类管理', subtitle: `${catCount} 个`, target: 'categories' },
-    { icon: '👨‍👩‍👧', title: '家庭同步', subtitle: syncSummary, target: 'sync' },
+    { icon: '👨‍👩‍👧', title: '家庭同步', subtitle: syncSummary, target: 'sync', dot: syncOnline },
     {
       icon: '⚙️',
       title: '偏好设置',
@@ -163,7 +195,9 @@ export default function ManageScreen({ active }: Props) {
                   style={[styles.entryRow, i > 0 && styles.entryDivider]}
                   onPress={() => setPage(e.target)}
                   accessibilityRole="button"
-                  accessibilityLabel={e.title}
+                  accessibilityLabel={
+                    e.dot === undefined ? e.title : `${e.title}，${e.dot ? '服务器已连接' : '服务器未连接'}`
+                  }
                 >
                   <View style={[styles.accIcon, { backgroundColor: `${COLORS.accent}15` }]}>
                     <Text style={styles.accEmoji}>{e.icon}</Text>
@@ -174,6 +208,9 @@ export default function ManageScreen({ active }: Props) {
                       {e.subtitle}
                     </Text>
                   </View>
+                  {e.dot !== undefined ? (
+                    <View style={[styles.statusDot, e.dot && styles.statusDotOn]} />
+                  ) : null}
                   <Text style={styles.entryArrow}>›</Text>
                 </Pressable>
               ))}
@@ -315,6 +352,16 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xl + 4,
     color: COLORS.textTertiary,
     fontWeight: '600',
+  },
+  // 家庭同步连接灯：与同步页那枚点同尺寸同色（绿=探测通过，灰=其余一切情况）
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.textTertiary,
+  },
+  statusDotOn: {
+    backgroundColor: COLORS.income,
   },
   // ===== 关于 =====
   aboutRow: {
