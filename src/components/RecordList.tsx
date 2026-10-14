@@ -78,34 +78,13 @@ export const RecordRow = React.memo(function RecordRow({
         {...(swipeable ? panResponder.panHandlers : {})}
       >
         <View style={styles.row}>
-          {/* 主行：左侧图标列（报销页的核销按钮在图标下方）+ 分类信息 + 右侧金额/删除。
+          {/* 两行结构：第一行「图标 + 分类信息 + 金额/删除」，第二行「核销 + 日期 + 备注」。
         v0.11.8：核销/删除不包进编辑热区——嵌套 Pressable 手指能点（内层优先），
         但 TalkBack 会把外层标签下的子树合并成一个节点，核销和删除就对读屏不可达了。
-        v0.11.12：日期与备注挪到主行下方的整宽 metaLine；
-        v0.11.14：核销按钮从右侧动作区挪到图标下方，窄屏不再盖住「待报销」徽章。 */}
+        v0.11.12：日期与备注挪到第二行用整行宽（原先和分类名挤在一列里，被压到零宽）；
+        v0.11.14/15：核销按钮从右侧挪到第二行的行首，正好落在图标正下方——
+        窄屏上「图标+分类+成员+待报销+核销+金额」超过一行宽，RN 不裁剪溢出就会盖住徽章。 */}
           <View style={styles.rowMain}>
-            {/* 图标列：报销页把「核销/撤销」放在图标正下方（v0.11.14）。
-                它原先挤在主行右侧，窄屏上「图标+分类+成员+待报销+核销+金额」
-                总宽超过一行，RN 不裁剪就会让核销直接盖住状态徽章。 */}
-            <View style={styles.iconCol}>
-              <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
-                <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>
-                  {cat.emoji}
-                </Text>
-              </View>
-              {showReimburseBtn ? (
-                <Pressable
-                  style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
-                  onPress={() => onToggleReimbursed?.(record)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={record.reimbursed ? '撤销核销' : '核销报销'}
-                >
-                  <Text style={styles.reimburseToggleText}>{record.reimbursed ? '撤销' : '核销'}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-            {/* 编辑热区：分类信息（图标与核销按钮在左侧独立一列） */}
             <Pressable
               style={styles.rowContent}
               onPress={() => onEdit?.(record)}
@@ -113,6 +92,11 @@ export const RecordRow = React.memo(function RecordRow({
               accessibilityRole={onEdit ? 'button' : undefined}
               accessibilityLabel={onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined}
             >
+              <View style={[styles.iconWrap, { backgroundColor: `${cat.color}22` }]}>
+                <Text style={styles.icon} accessibilityLabel={`${cat.label}分类`}>
+                  {cat.emoji}
+                </Text>
+              </View>
               <View style={styles.catRow}>
                 <Text style={styles.catLabel}>{cat.label}</Text>
                 {member ? (
@@ -153,27 +137,38 @@ export const RecordRow = React.memo(function RecordRow({
               ) : null}
             </View>
           </View>
-          {/* 日期 + 备注：单独占一行、用整行宽度。原先它们和分类名挤在同一列里，
-              报销页右侧又有「核销 + 金额」，那一列只剩约 60dp，一个日期胶囊就把它
-              占满，备注被挤到零宽（用户截图：这页看不到备注）。
-              缩进＝图标宽 + 主行间距，与分类文字左边缘对齐。 */}
-          {record.note || showDate || showTime ? (
-            <Pressable
-              style={styles.metaLine}
-              onPress={onEdit ? () => onEdit(record) : undefined}
-              disabled={!onEdit}
-              accessibilityRole={onEdit ? 'button' : undefined}
-            >
-              {showDate ? <Text style={styles.dateTag}>{record.date}</Text> : null}
-              {showTime ? (
-                <Text style={styles.timeTag}>{new Date(record.timestamp).toTimeString().slice(0, 5)}</Text>
+          {/* 第二行：核销按钮（行首，与图标同宽同左边缘）+ 日期 + 备注。
+              没有核销按钮时，日期/备注用缩进对齐分类文字左边缘。 */}
+          {showReimburseBtn || record.note || showDate || showTime ? (
+            <View style={styles.metaRow}>
+              {showReimburseBtn ? (
+                <Pressable
+                  style={[styles.reimburseToggle, record.reimbursed && styles.reimburseToggleUndo]}
+                  onPress={() => onToggleReimbursed?.(record)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={record.reimbursed ? '撤销核销' : '核销报销'}
+                >
+                  <Text style={styles.reimburseToggleText}>{record.reimbursed ? '撤销' : '核销'}</Text>
+                </Pressable>
               ) : null}
-              {record.note ? (
-                <Text style={styles.note} numberOfLines={2}>
-                  {record.note}
-                </Text>
-              ) : null}
-            </Pressable>
+              <Pressable
+                style={[styles.metaLine, !showReimburseBtn && styles.metaIndented]}
+                onPress={onEdit ? () => onEdit(record) : undefined}
+                disabled={!onEdit}
+                accessibilityRole={onEdit ? 'button' : undefined}
+              >
+                {showDate ? <Text style={styles.dateTag}>{record.date}</Text> : null}
+                {showTime ? (
+                  <Text style={styles.timeTag}>{new Date(record.timestamp).toTimeString().slice(0, 5)}</Text>
+                ) : null}
+                {record.note ? (
+                  <Text style={styles.note} numberOfLines={2}>
+                    {record.note}
+                  </Text>
+                ) : null}
+              </Pressable>
+            </View>
           ) : null}
         </View>
       </Animated.View>
@@ -267,21 +262,18 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
     gap: 2,
   },
-  // 主行：图标 + 分类 + 右侧动作；日期/备注在它下面另起一行
+  // 第一行：图标 + 分类 + 右侧金额/删除
   rowMain: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm + 4,
   },
-  // 编辑热区：分类信息列（图标与核销按钮在左侧 iconCol 里，读屏可分别聚焦）
+  // 编辑热区（图标 + 分类信息），与右侧动作区分开，读屏可分别聚焦
   rowContent: {
     flex: 1,
-  },
-  // 左侧图标列：图标在上，报销页的「核销/撤销」在原图标正下方
-  iconCol: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
+    gap: SPACING.sm + 4,
   },
   rowActions: {
     flexDirection: 'row',
@@ -345,11 +337,21 @@ const styles = StyleSheet.create({
   badgeTextDone: {
     color: COLORS.incomeText,
   },
+  // 第二行：行首是核销按钮（与图标同宽），其后是日期/备注
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm + 4,
+  },
   metaLine: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
+  },
+  // 没有核销按钮占位时，用缩进把日期/备注对齐到分类文字左边缘（图标宽 + 行间距）
+  metaIndented: {
     paddingLeft: 40 + SPACING.sm + 4,
   },
   note: {
@@ -373,7 +375,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   reimburseToggle: {
-    width: 40, // 与上方图标同宽，整列左边缘对齐
+    width: 40, // 与上方图标同宽、同左边缘，整列对齐
+    flexShrink: 0, // 第二行内容再挤也不能压掉这个宽度，否则就和图标错开了
     paddingVertical: 4,
     borderRadius: RADIUS.pill,
     alignItems: 'center',
