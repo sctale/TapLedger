@@ -768,34 +768,42 @@ export async function saveCategoryConfig(config: CategoryConfig): Promise<void> 
 // 报销只对支出成立。此前三条 SQL 都没过滤 type，而首页切收支类型时不会重置待报销标记，
 // 于是会产生「收入被标成待报销」的脏数据并虚增待报销总额（v0.11.8 两头一起堵）。
 
-// 待报销汇总（未核销）
-export async function getReimbursableSummary(): Promise<{ total: number; count: number }> {
+// 待报销汇总（未核销）。userId > 0 时只统计该成员——报销页按成员筛选时，
+// 顶部合计必须跟着筛选走，否则「待报销 ¥329」和下面列出来的条目对不上。
+export async function getReimbursableSummary(userId = 0): Promise<{ total: number; count: number }> {
   const database = await getDB();
   const row = await database.getFirstAsync<{ total: number; count: number }>(
     `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-     FROM ledger_records WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1 AND reimbursed = 0`,
-    [activeLedgerId],
+     FROM ledger_records WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1 AND reimbursed = 0${
+       userId > 0 ? ' AND user_id = ?' : ''
+     }`,
+    userId > 0 ? [activeLedgerId, userId] : [activeLedgerId],
   );
   return { total: row?.total ?? 0, count: row?.count ?? 0 };
 }
 
-// 待报销记录列表
-export async function getReimbursableRecords(): Promise<LedgerRecord[]> {
+// 待报销记录列表（含已核销，未核销排前面）
+export async function getReimbursableRecords(userId = 0): Promise<LedgerRecord[]> {
   const database = await getDB();
   const rows = await database.getAllAsync<Record<string, unknown>>(
-    `SELECT * FROM ledger_records WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1
+    `SELECT * FROM ledger_records WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1${
+      userId > 0 ? ' AND user_id = ?' : ''
+    }
      ORDER BY reimbursed ASC, date DESC, timestamp DESC`,
-    [activeLedgerId],
+    userId > 0 ? [activeLedgerId, userId] : [activeLedgerId],
   );
   return rows.map(mapRecord);
 }
 
-// 一键核销全部待报销
-export async function markAllReimbursed(): Promise<void> {
+// 一键核销待报销。userId > 0 时只核销该成员的——这是批量写且会同步到全家设备，
+// 作用范围必须和页面上筛选出来的条目一致，不能"看着筛了、实际全改了"。
+export async function markAllReimbursed(userId = 0): Promise<void> {
   const database = await getDB();
   await database.runAsync(
-    `UPDATE ledger_records SET reimbursed = 1, updated_at = ? WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1 AND reimbursed = 0`,
-    [Date.now(), activeLedgerId],
+    `UPDATE ledger_records SET reimbursed = 1, updated_at = ? WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 1 AND reimbursed = 0${
+      userId > 0 ? ' AND user_id = ?' : ''
+    }`,
+    userId > 0 ? [Date.now(), activeLedgerId, userId] : [Date.now(), activeLedgerId],
   );
 }
 

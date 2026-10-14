@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { LEDGER_EVENTS } from '../../constants';
+import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING } from '../../constants';
 import {
   getReimbursableRecords,
   getReimbursableSummary,
@@ -21,21 +21,29 @@ export default function ReimburseScreen() {
   const [reimburseSummary, setReimburseSummary] = useState({ total: 0, count: 0 });
   const [reimburseRecords, setReimburseRecords] = useState<LedgerRecord[]>([]);
   const [members, setMembers] = useState<MemberInfo[]>([]);
+  const [memberFilter, setMemberFilter] = useState(0); // 0=全部成员（v0.11.16）
   const [editing, setEditing] = useState<LedgerRecord | null>(null);
 
   const { showToast } = useToast();
 
+  const multiMember = members.length > 1;
+  const filterName = members.find((m) => m.id === memberFilter)?.displayName ?? '';
+
   const reload = useCallback(async () => {
     try {
-      const [rsSum, rsRec] = await Promise.all([getReimbursableSummary(), getReimbursableRecords()]);
+      // 合计与列表用同一个筛选条件，保证顶部数字就是下面这些条目的和
+      const [rsSum, rsRec] = await Promise.all([
+        getReimbursableSummary(memberFilter),
+        getReimbursableRecords(memberFilter),
+      ]);
       setReimburseSummary(rsSum);
       setReimburseRecords(rsRec);
     } catch {
       showToast('报销数据加载失败', 'error');
     }
-  }, [showToast]);
+  }, [memberFilter, showToast]);
 
-  // 挂载时加载
+  // 挂载时加载 / 切换成员后重载
   useEffect(() => {
     reload();
   }, [reload]);
@@ -52,8 +60,11 @@ export default function ReimburseScreen() {
 
   // 记账人标识靠成员缓存；登录态变化（登录/退出/同步）后重新读一次
   useEffect(() => {
-    const load = () => {
-      getCachedMembers().then(setMembers);
+    const load = async () => {
+      const list = await getCachedMembers();
+      setMembers(list);
+      // 选中的成员被移出家庭/退出登录时回到「全部」，否则会停在一个查无此人的空列表上
+      setMemberFilter((cur) => (cur > 0 && !list.some((m) => m.id === cur) ? 0 : cur));
     };
     load();
     const subs = [
@@ -69,21 +80,22 @@ export default function ReimburseScreen() {
   const busyRef = useRef(false);
 
   const handleMarkAllReimbursed = useCallback(() => {
+    const scope = memberFilter > 0 ? `${filterName} 的` : '';
     Alert.alert(
-      '一键核销全部待报销？',
-      `共 ${reimburseSummary.count} 笔、¥${formatMoney(reimburseSummary.total)}，核销后会同步到全家设备。`,
+      memberFilter > 0 ? `只核销 ${filterName} 的待报销？` : '一键核销全部待报销？',
+      `共 ${scope}${reimburseSummary.count} 笔、¥${formatMoney(reimburseSummary.total)}，核销后会同步到全家设备。`,
       [
         { text: '取消', style: 'cancel' },
         {
-          text: '全部核销',
+          text: memberFilter > 0 ? '核销 TA 的' : '全部核销',
           style: 'destructive',
           onPress: async () => {
             if (busyRef.current) return;
             busyRef.current = true;
             try {
-              await markAllReimbursed();
+              await markAllReimbursed(memberFilter);
               hapticSuccess();
-              showToast('已全部核销');
+              showToast(memberFilter > 0 ? `已核销 ${filterName} 的报销` : '已全部核销');
               DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
             } catch {
               hapticError();
@@ -95,7 +107,7 @@ export default function ReimburseScreen() {
         },
       ],
     );
-  }, [reimburseSummary.count, reimburseSummary.total, showToast]);
+  }, [filterName, memberFilter, reimburseSummary.count, reimburseSummary.total, showToast]);
 
   const handleToggleReimbursed = useCallback(async (record: LedgerRecord) => {
     if (busyRef.current) return;
@@ -122,37 +134,83 @@ export default function ReimburseScreen() {
         >
           {/* ===== 报销 ===== */}
           <Text style={styles.sectionTitle}>报销</Text>
+
+          {/* 成员筛选（多成员账本才显示，与统计页同款交互，v0.11.16） */}
+          {multiMember ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={local.chipScroll}
+              contentContainerStyle={local.chipRow}
+            >
+              <Pressable
+                style={[local.chip, memberFilter === 0 && local.chipOn]}
+                onPress={() => setMemberFilter(0)}
+                accessibilityRole="tab"
+                accessibilityLabel="全部成员"
+                accessibilityState={{ selected: memberFilter === 0 }}
+              >
+                <Text style={[local.chipText, memberFilter === 0 && local.chipTextOn]} numberOfLines={1}>
+                  👨‍👩‍👧 全部
+                </Text>
+              </Pressable>
+              {members.map((m) => (
+                <Pressable
+                  key={m.id}
+                  style={[local.chip, memberFilter === m.id && local.chipOn]}
+                  onPress={() => setMemberFilter(m.id)}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`只看${m.displayName}`}
+                  accessibilityState={{ selected: memberFilter === m.id }}
+                >
+                  <Text style={[local.chipText, memberFilter === m.id && local.chipTextOn]} numberOfLines={1}>
+                    {m.avatarEmoji} {m.displayName}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+
+          {/* 汇总卡只包这一小块；下面的条目和明细页一样直接铺在页面上 */}
           <View style={styles.card}>
             <View style={styles.reimburseHead}>
               <View>
                 <Text style={styles.reimburseTotal}>待报销 ¥{formatMoney(reimburseSummary.total)}</Text>
-                <Text style={styles.reimburseCount}>{reimburseSummary.count} 笔待核销</Text>
+                <Text style={styles.reimburseCount}>
+                  {reimburseSummary.count} 笔待核销{memberFilter > 0 ? ` · ${filterName}` : ''}
+                </Text>
               </View>
               {reimburseSummary.count > 0 ? (
                 <Pressable
                   style={styles.reimburseBtn}
                   onPress={handleMarkAllReimbursed}
                   accessibilityRole="button"
+                  accessibilityLabel={memberFilter > 0 ? `只核销${filterName}的待报销` : '一键核销全部待报销'}
                 >
-                  <Text style={styles.reimburseBtnText}>一键全部核销</Text>
+                  <Text style={styles.reimburseBtnText}>
+                    {memberFilter > 0 ? '核销 TA 的' : '一键全部核销'}
+                  </Text>
                 </Pressable>
               ) : null}
             </View>
-            {reimburseRecords.length > 0 ? (
-              <>
-                <Text style={styles.hint}>点击条目可看完整备注并编辑</Text>
-                <RecordList
-                  records={reimburseRecords}
-                  showDate
-                  members={members}
-                  onEdit={setEditing}
-                  onToggleReimbursed={handleToggleReimbursed}
-                />
-              </>
-            ) : (
-              <Text style={styles.emptyText}>暂无报销记录</Text>
-            )}
           </View>
+
+          {reimburseRecords.length > 0 ? (
+            <>
+              <Text style={styles.hint}>点击条目可看完整备注并编辑</Text>
+              <RecordList
+                records={reimburseRecords}
+                showDate
+                members={members}
+                onEdit={setEditing}
+                onToggleReimbursed={handleToggleReimbursed}
+              />
+            </>
+          ) : (
+            <Text style={styles.emptyText}>
+              {memberFilter > 0 ? `${filterName}暂无报销记录` : '暂无报销记录'}
+            </Text>
+          )}
         </ScrollView>
       </View>
       {/* 编辑页与列表页互斥显示（display 切换，与明细页/统计页同构）：
@@ -167,4 +225,17 @@ export default function ReimburseScreen() {
 const local = StyleSheet.create({
   page: { flex: 1 },
   hidden: { flex: 1, display: 'none' },
+  chipScroll: { flexGrow: 0, marginBottom: SPACING.sm },
+  chipRow: { gap: SPACING.sm, paddingVertical: 2 },
+  chip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  chipOn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  chipText: { fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, fontWeight: '600' },
+  chipTextOn: { color: COLORS.white, fontWeight: '700' },
 });
