@@ -203,14 +203,16 @@ export default function ManageScreen({ active }: Props) {
                     <Text style={styles.accEmoji}>{e.icon}</Text>
                   </View>
                   <View style={styles.accInfo}>
-                    <Text style={styles.accName}>{e.title}</Text>
+                    <View style={styles.entryTitleRow}>
+                      <Text style={styles.accName}>{e.title}</Text>
+                      {e.dot !== undefined ? (
+                        <View style={[styles.statusDot, e.dot && styles.statusDotOn]} />
+                      ) : null}
+                    </View>
                     <Text style={styles.accType} numberOfLines={1}>
                       {e.subtitle}
                     </Text>
                   </View>
-                  {e.dot !== undefined ? (
-                    <View style={[styles.statusDot, e.dot && styles.statusDotOn]} />
-                  ) : null}
                   <Text style={styles.entryArrow}>›</Text>
                 </Pressable>
               ))}
@@ -352,6 +354,12 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xl + 4,
     color: COLORS.textTertiary,
     fontWeight: '600',
+  },
+  // 标题与状态灯同一行（灯跟在「家庭同步」后面，不放行尾）
+  entryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   // 家庭同步连接灯：与同步页那枚点同尺寸同色（绿=探测通过，灰=其余一切情况）
   statusDot: {
