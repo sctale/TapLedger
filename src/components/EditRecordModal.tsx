@@ -263,8 +263,6 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
                 onChangeText={setNote}
                 maxLength={30}
                 autoFocus={noteFocused}
-                returnKeyType="done"
-                onSubmitEditing={() => Keyboard.dismiss()}
                 onFocus={() => {
                   // 与首页一致：聚焦时滚到底，输入框位于系统键盘上方（adjustResize 生效）
                   scrollRef.current?.scrollToEnd({ animated: true });
@@ -276,9 +274,7 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
                 onPress={() => {
                   setShowNote(true);
                   setNoteFocused(true);
-                  hapticLight();
                 }}
-                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                 accessibilityRole="button"
                 accessibilityLabel="添加备注"
               >
@@ -447,11 +443,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   noteToggle: {
-    // 与首页同一条修复：可点区域太薄，第一下容易点空
-    minHeight: 40,
-    justifyContent: 'center',
-    paddingRight: SPACING.sm,
-    paddingVertical: 6,
+    paddingVertical: 2,
     flexShrink: 1,
   },
   noteToggleText: {
