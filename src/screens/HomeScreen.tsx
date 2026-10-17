@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DeviceEventEmitter,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -66,6 +67,8 @@ export default function HomeScreen({ active }: Props) {
   const [amountMap, setAmountMap] = useState<Record<string, number>>({});
 
   const scrollRef = useRef<ScrollView>(null);
+  const noteInputRef = useRef<TextInput>(null);
+  const [imeHeight, setImeHeight] = useState(0); // 系统输入法高度：备注行要躲开它
   // v0.11 修复：today 改为保存时实时计算（此前挂载时定死，跨零点连记会记到昨天）
   const [, setCatTick] = useState(0); // 自定义分类变更 → 触发重渲染刷新分类选择器
   // 连记模式下手会按得很快，「记一笔」没有 disabled 态：一次轻双击就会落两条同样的账
@@ -77,6 +80,26 @@ export default function HomeScreen({ active }: Props) {
     if (!active) return;
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [active]);
+
+  // 备注行躲开输入法。Android 15+ edge-to-edge 之后系统不再压缩窗口，卡底固定的数字键盘和它上面的
+  // 备注行会被 IME 一起盖住；而 onFocus 那一刻键盘还没弹起，此时 scrollToEnd 是白滚（v0.11.10 就是
+  // 这样，点完「＋ 添加备注」输入框反而被键盘压在下面，看起来像"点不动"）。所以监听 keyboardDidShow：
+  // 拿到真实高度 → 给滚动内容补同高的 paddingBottom → 延一帧再滚到底，备注行就精确停在 IME 上沿。
+  // 与 EditRecordModal 用的是同一套已验证处理。
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setImeHeight(e.endCoordinates?.height ?? 0);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => setImeHeight(0));
+    return () => {
+      if (timer) clearTimeout(timer);
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   // 首次加载（恢复默认收支类型 + 同步用户 + 快捷记账偏好）
   useEffect(() => {
@@ -218,11 +241,6 @@ export default function HomeScreen({ active }: Props) {
     hapticLight();
   }, []);
 
-  // 备注聚焦时滚到内容底部，确保输入框位于固定键盘上方可见
-  const handleNoteFocus = useCallback(() => {
-    scrollRef.current?.scrollToEnd({ animated: true });
-  }, []);
-
   // 保存记录
   const handleSave = useCallback(async () => {
     if (!isValidAmount(amountStr)) {
@@ -289,7 +307,7 @@ export default function HomeScreen({ active }: Props) {
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, imeHeight > 0 ? { paddingBottom: imeHeight } : null]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           bounces={false}
@@ -379,6 +397,7 @@ export default function HomeScreen({ active }: Props) {
           <View style={styles.optionRow}>
             {showNote ? (
               <TextInput
+                ref={noteInputRef}
                 style={styles.noteInput}
                 placeholder="备注（可选）"
                 placeholderTextColor={COLORS.textTertiary}
@@ -386,12 +405,17 @@ export default function HomeScreen({ active }: Props) {
                 onChangeText={setNote}
                 maxLength={30}
                 autoFocus
-                onFocus={handleNoteFocus}
+                returnKeyType="done"
+                onSubmitEditing={() => noteInputRef.current?.blur()}
               />
             ) : (
               <Pressable
                 style={styles.noteToggle}
-                onPress={() => setShowNote(true)}
+                onPress={() => {
+                  setShowNote(true);
+                  hapticLight();
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                 accessibilityRole="button"
                 accessibilityLabel="添加备注"
               >
@@ -599,7 +623,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   noteToggle: {
-    paddingVertical: 2,
+    // 之前只有 paddingVertical: 2，可点区域不到 20dp——第一下经常点空（"点备注框不顺畅"的另一半）。
+    // 两大平台的可点尺寸下限都在 44~48dp，这里给到 40dp 高 + hitSlop 补足。
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingRight: SPACING.sm,
+    paddingVertical: 6,
   },
   noteToggleText: {
     fontSize: FONT_SIZE.sm,
