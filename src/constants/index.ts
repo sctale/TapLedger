@@ -324,6 +324,7 @@ export const SETTING_KEYS = {
   // ===== 快捷记账偏好（v0.9.1，随手记式）=====
   CONTINUOUS_MODE: 'continuous_mode', // 连记开关（保存后不弹提示，便于连续补记）
   LAST_AMOUNT_BY_CATEGORY: 'last_amount_by_category', // 各分类最近一次金额（JSON: {categoryKey: number}）
+  HAPTIC_LEVEL: 'haptic_level', // 触感档位：off | subtle（默认，只在结果上振）| full（含按键与选择）
 } as const;
 
 // 生成同步 uuid（本地库与服务端都拿它当记录身份，服务端 records.uuid 是全局主键）

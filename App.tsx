@@ -2,9 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, DeviceEventEmitter, View, StyleSheet, ActivityIndicator } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { COLORS, LEDGER_EVENTS, setCategoryConfig } from './src/constants';
-import { initDatabase, setCustomCategoriesCache, getCategoryConfig } from './src/database/ledgerDB';
+import { COLORS, LEDGER_EVENTS, SETTING_KEYS, setCategoryConfig } from './src/constants';
+import {
+  initDatabase,
+  setCustomCategoriesCache,
+  getCategoryConfig,
+  getSetting,
+} from './src/database/ledgerDB';
 import { runRecurringCheck } from './src/utils/recurring';
+import { setHapticLevel } from './src/utils/haptics';
 import { runSync, purgeOldTombstones } from './src/sync/syncEngine';
 import TabBar, { type TabKey } from './src/components/TabBar';
 import Toast from './src/components/Toast';
@@ -37,6 +43,9 @@ export default function App() {
         await setCustomCategoriesCache();
         const cfg = await getCategoryConfig();
         setCategoryConfig(cfg);
+        // 触感档位读进模块缓存：各页调用 hapticXxx 时不必再查库（默认 subtle）
+        const haptic = await getSetting(SETTING_KEYS.HAPTIC_LEVEL);
+        setHapticLevel(haptic === 'off' || haptic === 'full' ? haptic : 'subtle');
       } catch {
         // 初始化失败也放行，页面会自行兜底
       }

@@ -11,9 +11,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { COLORS, LEDGER_EVENTS, SETTING_KEYS } from '../../constants';
+import { COLORS, FONT_SIZE, LEDGER_EVENTS, SETTING_KEYS, SPACING } from '../../constants';
 import { getSetting, saveSetting } from '../../database/ledgerDB';
-import { hapticError, hapticLight, hapticSuccess } from '../../utils/haptics';
+import {
+  hapticError,
+  hapticLight,
+  hapticSuccess,
+  setHapticLevel,
+  type HapticLevel,
+} from '../../utils/haptics';
 import { useToast } from '../../hooks/useToast';
 import { manageStyles } from './sharedStyles';
 
@@ -27,28 +33,53 @@ const extraStyles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // 触感档位：chip 选中态（同 RuleModal 的 pickChipOn）
+  pickChipOn: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  chipText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
 });
 
 // 共用样式 + 本页补充（键名与原 ManageScreen styles 保持一致）
 const styles = { ...manageStyles, ...extraStyles };
 
 // 偏好设置二级页（v0.5.9 从 ManageScreen 拆分；顶栏返回按钮由外层 ManageScreen 统一渲染）
+const HAPTIC_OPTIONS: { key: HapticLevel; label: string }[] = [
+  { key: 'off', label: '关闭' },
+  { key: 'subtle', label: '精简' },
+  { key: 'full', label: '完整' },
+];
+
 export default function PrefsScreen() {
   const [budgetText, setBudgetText] = useState('');
   const [defaultIncome, setDefaultIncome] = useState(false);
+  const [haptic, setLevel] = useState<HapticLevel>('subtle');
 
   const { showToast } = useToast();
 
-  // 挂载时读取预算与默认收支类型
+  // 挂载时读取预算、默认收支类型与触感档位
   useEffect(() => {
     (async () => {
       try {
-        const [budget, type] = await Promise.all([
+        const [budget, type, hapticLevel] = await Promise.all([
           getSetting(SETTING_KEYS.MONTHLY_BUDGET),
           getSetting(SETTING_KEYS.DEFAULT_TYPE),
+          getSetting(SETTING_KEYS.HAPTIC_LEVEL),
         ]);
         setBudgetText(budget ?? '');
         setDefaultIncome(type === 'income');
+        setLevel(hapticLevel === 'off' || hapticLevel === 'full' ? hapticLevel : 'subtle');
       } catch {
         // 读取失败保持默认
       }
@@ -82,6 +113,28 @@ export default function PrefsScreen() {
     DeviceEventEmitter.emit(LEDGER_EVENTS.SETTINGS_CHANGED); // v0.11：通知首页即时应用默认收支类型
     hapticLight();
   }, []);
+
+  // 触感档位：写模块缓存 + 落库，改动即时生效；顺手给一段样本，让用户当场感觉到选的是哪一档
+  const handleHapticLevel = useCallback(
+    async (next: HapticLevel) => {
+      setLevel(next);
+      setHapticLevel(next);
+      await saveSetting(SETTING_KEYS.HAPTIC_LEVEL, next);
+      if (next === 'off') {
+        showToast('已关闭触感反馈');
+        return;
+      }
+      hapticSuccess();
+      if (next === 'full') {
+        // 隔开一点，否则紧跟着的轻反馈会被防抖吞掉，也听不出"两下"
+        setTimeout(() => hapticLight(), 300);
+        showToast('按键与分类切换也会轻振');
+      } else {
+        showToast('只在记一笔成功或失败时振一下');
+      }
+    },
+    [showToast],
+  );
 
   return (
     // 键盘避让：键盘弹出时内容上移，预算保存按钮不被遮挡（v0.5.7）
@@ -127,6 +180,32 @@ export default function PrefsScreen() {
               trackColor={{ false: COLORS.border, true: COLORS.income }}
               thumbColor={COLORS.white}
             />
+          </View>
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.label}>触感反馈</Text>
+              <Text style={styles.hint}>
+                精简＝只在记一笔成功、失败或删除时振一下；完整＝数字键盘按键与分类切换也用最轻的一档
+                系统触感。默认精简。
+              </Text>
+              <View style={styles.chipRow}>
+                {HAPTIC_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.key}
+                    style={[styles.pickChip, haptic === opt.key && styles.pickChipOn]}
+                    onPress={() => handleHapticLevel(opt.key)}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`触感反馈：${opt.label}`}
+                    accessibilityState={{ selected: haptic === opt.key }}
+                  >
+                    <Text style={[styles.chipText, haptic === opt.key && styles.pickNameOn]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
           </View>
         </View>
       </ScrollView>
