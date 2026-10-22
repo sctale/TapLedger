@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, DeviceEventEmitter, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  AppState,
+  BackHandler,
+  DeviceEventEmitter,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, findCategory, SETTING_KEYS } from '../constants';
@@ -90,6 +99,16 @@ export default function StatsScreen({ active }: Props) {
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false }));
     refreshAll();
   }, [active, refreshAll]);
+
+  // 收入脱敏的第二道：停在统计页没换 Tab，但切去后台/下拉通知栏/进多任务时也要重新遮上。
+  // 用 !== 'active'（而不是只判 'background'）：'inactive' 正是系统截取多任务预览的时刻，
+  // 这时候遮上才有机会让缩略图里也是 ****。
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (status) => {
+      if (status !== 'active') setIncomeShown(false);
+    });
+    return () => sub.remove();
+  }, []);
 
   // 成员缓存加载（登录态/同步完成事件触发）
   const loadMembers = useCallback(async () => {
