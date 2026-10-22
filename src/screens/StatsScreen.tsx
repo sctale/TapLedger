@@ -13,6 +13,7 @@ import {
   getReimbursableSummary,
 } from '../database/ledgerDB';
 import { formatMoney, getLastNDates, getMonthRange, getToday } from '../utils/dateUtils';
+import { hapticLight } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
 import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUtils';
 import CategoryPieChart from '../components/CategoryPieChart';
@@ -39,6 +40,7 @@ export default function StatsScreen({ active }: Props) {
   const [trendLabels, setTrendLabels] = useState<string[]>([]);
   const [budget, setBudget] = useState(0);
   const [tick, setTick] = useState(0);
+  const [incomeShown, setIncomeShown] = useState(false); // 收入默认脱敏，点一下才显示真数
   const [members, setMembers] = useState<MemberInfo[]>([]); // 家庭成员缓存（v0.5）
   const [memberFilter, setMemberFilter] = useState(0); // 0=全部成员
   const [memberStats, setMemberStats] = useState<{ userId: number; total: number; count: number }[]>([]);
@@ -82,6 +84,7 @@ export default function StatsScreen({ active }: Props) {
     }
     setPage('main');
     setDrillEdit(null); // 切走再回来不该还停在半开的编辑页（与明细页一致）
+    setIncomeShown(false); // 离开再回来要重新遮上，否则脱敏形同虚设
     // 主页现在是常驻页（此前是重新挂载才天然在顶部），刚由 display:none 切回可见时
     // 同帧 scrollTo 可能被忽略，故放到下一帧再回顶——切 Tab 回顶这个行为要保留
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false }));
@@ -388,16 +391,33 @@ export default function StatsScreen({ active }: Props) {
               </Text>
             </View>
             <View style={styles.overviewDivider} />
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewLabel}>收入</Text>
+            {/* 收入默认脱敏（v0.11.19）：公共场合打开统计页不暴露工资数字，
+                点一下看真数、再点收回；切走再回统计页会重新遮上（见 active 副作用） */}
+            <Pressable
+              style={styles.overviewItem}
+              onPress={() => {
+                setIncomeShown((v) => !v);
+                hapticLight();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                incomeShown ? `收入 ¥${formatMoney(income)}，点击隐藏` : '收入已脱敏，点击显示实际金额'
+              }
+            >
+              <View style={styles.overviewLabelRow}>
+                <Text style={styles.overviewLabel}>收入</Text>
+                <Text style={styles.overviewLock} accessibilityElementsHidden>
+                  {incomeShown ? '🔓' : '🔒'}
+                </Text>
+              </View>
               <Text
                 style={[styles.overviewValue, { color: COLORS.income }]}
                 adjustsFontSizeToFit
                 numberOfLines={1}
               >
-                ¥{formatMoney(income)}
+                {incomeShown ? `¥${formatMoney(income)}` : '¥ ****'}
               </Text>
-            </View>
+            </Pressable>
           </View>
 
           {/* 预算对比（预算为月维度，仅本月视图显示，避免与周/年范围数据错误对比） */}
@@ -696,6 +716,14 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     color: COLORS.textTertiary,
     marginBottom: 3,
+  },
+  overviewLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  overviewLock: {
+    fontSize: FONT_SIZE.xs - 2,
   },
   overviewValue: {
     fontSize: FONT_SIZE.md,
