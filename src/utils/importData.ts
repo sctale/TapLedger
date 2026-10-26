@@ -139,6 +139,8 @@ function parseJSONBackup(text: string): ParsedBackup {
 async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promise<ImportResult> {
   try {
     let failed = 0;
+    // 合并策略实际插入条数（已存在的 uuid 会跳过，v0.11.21）
+    let inserted = data.records.length;
     // 1) 数据写入
     if (strategy === 'replace') {
       // 三张表统一按同步身份（uuid）替换：本地多出来的打墓碑、同 uuid 覆盖、新的插入。
@@ -148,7 +150,7 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
       await replaceRecurringRulesByIdentity(data.recurring);
       await replaceCustomCategoriesByIdentity(data.customCategories);
     } else {
-      await bulkInsertRecords(data.records);
+      inserted = await bulkInsertRecords(data.records);
       // 3) 周期规则（合并策略逐条插入，冲突即计入 failed）
       for (const r of data.recurring) {
         try {
@@ -197,7 +199,7 @@ async function applyImport(data: ParsedBackup, strategy: ImportStrategy): Promis
     const cfg = await getCategoryConfig();
     setCategoryConfig(cfg);
     DeviceEventEmitter.emit(LEDGER_EVENTS.DATA_IMPORTED);
-    return { success: true, strategy, imported: data.records.length, skipped: data.skipped, failed };
+    return { success: true, strategy, imported: inserted, skipped: data.skipped, failed };
   } catch {
     return { success: false, imported: 0, skipped: 0, error: '数据库写入失败' };
   }

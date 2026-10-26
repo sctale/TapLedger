@@ -118,6 +118,11 @@ export default function StatsScreen({ active }: Props) {
     loadMembers();
   }, [loadMembers]);
 
+  // v0.11.21：成员被移出家庭/退出登录后复位筛选（同明细页），避免停在查无此人的空统计
+  useEffect(() => {
+    setMemberFilter((cur) => (cur > 0 && !members.some((m) => m.id === cur) ? 0 : cur));
+  }, [members]);
+
   // 当前范围
   const { rangeLabel, start, end, trendDates } = useMemo(() => {
     if (range === 'week') {

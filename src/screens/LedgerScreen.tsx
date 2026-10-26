@@ -123,6 +123,12 @@ export default function LedgerScreen({ active }: Props) {
     getCachedMembers().then(setMembers); // 记账人标识（v0.5）
   }, []);
 
+  // v0.11.21：成员被移出家庭/退出登录后，残留的筛选 id 会让列表与合计一直查空，
+  // 而成员≤1 时筛选胶囊整行隐藏、无处复位 → 随成员列表变化自动回到「全部」
+  useEffect(() => {
+    setMemberFilter((cur) => (cur > 0 && !members.some((m) => m.id === cur) ? 0 : cur));
+  }, [members]);
+
   // Tab 激活时滚回顶部（按当前模式滚动对应列表，v0.5.4）
   useEffect(() => {
     if (!active) {

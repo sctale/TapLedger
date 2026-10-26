@@ -117,13 +117,21 @@ export const RecordRow = React.memo(function RecordRow({
               </View>
             </Pressable>
             <View style={styles.rowActions}>
-              <Text
-                style={[styles.amount, { color: isExpense ? COLORS.expense : COLORS.income }]}
-                accessibilityLabel={`${isExpense ? '支出' : '收入'}${formatMoney(record.amount)}元`}
+              {/* v0.11.21：金额也是高频点击位置，给金额本身补编辑热区（删除按钮仍独立在外） */}
+              <Pressable
+                onPress={() => onEdit?.(record)}
+                disabled={!onEdit}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
+                accessibilityRole={onEdit ? 'button' : undefined}
+                accessibilityLabel={
+                  onEdit ? `编辑${cat.label}记录${formatMoney(record.amount)}元` : undefined
+                }
               >
-                {isExpense ? '-' : '+'}
-                {formatMoney(record.amount)}
-              </Text>
+                <Text style={[styles.amount, { color: isExpense ? COLORS.expense : COLORS.income }]}>
+                  {isExpense ? '-' : '+'}
+                  {formatMoney(record.amount)}
+                </Text>
+              </Pressable>
               {onDelete ? (
                 <Pressable
                   style={styles.deleteBtn}

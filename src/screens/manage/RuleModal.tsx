@@ -121,6 +121,20 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
           maxLength={9}
         />
       </View>
+      {/* v0.11.21：备注从表单最底部上移到金额下方——原来它是最后一项，弹出系统键盘后
+          正好被 IME 盖住（Dialog 窗口在 Android 15+ edge-to-edge 下不随键盘压缩） */}
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>备注（可选，作为记录备注）</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="如 每月工资"
+          placeholderTextColor={COLORS.textTertiary}
+          value={note}
+          onChangeText={setNote}
+          maxLength={20}
+          returnKeyType="done"
+        />
+      </View>
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>收支类型</Text>
         <View style={styles.typeSwitch}>
@@ -243,18 +257,6 @@ export default function RuleModal({ visible, initialRule = null, onClose, onSubm
           </View>
         </View>
       ) : null}
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>备注（可选，作为记录备注）</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="如 每月工资"
-          placeholderTextColor={COLORS.textTertiary}
-          value={note}
-          onChangeText={setNote}
-          maxLength={20}
-          returnKeyType="done"
-        />
-      </View>
     </Modal>
   );
 }

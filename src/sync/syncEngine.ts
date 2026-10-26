@@ -10,6 +10,7 @@ import {
   getActiveLedgerId,
   setActiveLedgerId,
   adoptUnassignedRowsIntoLedger,
+  clampFutureTimestamps,
 } from '../database/ledgerDB';
 import { apiSyncPull, apiSyncPush, apiGetLedgers, getSyncConfig, ApiError } from './apiClient';
 import type { SyncChanges, SyncCustomCategoryDTO, SyncRecordDTO, SyncRecurringDTO } from './serverTypes';
@@ -96,9 +97,14 @@ async function collectPushChanges(
 
 // ===== pull：服务端变更 → 本地 upsert（LWW）=====
 
-async function applyPullChanges(changes: SyncChanges): Promise<number> {
+async function applyPullChanges(changes: SyncChanges, serverTime: number): Promise<number> {
   const db = await getDB();
   const activeLedger = getActiveLedgerId();
+  // v0.11.21：本地时间「跑到服务端时刻之后」说明这台设备时钟超前。
+  // 此时本地 updated_at 不可信：它会让 r.updatedAt > local.updated_at 永远为假，
+  // 家人的后续编辑被长期忽略；而服务端 push 时其实已把该行钳到服务端时间。
+  // 故只要本地时间超前，就接受服务端版本（服务端时间是权威），再由 runSync 统一回落本地时间。
+  const localIsFuture = (localTs: number): boolean => localTs > serverTime;
   let applied = 0;
   // 整体包事务：任一条失败即整体回滚，避免半程写入导致下次漏拉（水位不一致）
   await db.withTransactionAsync(async () => {
@@ -111,7 +117,7 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
         [r.uuid, activeLedger],
       );
       if (local) {
-        if (r.updatedAt > local.updated_at) {
+        if (r.updatedAt > local.updated_at || localIsFuture(local.updated_at)) {
           await db.runAsync(
             `UPDATE ledger_records SET amount = ?, category = ?, type = ?, note = ?, date = ?, timestamp = ?,
              reimbursable = ?, reimbursed = ?, user_id = ?, updated_at = ?, deleted = ?
@@ -164,7 +170,7 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
         [r.uuid, activeLedger],
       );
       if (local) {
-        if (r.updatedAt > local.updated_at) {
+        if (r.updatedAt > local.updated_at || localIsFuture(local.updated_at)) {
           await db.runAsync(
             `UPDATE recurring_rules SET name = ?, amount = ?, type = ?, category = ?,
              frequency = ?, day_of_week = ?, day_of_month = ?, month_of_year = ?, note = ?, enabled = ?,
@@ -225,7 +231,7 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
         'SELECT rowid, updated_at FROM custom_categories WHERE uuid = ? AND key <> ? AND ledger_id = ?',
         [c.uuid, c.key, activeLedger],
       );
-      if (renamed && c.updatedAt > renamed.updated_at) {
+      if (renamed && (c.updatedAt > renamed.updated_at || localIsFuture(renamed.updated_at))) {
         await db.runAsync('DELETE FROM custom_categories WHERE rowid = ?', [renamed.rowid]);
         applied++;
       }
@@ -235,8 +241,21 @@ async function applyPullChanges(changes: SyncChanges): Promise<number> {
          ON CONFLICT(key, ledger_id) DO UPDATE SET
            uuid = excluded.uuid, label = excluded.label, emoji = excluded.emoji, color = excluded.color,
            type = excluded.type, updated_at = excluded.updated_at, deleted = excluded.deleted
-         WHERE excluded.updated_at > custom_categories.updated_at`,
-        [c.key, c.uuid, activeLedger, c.label, c.emoji, c.color, c.type, Date.now(), c.updatedAt, c.deleted],
+         WHERE excluded.updated_at > custom_categories.updated_at
+            OR custom_categories.updated_at > ?`,
+        [
+          c.key,
+          c.uuid,
+          activeLedger,
+          c.label,
+          c.emoji,
+          c.color,
+          c.type,
+          Date.now(),
+          c.updatedAt,
+          c.deleted,
+          serverTime,
+        ],
       );
       if (res.changes > 0) applied++;
     }
@@ -292,9 +311,27 @@ export async function runSync(): Promise<SyncResult> {
     const lastPullStr = await getSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PULL_AT, ledgerId));
     const lastPullAt = Number(lastPullStr ?? '0') || 0;
     const pullRes = await apiSyncPull(config.baseUrl, config.token, lastPullAt, ledgerId);
-    const pulled = await applyPullChanges(pullRes.changes);
-    await saveSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PULL_AT, ledgerId), String(pullRes.serverTime));
+    const serverTime = pullRes.serverTime || Date.now();
+    const pulled = await applyPullChanges(pullRes.changes, serverTime);
+    await saveSetting(watermarkKey(SETTING_KEYS.SYNC_LAST_PULL_AT, ledgerId), String(serverTime));
     await saveSetting(SETTING_KEYS.SYNC_LAST_SYNC_TIME, String(Date.now()));
+
+    // v0.11.21：时钟超前设备的「未来时间」善后。
+    // ① 本地行 updated_at 回落到服务端时间，避免长期压制家人编辑；
+    // ② push 水位若已被未来值顶到前面，回落后这些行才能在下一轮重新推上去；
+    //    （否则会出现「同步过一次以后本地新记账永远传不出去」）
+    try {
+      await clampFutureTimestamps(serverTime);
+      const pushKey = watermarkKey(SETTING_KEYS.SYNC_LAST_PUSH_AT, ledgerId);
+      const pushMark = Number((await getSetting(pushKey)) ?? '0') || 0;
+      if (pushMark > serverTime) {
+        // 回落到 serverTime - 1：push 取的是 updated_at > 水位，回落后的行正好等于
+        // serverTime，若把水位设成 serverTime 它们会被跳过（下一轮再也传不上去）
+        await saveSetting(pushKey, String(serverTime - 1));
+      }
+    } catch {
+      // 善后失败不影响本轮同步结果，下一轮再试
+    }
 
     // 有数据落库 → 通知页面刷新
     if (pulled > 0) {

@@ -1,19 +1,23 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { getAllRecords, getAllSettings, getRecurringRules, getCustomCategories } from '../database/ledgerDB';
-import { EXPORT_VERSION, SETTING_KEYS } from '../constants';
+import { EXPORT_VERSION } from '../constants';
 import type { CustomCategory, ExportData, LedgerRecord, RecurringRule } from '../types';
 
 // v0.11 安全：备份不得携带登录凭证/身份/水位等同步私有键（分享即泄露 token，导入即劫持账号）
-const EXPORT_EXCLUDED_SETTINGS = new Set<string>(
-  Object.values(SETTING_KEYS).filter((k) => k.startsWith('sync.')),
-);
+// v0.11.21：按前缀判断，而不是匹配 SETTING_KEYS 里的固定键名——同步水位实际存为
+// `sync.last_push_at.<ledgerId>` / `sync.last_pull_at.<ledgerId>`（按账本动态拼接），
+// 旧实现只过滤固定键，水位会随备份导出；导入到另一台设备后水位跳到旧设备进度，
+// 会跳过区间内的家人变更或本地未传变更。
+function isPrivateSyncKey(key: string): boolean {
+  return key.startsWith('sync.');
+}
 
 // 过滤 settings：剔除 sync.* 私有键
 export function sanitizeExportSettings(settings: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(settings)) {
-    if (!EXPORT_EXCLUDED_SETTINGS.has(k)) out[k] = v;
+    if (!isPrivateSyncKey(k)) out[k] = v;
   }
   return out;
 }

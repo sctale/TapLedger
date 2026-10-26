@@ -840,10 +840,24 @@ export async function getAllSettings(): Promise<Record<string, string>> {
 // ===== 导入支持 =====
 
 // 批量插入（合并策略）
-export async function bulkInsertRecords(records: Omit<LedgerRecord, 'id'>[]): Promise<void> {
+// v0.11.21：按同步身份（uuid + ledger_id）去重。此前直接 INSERT，而 uuid 在本地表上
+// 没有 UNIQUE 约束（历史数据可能重复，故不能只靠约束），同一份备份导入两次、
+// 或导入本机已有数据，就会产生同 uuid 的重复行 → 明细与月度合计翻倍，pull 也只更新
+// 其中一行，重复行长期残留。返回真正插入的条数，供导入结果如实提示。
+export async function bulkInsertRecords(records: Omit<LedgerRecord, 'id'>[]): Promise<number> {
   const database = await getDB();
+  let inserted = 0;
   await database.withTransactionAsync(async () => {
+    // 一次查出本账本已有 uuid，避免逐条 SELECT；seen 同时用于过滤备份文件内部的重复 uuid
+    const existing = await database.getAllAsync<{ uuid: string }>(
+      'SELECT uuid FROM ledger_records WHERE ledger_id = ?',
+      [activeLedgerId],
+    );
+    const seen = new Set(existing.map((e) => e.uuid));
     for (const r of records) {
+      const uuid = r.uuid || genUuid();
+      if (seen.has(uuid)) continue;
+      seen.add(uuid);
       await database.runAsync(
         `INSERT INTO ledger_records (amount, category, type, note, date, timestamp, reimbursable, reimbursed, uuid, user_id, updated_at, deleted, ledger_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -856,19 +870,40 @@ export async function bulkInsertRecords(records: Omit<LedgerRecord, 'id'>[]): Pr
           r.timestamp,
           r.reimbursable ? 1 : 0,
           r.reimbursed ? 1 : 0,
-          r.uuid || genUuid(),
+          uuid,
           r.userId ?? 0,
           r.updatedAt || r.timestamp,
           r.deleted ? 1 : 0,
           activeLedgerId,
         ],
       );
+      inserted++;
     }
   });
+  return inserted;
+}
+
+// 同步时把「未来时间」的本地行收敛到服务端时间（v0.11.21）
+// 设备时钟超前时，push 只会被服务端钳制，本地行与 push 水位仍停在未来值：
+// 一是让本机长期忽略家人对该行的后续编辑，二是水位越过后本地新修改永远推不上去。
+// 以 pull 响应里的 serverTime 为上限统一回落，让这些行重新进入下一轮 push。
+export async function clampFutureTimestamps(cap: number): Promise<number> {
+  const database = await getDB();
+  let changed = 0;
+  await database.withTransactionAsync(async () => {
+    // 表名为固定常量，不来自外部输入
+    for (const table of ['ledger_records', 'recurring_rules', 'custom_categories']) {
+      const res = await database.runAsync(
+        `UPDATE ${table} SET updated_at = ? WHERE ledger_id = ? AND updated_at > ?`,
+        [cap, activeLedgerId, cap],
+      );
+      changed += res.changes;
+    }
+  });
+  return changed;
 }
 
 // ===== 导入「替换」策略（按同步身份 upsert + 墓碑，绝不硬删）=====
-//
 // 旧实现直接 `DELETE FROM ... WHERE ledger_id = ?` 再重插，问题在于硬删不产生墓碑：
 // 服务端只向前推进 updated_at，本地消失的行不会被任何设备知道 → 家人的设备上旧记录原样留着，
 // 本机重装/换设备后还会被 pull 回来，表现就是「替换导入没生效、账目翻倍」。
