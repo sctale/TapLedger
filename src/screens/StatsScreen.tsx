@@ -21,7 +21,15 @@ import {
   getMemberExpenseSummary,
   getReimbursableSummary,
 } from '../database/ledgerDB';
-import { formatMoney, getLastNDates, getMonthRange, getToday } from '../utils/dateUtils';
+import {
+  formatDate,
+  formatMoney,
+  getDaysInMonth,
+  getLastNDates,
+  getMonthName,
+  getMonthRange,
+  getToday,
+} from '../utils/dateUtils';
 import { hapticLight } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
 import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUtils';
@@ -42,6 +50,8 @@ interface Props {
 export default function StatsScreen({ active }: Props) {
   const [page, setPage] = useState<Page>('main');
   const [range, setRange] = useState<RangeKey>('month');
+  // 统计月份：0=本月，负数=往前翻（v0.11.25 支持查看历史月份）
+  const [monthOffset, setMonthOffset] = useState(0);
   const [expense, setExpense] = useState(0);
   const [income, setIncome] = useState(0);
   const [categoryData, setCategoryData] = useState<{ category: string; total: number }[]>([]);
@@ -123,6 +133,15 @@ export default function StatsScreen({ active }: Props) {
     setMemberFilter((cur) => (cur > 0 && !members.some((m) => m.id === cur) ? 0 : cur));
   }, [members]);
 
+  // 月份锚点：0=本月，-1=上月…；tick 让跨月/回页时跟着当前日期重新计算
+  const monthAnchor = useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+    // 表达式里没直接引用 tick，它只用于「回到本页/数据变更时重算当前月」
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthOffset, tick]);
+  const isCurrentMonth = monthOffset === 0;
+
   // 当前范围
   const { rangeLabel, start, end, trendDates } = useMemo(() => {
     if (range === 'week') {
@@ -130,15 +149,21 @@ export default function StatsScreen({ active }: Props) {
       return { rangeLabel: '近 7 天', start: dates[0], end: getToday(), trendDates: dates };
     }
     if (range === 'month') {
-      const mr = getMonthRange(new Date());
-      // 本月 1 日 → 今天（与标题「本月」一致，替代旧的近 30 天滚动窗口）
-      const now = new Date();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const mr = getMonthRange(monthAnchor);
+      // 当前月只画到今天（与「本月」口径一致）；历史月份按整月展示
+      const lastDay = isCurrentMonth
+        ? new Date().getDate()
+        : getDaysInMonth(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1);
       const dates: string[] = [];
-      for (let day = 1; day <= now.getDate(); day++) {
-        dates.push(`${now.getFullYear()}-${mm}-${String(day).padStart(2, '0')}`);
+      for (let day = 1; day <= lastDay; day++) {
+        dates.push(formatDate(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), day)));
       }
-      return { rangeLabel: '本月', start: mr.start, end: mr.end, trendDates: dates };
+      return {
+        rangeLabel: isCurrentMonth ? '本月' : getMonthName(monthAnchor),
+        start: mr.start,
+        end: mr.end,
+        trendDates: dates,
+      };
     }
     // 近 12 个月（v0.11 修复：start 取回溯窗口的首月月初，跨年时去年月份不再恒为 0）
     const now = new Date();
@@ -153,7 +178,7 @@ export default function StatsScreen({ active }: Props) {
     // 否则「本月/近 7 天」还停在昨天（数据会按旧 end 查）。
     // 表达式里没直接引用 tick（它只通过 new Date() 生效），所以要显式关掉这条规则
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, tick]);
+  }, [range, tick, monthAnchor, isCurrentMonth]);
 
   // 加载数据（memberFilter > 0 时按记账人筛选，v0.5）
   useEffect(() => {
@@ -336,13 +361,13 @@ export default function StatsScreen({ active }: Props) {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.titleRow}>
+          <View style={[styles.titleRow, range === 'month' && styles.titleRowCompact]}>
             <Text style={styles.pageTitle}>统计</Text>
             <View style={styles.rangeSwitch}>
               {(
                 [
                   ['week', '近7天'],
-                  ['month', '本月'],
+                  ['month', '月度'],
                   ['year', '年度'],
                 ] as [RangeKey, string][]
               ).map(([r, label]) => (
@@ -359,6 +384,59 @@ export default function StatsScreen({ active }: Props) {
               ))}
             </View>
           </View>
+
+          {/* 月份切换：只在「月度」视图显示；不能翻到未来月份 */}
+          {range === 'month' ? (
+            <View style={styles.monthBar}>
+              <View style={styles.monthSide} />
+              <View style={styles.monthNav}>
+                <Pressable
+                  style={styles.monthArrow}
+                  onPress={() => {
+                    setMonthOffset((v) => v - 1);
+                    hapticLight();
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="上个月"
+                >
+                  <Text style={styles.monthArrowText}>‹</Text>
+                </Pressable>
+                <Text style={styles.monthLabel}>{getMonthName(monthAnchor)}</Text>
+                <Pressable
+                  style={[styles.monthArrow, isCurrentMonth && styles.monthArrowDisabled]}
+                  onPress={() => {
+                    if (monthOffset >= 0) return;
+                    setMonthOffset((v) => Math.min(v + 1, 0));
+                    hapticLight();
+                  }}
+                  disabled={isCurrentMonth}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="下个月"
+                  accessibilityState={{ disabled: isCurrentMonth }}
+                >
+                  <Text style={styles.monthArrowText}>›</Text>
+                </Pressable>
+              </View>
+              <View style={[styles.monthSide, styles.monthSideRight]}>
+                {isCurrentMonth ? null : (
+                  <Pressable
+                    style={styles.monthTodayBtn}
+                    onPress={() => {
+                      setMonthOffset(0);
+                      hapticLight();
+                    }}
+                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel="回到本月"
+                  >
+                    <Text style={styles.monthTodayText}>本月</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          ) : null}
 
           {/* 成员筛选（多成员账本显示，v0.5） */}
           {multiMember ? (
@@ -444,8 +522,8 @@ export default function StatsScreen({ active }: Props) {
             </Pressable>
           </View>
 
-          {/* 预算对比（预算为月维度，仅本月视图显示，避免与周/年范围数据错误对比） */}
-          {budget > 0 && range === 'month' ? (
+          {/* 预算对比（预算只存了「当前月」一个值，历史月份对比会误导，故仅本月显示） */}
+          {budget > 0 && range === 'month' && isCurrentMonth ? (
             <View style={styles.card}>
               <View style={styles.budgetHead}>
                 <Text style={styles.cardTitle}>预算对比 · 本月</Text>
@@ -717,6 +795,63 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   rangeTextActive: {
+    color: COLORS.accentDark,
+    fontWeight: '700',
+  },
+  titleRowCompact: {
+    marginBottom: SPACING.sm,
+  },
+  // ===== 月份切换（v0.11.25）=====
+  monthBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  monthSide: {
+    width: 52,
+  },
+  monthSideRight: {
+    alignItems: 'flex-end',
+  },
+  monthNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  monthArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.bgAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthArrowDisabled: {
+    opacity: 0.35,
+  },
+  monthArrowText: {
+    fontSize: FONT_SIZE.lg,
+    lineHeight: FONT_SIZE.lg + 4,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  monthLabel: {
+    minWidth: 100,
+    textAlign: 'center',
+    fontSize: FONT_SIZE.md,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  monthTodayBtn: {
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 4,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  monthTodayText: {
+    fontSize: FONT_SIZE.xs,
     color: COLORS.accentDark,
     fontWeight: '700',
   },
