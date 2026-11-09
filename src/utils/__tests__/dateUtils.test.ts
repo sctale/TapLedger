@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   formatDate,
+  formatDateLabel,
+  mergeDateKeepTime,
   parseDate,
   addMonths,
   getDaysInMonth,
@@ -64,6 +66,48 @@ describe('getLastNDates', () => {
     const arr = getLastNDates(7);
     expect(arr).toHaveLength(7);
     expect(arr[arr.length - 1]).toBe(getToday());
+  });
+});
+
+describe('日期标签 formatDateLabel（记账/编辑日期胶囊）', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('今天 / 昨天 用相对文案', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 28, 10, 0, 0));
+    expect(formatDateLabel('2026-10-28')).toBe('今天');
+    expect(formatDateLabel('2026-10-27')).toBe('昨天');
+  });
+
+  it('同年显示月日 + 周几，跨年补年份', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 28, 10, 0, 0));
+    expect(formatDateLabel('2026-10-20')).toBe('10月20日 周二');
+    expect(formatDateLabel('2025-12-31')).toBe('2025年12月31日 周三');
+  });
+});
+
+describe('mergeDateKeepTime（改日期保留时分秒）', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('换日期但保留原记录的时分秒', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 28, 12, 0, 0));
+    const old = new Date(2026, 9, 27, 20, 30, 15).getTime();
+    const merged = new Date(mergeDateKeepTime(old, '2026-10-26'));
+    expect([merged.getFullYear(), merged.getMonth(), merged.getDate()]).toEqual([2026, 9, 26]);
+    expect([merged.getHours(), merged.getMinutes(), merged.getSeconds()]).toEqual([20, 30, 15]);
+  });
+
+  it('拼出的时间晚于当前时刻时收敛到当前时刻', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 28, 9, 0, 0));
+    const old = new Date(2026, 9, 27, 23, 0, 0).getTime();
+    expect(mergeDateKeepTime(old, '2026-10-28')).toBe(new Date(2026, 9, 28, 9, 0, 0).getTime());
   });
 });
 

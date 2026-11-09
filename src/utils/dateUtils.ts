@@ -27,6 +27,31 @@ export function getWeekdayShort(date: Date): string {
   return ['日', '一', '二', '三', '四', '五', '六'][date.getDay()] ?? '';
 }
 
+// 日期胶囊文案：今天 / 昨天 / 10月26日 周一（跨年时补年份）
+export function formatDateLabel(dateStr: string): string {
+  const today = getToday();
+  if (dateStr === today) return '今天';
+  const now = new Date();
+  const yesterday = formatDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+  if (dateStr === yesterday) return '昨天';
+  const d = parseDate(dateStr);
+  const base =
+    d.getFullYear() === now.getFullYear()
+      ? `${d.getMonth() + 1}月${d.getDate()}日`
+      : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${base} 周${getWeekdayShort(d)}`;
+}
+
+// 只改日期、保留原记录的时分秒（编辑记录改日期后用，同日排序仍按真实录入时间）
+// 若拼出的时间晚于当前时刻（例如把昨天 23:00 改到今天），收敛到当前时刻，避免排到列表最前。
+export function mergeDateKeepTime(timestamp: number, dateStr: string): number {
+  const old = new Date(timestamp);
+  const next = parseDate(dateStr);
+  next.setHours(old.getHours(), old.getMinutes(), old.getSeconds(), old.getMilliseconds());
+  const ms = next.getTime();
+  return ms > Date.now() ? Date.now() : ms;
+}
+
 // 获取某月天数
 export function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SPACING, getCategories } from '../constants';
 import { updateRecord } from '../database/ledgerDB';
-import { formatMoney } from '../utils/dateUtils';
+import { mergeDateKeepTime, formatMoney } from '../utils/dateUtils';
 import {
   appendKey,
   evaluateAmount,
@@ -23,6 +23,7 @@ import {
 } from '../utils/moneyUtils';
 import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
 import CategorySelector from './CategorySelector';
+import DateField from './DateField';
 import NumberPad from './NumberPad';
 import type { LedgerRecord, RecordType } from '../types';
 
@@ -54,6 +55,8 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
   // （随手记同款交互），键盘落下后自动恢复。
   const [keyboardUp, setKeyboardUp] = useState(false);
   const [keyboardH, setKeyboardH] = useState(0);
+  // 记录日期（v0.11.22：编辑时可改，保存后明细/统计按新日期归档）
+  const [recordDate, setRecordDate] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
   // 打开时用记录内容初始化（金额转字符串供键盘继续编辑）
@@ -66,6 +69,7 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
       setShowNote(!!record.note);
       setNoteFocused(false);
       setReimbursable(record.reimbursable);
+      setRecordDate(record.date);
       setSaving(false);
       setError('');
     }
@@ -133,6 +137,8 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
         type,
         note: note.trim(),
         reimbursable,
+        date: recordDate || record.date,
+        timestamp: mergeDateKeepTime(record.timestamp, recordDate || record.date),
       });
       hapticSuccess();
       // 列表刷新 + App 层 debounce 自动同步（与新增记录同一链路）
@@ -218,6 +224,18 @@ export default function EditRecordModal({ visible, record, onClose }: Props) {
                 </Text>
               </Pressable>
             ))}
+          </View>
+
+          {/* 记录日期：可改到过去的某天（时分秒保留原记录，同日排序不乱） */}
+          <View style={styles.dateRow}>
+            <DateField
+              value={recordDate || record.date}
+              label="记录日期"
+              onChange={(d) => {
+                setRecordDate(d);
+                hapticLight();
+              }}
+            />
           </View>
 
           {/* 金额区 */}
@@ -402,6 +420,11 @@ const styles = StyleSheet.create({
   typeTextActive: {
     color: COLORS.white,
     fontWeight: '700',
+  },
+  // 日期胶囊单独一行、靠左
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   amountZone: {
     flex: 1,

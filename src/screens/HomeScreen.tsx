@@ -14,7 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, LEDGER_EVENTS, RADIUS, SETTING_KEYS, SPACING, getCategories } from '../constants';
 import { addRecord, getSetting, saveSetting } from '../database/ledgerDB';
-import { formatMoney, getToday } from '../utils/dateUtils';
+import { formatDateLabel, formatMoney, getToday } from '../utils/dateUtils';
 import {
   appendKey,
   evaluateAmount,
@@ -26,6 +26,7 @@ import {
 import { hapticError, hapticLight, hapticSuccess } from '../utils/haptics';
 import { useToast } from '../hooks/useToast';
 import CategorySelector from '../components/CategorySelector';
+import DateField from '../components/DateField';
 import NumberPad from '../components/NumberPad';
 import type { RecordType } from '../types';
 
@@ -64,6 +65,9 @@ export default function HomeScreen({ active }: Props) {
   }>({ logged: false, display: '', avatar: '', ledgerName: '' });
   const [continuous, setContinuous] = useState(false);
   const [amountMap, setAmountMap] = useState<Record<string, number>>({});
+  // 记账日期：默认「今天」跟随系统（跨零点仍记当天），手动选过则固定到所选日期
+  const [recordDate, setRecordDate] = useState(getToday());
+  const [dateManual, setDateManual] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   // v0.11 修复：today 改为保存时实时计算（此前挂载时定死，跨零点连记会记到昨天）
@@ -75,7 +79,11 @@ export default function HomeScreen({ active }: Props) {
   // Tab 激活时滚回顶部
   useEffect(() => {
     if (!active) return;
+    // 跨零点后回到记账页：未手动选日期时，胶囊与保存都跟到新的一天
+    if (!dateManual) setRecordDate(getToday());
     scrollRef.current?.scrollTo({ y: 0, animated: false });
+    // dateManual 变化不应触发滚动复位，故不进依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   // 首次加载（恢复默认收支类型 + 同步用户 + 快捷记账偏好）
@@ -233,9 +241,10 @@ export default function HomeScreen({ active }: Props) {
     if (savingRef.current) return; // 双击/连点保护：一次轻双击就是两条真实支出
     savingRef.current = true;
     const amount = toAmount(amountStr);
-    const today = getToday();
+    // 未手动选日期 → 保存时实时取当天（跨零点连记不会记到昨天）
+    const date = dateManual ? recordDate : getToday();
     try {
-      await addRecord(amount, category, type, today, note.trim(), reimbursable, { userId: syncUserId });
+      await addRecord(amount, category, type, date, note.trim(), reimbursable, { userId: syncUserId });
       // 记住该分类最近金额，供「上次 ¥x」快捷填入
       const nextMap = { ...amountMapRef.current, [category]: amount };
       amountMapRef.current = nextMap;
@@ -247,11 +256,18 @@ export default function HomeScreen({ active }: Props) {
       hapticSuccess();
       if (!continuous) {
         setReimbursable(false);
+        // 非今天补记时把日期念出来，避免用户不确定记到了哪天
+        const datePrefix = date === getToday() ? '' : `${formatDateLabel(date)} `;
         showToast(
-          type === 'expense' ? `已记支出 ¥${formatMoney(amount)}` : `已记收入 ¥${formatMoney(amount)}`,
+          type === 'expense'
+            ? `已记${datePrefix}支出 ¥${formatMoney(amount)}`
+            : `已记${datePrefix}收入 ¥${formatMoney(amount)}`,
         );
+        // 记完回到「今天」：下一次默认是当天，补记不会一直沿用旧日期
+        setDateManual(false);
+        setRecordDate(getToday());
       }
-      // 连记模式：不弹提示、保留待报销标记，便于连续补记同类
+      // 连记模式：不弹提示、保留待报销标记与所选日期，便于连续补记同类
       DeviceEventEmitter.emit(LEDGER_EVENTS.RECORDED);
     } catch {
       hapticError();
@@ -259,7 +275,18 @@ export default function HomeScreen({ active }: Props) {
     } finally {
       savingRef.current = false;
     }
-  }, [amountStr, category, type, note, reimbursable, showToast, syncUserId, continuous]);
+  }, [
+    amountStr,
+    category,
+    type,
+    note,
+    reimbursable,
+    showToast,
+    syncUserId,
+    continuous,
+    dateManual,
+    recordDate,
+  ]);
 
   // 连记开关（持久化）
   const toggleContinuous = useCallback(() => {
@@ -325,6 +352,18 @@ export default function HomeScreen({ active }: Props) {
                 </Text>
               </Pressable>
             ))}
+          </View>
+
+          {/* 记账日期：默认今天；点胶囊可选过去日期补记（不允许未来） */}
+          <View style={styles.dateRow}>
+            <DateField
+              value={dateManual ? recordDate : getToday()}
+              onChange={(d) => {
+                setRecordDate(d);
+                setDateManual(true);
+                hapticLight();
+              }}
+            />
           </View>
 
           {/* 金额区（弹性占据卡内剩余空间，保证键盘稳定卡底） */}
@@ -498,6 +537,11 @@ const styles = StyleSheet.create({
   typeTextActive: {
     color: COLORS.white,
     fontWeight: '700',
+  },
+  // 日期胶囊单独一行、靠左（与收支切换的间距交给 content 的 gap 统一控制）
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   amountRow: {
     flexDirection: 'row',

@@ -360,6 +360,7 @@ export async function deleteRecord(id: number): Promise<void> {
 
 // 编辑一笔记录（明细页点击编辑用，v0.10）
 // 整体覆盖可编辑字段 + updated_at 触发增量同步推送（LWW 全家最终一致）
+// v0.11.22：支持改日期——date/timestamp 一并更新，否则明细仍按旧日期分组、统计口径不变
 export async function updateRecord(
   id: number,
   patch: {
@@ -368,14 +369,26 @@ export async function updateRecord(
     type: RecordType;
     note: string;
     reimbursable: boolean;
+    date: string;
+    timestamp: number;
   },
 ): Promise<void> {
   const database = await getDB();
   await database.runAsync(
     `UPDATE ledger_records
-     SET amount = ?, category = ?, type = ?, note = ?, reimbursable = ?, updated_at = ?
+     SET amount = ?, category = ?, type = ?, note = ?, reimbursable = ?, date = ?, timestamp = ?, updated_at = ?
      WHERE id = ?`,
-    [patch.amount, patch.category, patch.type, patch.note, patch.reimbursable ? 1 : 0, Date.now(), id],
+    [
+      patch.amount,
+      patch.category,
+      patch.type,
+      patch.note,
+      patch.reimbursable ? 1 : 0,
+      patch.date,
+      patch.timestamp,
+      Date.now(),
+      id,
+    ],
   );
 }
 
