@@ -1,8 +1,8 @@
-// 记账日期胶囊：点开应用内自绘日历底部面板
+// 记账日期胶囊：点开应用内自绘日历浮层卡片
+// v0.11.24：从贴底全宽面板改为居中卡片——宽度、圆角、描边与记账页卡片一致，整体上移更协调
 // v0.11.23：弃用系统 Material 日历弹窗（白底蓝字与暖色系界面风格割裂），改为与全站一致的暖色圆角面板
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
 import {
   addMonths,
@@ -84,8 +84,7 @@ export default function DateField({ value, onChange, label = '记账日期' }: P
             accessibilityRole="button"
             accessibilityLabel="关闭日期选择"
           />
-          <SafeAreaView edges={['bottom']} style={styles.sheet}>
-            <View style={styles.grabber} />
+          <View style={styles.card}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>选择日期</Text>
               <Text style={styles.sheetSub}>{formatDateLabel(pending)}</Text>
@@ -195,7 +194,7 @@ export default function DateField({ value, onChange, label = '记账日期' }: P
                 </Pressable>
               </View>
             </View>
-          </SafeAreaView>
+          </View>
         </View>
       </Modal>
     </View>
@@ -224,32 +223,35 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
-  // ===== 底部日历面板（与全站暖色圆角风格一致） =====
+  // ===== 居中浮层卡片（宽度/圆角/描边与记账页卡片一致） =====
   overlay: {
     flex: 1,
     backgroundColor: COLORS.overlay,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.sm,
   },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.borderSubtle,
-    marginBottom: SPACING.sm,
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xs,
+    // 浮起感：暖色阴影 + Android elevation
+    shadowColor: COLORS.text,
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
   },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.xs,
   },
   sheetTitle: {
     fontSize: FONT_SIZE.lg,
@@ -266,7 +268,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: SPACING.sm,
-    paddingHorizontal: SPACING.xs,
   },
   monthBtn: {
     width: 36,
@@ -308,13 +309,13 @@ const styles = StyleSheet.create({
   },
   cell: {
     width: '14.2857%',
-    height: 44,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
   },
   day: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: RADIUS.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -348,7 +349,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING.sm,
+    paddingBottom: SPACING.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.border,
   },
