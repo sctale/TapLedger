@@ -2,7 +2,7 @@
   "expo": {
     "name": "一点账本",
     "slug": "TapLedger",
-    "version": "0.11.22",
+    "version": "0.11.23",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -24,12 +24,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "./plugins/withVersionSync",
-      "./plugins/withReleaseSigning",
-      "expo-sqlite",
-      "expo-status-bar",
-      "@react-native-community/datetimepicker"
-    ]
+    "plugins": ["./plugins/withVersionSync", "./plugins/withReleaseSigning", "expo-sqlite", "expo-status-bar"]
   }
 }
