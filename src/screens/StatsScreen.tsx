@@ -793,8 +793,9 @@ const styles = StyleSheet.create({
   monthBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
+    justifyContent: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
   },
   monthTodayText: {
     fontSize: FONT_SIZE.sm,

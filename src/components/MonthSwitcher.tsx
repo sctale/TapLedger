@@ -1,8 +1,8 @@
 // 月份切换控件（日期选择面板 / 统计页共用）
-// 统一箭头尺寸、间距与月份格式，避免两处功能各写一套视觉
+// v0.11.27：收成一个完整的胶囊控件（箭头与月份同容器），不再让两个圆形按钮散落在页面上
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
+import { COLORS, FONT_SIZE, RADIUS } from '../constants';
 
 interface Props {
   label: string;
@@ -13,11 +13,11 @@ interface Props {
 
 export default function MonthSwitcher({ label, onPrev, onNext, nextDisabled = false }: Props) {
   return (
-    <View style={styles.row}>
+    <View style={styles.pill}>
       <Pressable
-        style={styles.arrow}
+        style={({ pressed }) => [styles.arrow, pressed && styles.arrowPressed]}
         onPress={onPrev}
-        hitSlop={8}
+        hitSlop={6}
         accessibilityRole="button"
         accessibilityLabel="上个月"
       >
@@ -25,12 +25,16 @@ export default function MonthSwitcher({ label, onPrev, onNext, nextDisabled = fa
       </Pressable>
       <Text style={styles.label}>{label}</Text>
       <Pressable
-        style={[styles.arrow, nextDisabled && styles.arrowDisabled]}
+        style={({ pressed }) => [
+          styles.arrow,
+          pressed && styles.arrowPressed,
+          nextDisabled && styles.arrowDisabled,
+        ]}
         onPress={() => {
           if (!nextDisabled) onNext();
         }}
         disabled={nextDisabled}
-        hitSlop={8}
+        hitSlop={6}
         accessibilityRole="button"
         accessibilityLabel="下个月"
         accessibilityState={{ disabled: nextDisabled }}
@@ -42,33 +46,39 @@ export default function MonthSwitcher({ label, onPrev, onNext, nextDisabled = fa
 }
 
 const styles = StyleSheet.create({
-  row: {
+  // 胶囊容器：箭头与月份标签成为一个整体控件
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.bgAlt,
+    borderRadius: RADIUS.pill,
+    padding: 3,
   },
   arrow: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.bgAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  arrowPressed: {
+    backgroundColor: COLORS.surface,
+  },
   arrowDisabled: {
-    opacity: 0.35,
+    opacity: 0.3,
   },
   arrowText: {
     fontSize: FONT_SIZE.lg,
-    lineHeight: FONT_SIZE.lg + 4,
+    lineHeight: FONT_SIZE.lg + 5,
     color: COLORS.textSecondary,
     fontWeight: '700',
   },
   label: {
-    minWidth: 104,
+    minWidth: 96,
     textAlign: 'center',
     fontSize: FONT_SIZE.md,
-    fontWeight: '700',
+    fontWeight: '800',
     color: COLORS.text,
   },
 });
