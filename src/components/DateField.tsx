@@ -1,4 +1,5 @@
 // 记账日期胶囊：点开应用内自绘日历浮层卡片
+// v0.11.26：头部固定展示完整选中日期；已选今天时隐藏底部无效的「今天」；与统计页共用 MonthSwitcher
 // v0.11.24：从贴底全宽面板改为居中卡片——宽度、圆角、描边与记账页卡片一致，整体上移更协调
 // v0.11.23：弃用系统 Material 日历弹窗（白底蓝字与暖色系界面风格割裂），改为与全站一致的暖色圆角面板
 import React, { useMemo, useState } from 'react';
@@ -7,6 +8,7 @@ import { COLORS, FONT_SIZE, RADIUS, SPACING } from '../constants';
 import {
   addMonths,
   formatDate,
+  formatDateFull,
   formatDateLabel,
   getDaysInMonth,
   getFirstDayOfMonth,
@@ -14,6 +16,7 @@ import {
   getToday,
   parseDate,
 } from '../utils/dateUtils';
+import MonthSwitcher from './MonthSwitcher';
 
 interface Props {
   value: string; // YYYY-MM-DD
@@ -67,6 +70,7 @@ export default function DateField({ value, onChange, label = '记账日期' }: P
       >
         <Text style={styles.icon}>📅</Text>
         <Text style={styles.text}>{formatDateLabel(value)}</Text>
+        <Text style={styles.chevron}>▾</Text>
       </Pressable>
 
       <Modal
@@ -87,32 +91,17 @@ export default function DateField({ value, onChange, label = '记账日期' }: P
           <View style={styles.card}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>选择日期</Text>
-              <Text style={styles.sheetSub}>{formatDateLabel(pending)}</Text>
+              <Text style={styles.sheetSub}>{formatDateFull(pending)}</Text>
             </View>
 
-            {/* 月份切换：右侧到当前月为止 */}
-            <View style={styles.monthBar}>
-              <Pressable
-                style={styles.monthBtn}
-                onPress={() => setViewDate(addMonths(viewDate, -1))}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="上个月"
-              >
-                <Text style={styles.monthArrow}>‹</Text>
-              </Pressable>
-              <Text style={styles.monthText}>{getMonthName(viewDate)}</Text>
-              <Pressable
-                style={[styles.monthBtn, !canGoNext && styles.monthBtnDisabled]}
-                onPress={() => canGoNext && setViewDate(addMonths(viewDate, 1))}
-                disabled={!canGoNext}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="下个月"
-                accessibilityState={{ disabled: !canGoNext }}
-              >
-                <Text style={styles.monthArrow}>›</Text>
-              </Pressable>
+            {/* 月份切换：右侧到当前月为止；与统计页共用同一套箭头样式 */}
+            <View style={styles.monthRow}>
+              <MonthSwitcher
+                label={getMonthName(viewDate)}
+                onPrev={() => setViewDate(addMonths(viewDate, -1))}
+                onNext={() => setViewDate(addMonths(viewDate, 1))}
+                nextDisabled={!canGoNext}
+              />
             </View>
 
             <View style={styles.weekRow}>
@@ -159,18 +148,23 @@ export default function DateField({ value, onChange, label = '记账日期' }: P
             </View>
 
             <View style={styles.footer}>
-              <Pressable
-                style={styles.todayBtn}
-                onPress={() => {
-                  setPending(today);
-                  setViewDate(new Date());
-                }}
-                hitSlop={6}
-                accessibilityRole="button"
-                accessibilityLabel="选择今天"
-              >
-                <Text style={styles.todayText}>今天</Text>
-              </Pressable>
+              {/* 已选今天时不再显示「今天」按钮（否则点了也没反应） */}
+              {pending !== today ? (
+                <Pressable
+                  style={styles.todayBtn}
+                  onPress={() => {
+                    setPending(today);
+                    setViewDate(new Date());
+                  }}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="选择今天"
+                >
+                  <Text style={styles.todayText}>今天</Text>
+                </Pressable>
+              ) : (
+                <View />
+              )}
               <View style={styles.footerActions}>
                 <Pressable
                   style={styles.cancelBtn}
@@ -223,6 +217,11 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
+  chevron: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
+    fontWeight: '700',
+  },
   // ===== 居中浮层卡片（宽度/圆角/描边与记账页卡片一致） =====
   overlay: {
     flex: 1,
@@ -240,7 +239,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.md,
-    paddingBottom: SPACING.xs,
+    paddingBottom: SPACING.sm,
     // 浮起感：暖色阴影 + Android elevation
     shadowColor: COLORS.text,
     shadowOpacity: 0.16,
@@ -263,33 +262,8 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
-  monthBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  monthRow: {
     marginTop: SPACING.sm,
-  },
-  monthBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.bgAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monthBtnDisabled: {
-    opacity: 0.35,
-  },
-  monthArrow: {
-    fontSize: FONT_SIZE.lg,
-    lineHeight: FONT_SIZE.lg + 4,
-    color: COLORS.textSecondary,
-    fontWeight: '700',
-  },
-  monthText: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: '700',
-    color: COLORS.text,
   },
   weekRow: {
     flexDirection: 'row',
@@ -341,7 +315,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   dayTextFuture: {
-    color: COLORS.borderSubtle,
+    color: COLORS.textTertiary,
+    opacity: 0.45,
   },
   footer: {
     flexDirection: 'row',

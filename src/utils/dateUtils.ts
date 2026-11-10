@@ -42,6 +42,12 @@ export function formatDateLabel(dateStr: string): string {
   return `${base} 周${getWeekdayShort(d)}`;
 }
 
+// 完整日期文案：2026年11月10日 周二（日期面板头部展示选中日期用）
+export function formatDateFull(dateStr: string): string {
+  const d = parseDate(dateStr);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 周${getWeekdayShort(d)}`;
+}
+
 // 只改日期、保留原记录的时分秒（编辑记录改日期后用，同日排序仍按真实录入时间）
 // 若拼出的时间晚于当前时刻（例如把昨天 23:00 改到今天），收敛到当前时刻，避免排到列表最前。
 export function mergeDateKeepTime(timestamp: number, dateStr: string): number {

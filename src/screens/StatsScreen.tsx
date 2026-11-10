@@ -35,6 +35,7 @@ import { useToast } from '../hooks/useToast';
 import { getCachedMembers, memberColor, type MemberInfo } from '../sync/memberUtils';
 import CategoryPieChart from '../components/CategoryPieChart';
 import TrendBarChart from '../components/TrendBarChart';
+import MonthSwitcher from '../components/MonthSwitcher';
 import RecordList from '../components/RecordList';
 import EditRecordModal from '../components/EditRecordModal';
 import ReimburseScreen from './manage/ReimburseScreen';
@@ -52,6 +53,8 @@ export default function StatsScreen({ active }: Props) {
   const [range, setRange] = useState<RangeKey>('month');
   // 统计月份：0=本月，负数=往前翻（v0.11.25 支持查看历史月份）
   const [monthOffset, setMonthOffset] = useState(0);
+  // 月份切换后的查询状态：查询完成前给内容一个轻量反馈
+  const [statsLoading, setStatsLoading] = useState(false);
   const [expense, setExpense] = useState(0);
   const [income, setIncome] = useState(0);
   const [categoryData, setCategoryData] = useState<{ category: string; total: number }[]>([]);
@@ -183,6 +186,7 @@ export default function StatsScreen({ active }: Props) {
   // 加载数据（memberFilter > 0 时按记账人筛选，v0.5）
   useEffect(() => {
     let cancelled = false;
+    setStatsLoading(true);
     (async () => {
       try {
         const [summary, cats, days, budgetStr, mStats] = await Promise.all([
@@ -220,7 +224,9 @@ export default function StatsScreen({ active }: Props) {
           );
         }
       } catch {
-        showToast('统计数据加载失败', 'error');
+        if (!cancelled) showToast('统计数据加载失败', 'error');
+      } finally {
+        if (!cancelled) setStatsLoading(false);
       }
     })();
     return () => {
@@ -388,53 +394,34 @@ export default function StatsScreen({ active }: Props) {
           {/* 月份切换：只在「月度」视图显示；不能翻到未来月份 */}
           {range === 'month' ? (
             <View style={styles.monthBar}>
-              <View style={styles.monthSide} />
-              <View style={styles.monthNav}>
+              <MonthSwitcher
+                label={getMonthName(monthAnchor)}
+                onPrev={() => {
+                  setMonthOffset((v) => v - 1);
+                  hapticLight();
+                }}
+                onNext={() => {
+                  if (monthOffset >= 0) return;
+                  setMonthOffset((v) => Math.min(v + 1, 0));
+                  hapticLight();
+                }}
+                nextDisabled={isCurrentMonth}
+              />
+              {statsLoading ? (
+                <Text style={styles.loadingHint}>加载中…</Text>
+              ) : isCurrentMonth ? null : (
                 <Pressable
-                  style={styles.monthArrow}
                   onPress={() => {
-                    setMonthOffset((v) => v - 1);
+                    setMonthOffset(0);
                     hapticLight();
                   }}
-                  hitSlop={8}
+                  hitSlop={6}
                   accessibilityRole="button"
-                  accessibilityLabel="上个月"
+                  accessibilityLabel="回到本月"
                 >
-                  <Text style={styles.monthArrowText}>‹</Text>
+                  <Text style={styles.monthTodayText}>回到本月</Text>
                 </Pressable>
-                <Text style={styles.monthLabel}>{getMonthName(monthAnchor)}</Text>
-                <Pressable
-                  style={[styles.monthArrow, isCurrentMonth && styles.monthArrowDisabled]}
-                  onPress={() => {
-                    if (monthOffset >= 0) return;
-                    setMonthOffset((v) => Math.min(v + 1, 0));
-                    hapticLight();
-                  }}
-                  disabled={isCurrentMonth}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="下个月"
-                  accessibilityState={{ disabled: isCurrentMonth }}
-                >
-                  <Text style={styles.monthArrowText}>›</Text>
-                </Pressable>
-              </View>
-              <View style={[styles.monthSide, styles.monthSideRight]}>
-                {isCurrentMonth ? null : (
-                  <Pressable
-                    style={styles.monthTodayBtn}
-                    onPress={() => {
-                      setMonthOffset(0);
-                      hapticLight();
-                    }}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel="回到本月"
-                  >
-                    <Text style={styles.monthTodayText}>本月</Text>
-                  </Pressable>
-                )}
-              </View>
+              )}
             </View>
           ) : null}
 
@@ -481,7 +468,8 @@ export default function StatsScreen({ active }: Props) {
           ) : null}
 
           {/* 总览卡片（金额自适应字号，大金额不换行溢出） */}
-          <View style={styles.overview}>
+          <Text style={styles.sectionTitle}>收支总览 · {rangeLabel}</Text>
+          <View style={[styles.overview, statsLoading && styles.overviewLoading]}>
             <View style={styles.overviewItem}>
               <Text style={styles.overviewLabel}>支出</Text>
               <Text
@@ -801,59 +789,21 @@ const styles = StyleSheet.create({
   titleRowCompact: {
     marginBottom: SPACING.sm,
   },
-  // ===== 月份切换（v0.11.25）=====
+  // ===== 月份切换（v0.11.25，箭头样式与日期面板共用 MonthSwitcher）=====
   monthBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
-  },
-  monthSide: {
-    width: 52,
-  },
-  monthSideRight: {
-    alignItems: 'flex-end',
-  },
-  monthNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  monthArrow: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.bgAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monthArrowDisabled: {
-    opacity: 0.35,
-  },
-  monthArrowText: {
-    fontSize: FONT_SIZE.lg,
-    lineHeight: FONT_SIZE.lg + 4,
-    color: COLORS.textSecondary,
-    fontWeight: '700',
-  },
-  monthLabel: {
-    minWidth: 100,
-    textAlign: 'center',
-    fontSize: FONT_SIZE.md,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  monthTodayBtn: {
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: 4,
-    borderRadius: RADIUS.pill,
-    borderWidth: 1,
-    borderColor: COLORS.accent,
+    marginBottom: SPACING.sm,
   },
   monthTodayText: {
-    fontSize: FONT_SIZE.xs,
+    fontSize: FONT_SIZE.sm,
     color: COLORS.accentDark,
     fontWeight: '700',
+  },
+  loadingHint: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
   },
   overview: {
     flexDirection: 'row',
@@ -865,6 +815,9 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xs,
     marginBottom: SPACING.md,
+  },
+  overviewLoading: {
+    opacity: 0.55,
   },
   overviewItem: {
     flex: 1,

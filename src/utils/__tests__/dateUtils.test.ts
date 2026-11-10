@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   formatDate,
+  formatDateFull,
   formatDateLabel,
   mergeDateKeepTime,
   parseDate,
@@ -86,6 +87,13 @@ describe('日期标签 formatDateLabel（记账/编辑日期胶囊）', () => {
     vi.setSystemTime(new Date(2026, 9, 28, 10, 0, 0));
     expect(formatDateLabel('2026-10-20')).toBe('10月20日 周二');
     expect(formatDateLabel('2025-12-31')).toBe('2025年12月31日 周三');
+  });
+});
+
+describe('完整日期 formatDateFull（日期面板头部）', () => {
+  it('始终带年份与周几', () => {
+    expect(formatDateFull('2026-10-20')).toBe('2026年10月20日 周二');
+    expect(formatDateFull('2025-12-31')).toBe('2025年12月31日 周三');
   });
 });
 
