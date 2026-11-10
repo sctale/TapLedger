@@ -407,21 +407,25 @@ export default function StatsScreen({ active }: Props) {
                 }}
                 nextDisabled={isCurrentMonth}
               />
-              {statsLoading ? (
-                <Text style={styles.loadingHint}>加载中…</Text>
-              ) : isCurrentMonth ? null : (
-                <Pressable
-                  onPress={() => {
-                    setMonthOffset(0);
-                    hapticLight();
-                  }}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel="回到本月"
-                >
-                  <Text style={styles.monthTodayText}>回到本月</Text>
-                </Pressable>
-              )}
+              {/* 右侧动作绝对定位：出现/消失都不影响中间月份胶囊保持居中 */}
+              <View style={styles.monthAction}>
+                {statsLoading ? (
+                  <Text style={styles.loadingHint}>加载中…</Text>
+                ) : isCurrentMonth ? null : (
+                  <Pressable
+                    style={styles.monthTodayBtn}
+                    onPress={() => {
+                      setMonthOffset(0);
+                      hapticLight();
+                    }}
+                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel="回到本月"
+                  >
+                    <Text style={styles.monthTodayText}>本月</Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
           ) : null}
 
@@ -794,8 +798,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.md,
     marginBottom: SPACING.md,
+    // 右侧动作绝对定位，保证中间月份胶囊始终居中、不随按钮出现而左右移动
+    position: 'relative',
+  },
+  monthAction: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  monthTodayBtn: {
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.pill,
   },
   monthTodayText: {
     fontSize: FONT_SIZE.sm,
