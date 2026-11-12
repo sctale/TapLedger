@@ -439,14 +439,19 @@ export async function getRecordsByCategory(
   end: string,
   category: string,
   userId = 0,
+  type: RecordType = 'expense',
 ): Promise<LedgerRecord[]> {
   const database = await getDB();
+  // 支出统计排除待报销（与排行同口径）；收入没有待报销概念，不过滤
+  const reimbursableFilter = type === 'expense' ? 'AND reimbursable = 0 ' : '';
   const rows = await database.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM ledger_records
-     WHERE deleted = 0 AND ledger_id = ? AND type = 'expense' AND reimbursable = 0
+     WHERE deleted = 0 AND ledger_id = ? AND type = ? ${reimbursableFilter}
        AND category = ? AND date >= ? AND date <= ?${userId > 0 ? ' AND user_id = ?' : ''}
      ORDER BY date DESC, timestamp DESC`,
-    userId > 0 ? [activeLedgerId, category, start, end, userId] : [activeLedgerId, category, start, end],
+    userId > 0
+      ? [activeLedgerId, type, category, start, end, userId]
+      : [activeLedgerId, type, category, start, end],
   );
   return rows.map(mapRecord);
 }
@@ -530,17 +535,20 @@ export async function getCategorySummary(
   );
 }
 
-// 按记账人汇总支出（成员排行用，v0.5；v0.10 增加笔数便于「谁花得多/花得勤」对比）
-export async function getMemberExpenseSummary(
+// 按记账人汇总（成员排行用，v0.5；v0.10 增加笔数；v0.12.0 支持按支出/收入查询）
+export async function getMemberSummary(
   start: string,
   end: string,
+  type: RecordType = 'expense',
 ): Promise<{ userId: number; total: number; count: number }[]> {
   const database = await getDB();
+  // 支出排除待报销，收入全量
+  const reimbursableFilter = type === 'expense' ? 'AND reimbursable = 0 ' : '';
   return database.getAllAsync<{ userId: number; total: number; count: number }>(
     `SELECT user_id as userId, SUM(amount) as total, COUNT(*) as count FROM ledger_records
-     WHERE deleted = 0 AND ledger_id = ? AND date >= ? AND date <= ? AND type = 'expense' AND reimbursable = 0
+     WHERE deleted = 0 AND ledger_id = ? AND date >= ? AND date <= ? AND type = ? ${reimbursableFilter}
      GROUP BY user_id ORDER BY total DESC`,
-    [activeLedgerId, start, end],
+    [activeLedgerId, start, end, type],
   );
 }
 
